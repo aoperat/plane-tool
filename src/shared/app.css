@@ -127,3 +127,56 @@ kbd {
 
 .sb-foot { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
 .sb-foot .add { margin-left: auto; color: var(--accent); cursor: pointer; }
+
+/* ============ SURFACE 3: SETTINGS ============ */
+.settings {
+  padding: 28px 28px 24px;
+  background: var(--panel);
+  min-height: 100vh;
+  color: var(--text);
+}
+.settings h2 {
+  margin: 0 0 20px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.settings input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  padding: 8px 12px;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+.settings input:focus { border-color: var(--accent); }
+.settings input::placeholder { color: var(--muted-2); }
+.status {
+  font-size: 12.5px;
+  color: var(--muted);
+  min-height: 18px;
+  margin: 4px 0 14px;
+}
+.row { display: flex; justify-content: flex-end; }
+.settings button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.settings button:hover { opacity: 0.85; }

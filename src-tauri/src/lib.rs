@@ -80,6 +80,11 @@ pub fn run() {
             app.global_shortcut().register(s.quickadd_shortcut.as_str())?;
             app.global_shortcut().register(s.sidebar_shortcut.as_str())?;
 
+            let cfg = config::load_settings(app.handle());
+            if cfg.base_url.is_empty() {
+                show_window(app.handle(), "settings");
+            }
+
             for label in ["quickadd", "sidebar"] {
                 if let Some(win) = app.get_webview_window(label) {
                     let w = win.clone();
