@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -14,7 +15,8 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
     "typescript": "^6.0.3",
-    "vite": "^8.1.2"
+    "vite": "^8.1.2",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1"

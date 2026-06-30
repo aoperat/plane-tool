@@ -1,5 +1,26 @@
 <!doctype html>
 <html lang="ko">
-  <head><meta charset="UTF-8" /><title>QuickAdd</title></head>
-  <body><div id="app">quickadd</div><script type="module" src="./main.ts"></script></body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>빠른 추가</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <div class="popup" style="position:static;width:100%;transform:none;">
+      <div class="popup-top">
+        <div class="accent-bar"></div>
+        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Enter…" autofocus />
+      </div>
+      <div class="popup-bottom">
+        <button id="projBtn" class="proj-select" type="button">
+          <span id="projDot" class="dot"></span>
+          <span id="projName">프로젝트 선택</span>
+          <span class="chev">▾</span>
+        </button>
+        <div class="keys"><kbd>Enter</kbd> 추가 · <kbd>Esc</kbd> 닫기</div>
+      </div>
+      <div id="dropdown" class="dropdown" hidden></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
 </html>
