@@ -77,8 +77,12 @@ pub fn run() {
                     })
                     .build(),
             )?;
-            app.global_shortcut().register(s.quickadd_shortcut.as_str())?;
-            app.global_shortcut().register(s.sidebar_shortcut.as_str())?;
+            if let Err(e) = app.global_shortcut().register(s.quickadd_shortcut.as_str()) {
+                eprintln!("quickadd shortcut '{}' failed: {e}", s.quickadd_shortcut);
+            }
+            if let Err(e) = app.global_shortcut().register(s.sidebar_shortcut.as_str()) {
+                eprintln!("sidebar shortcut '{}' failed: {e}", s.sidebar_shortcut);
+            }
 
             let cfg = config::load_settings(app.handle());
             if cfg.base_url.is_empty() {

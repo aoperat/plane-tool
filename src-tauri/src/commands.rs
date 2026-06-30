@@ -8,6 +8,8 @@ pub struct SettingsDto {
     pub workspace: String,
     pub last_project_id: Option<String>,
     pub has_token: bool,
+    pub quickadd_shortcut: String,
+    pub sidebar_shortcut: String,
 }
 
 #[derive(Serialize)]
@@ -61,6 +63,8 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         workspace: s.workspace,
         last_project_id: s.last_project_id,
         has_token: config::get_token().is_some(),
+        quickadd_shortcut: s.quickadd_shortcut,
+        sidebar_shortcut: s.sidebar_shortcut,
     }
 }
 
@@ -70,10 +74,14 @@ pub fn save_settings(
     base_url: String,
     workspace: String,
     token: Option<String>,
+    quickadd_shortcut: Option<String>,
+    sidebar_shortcut: Option<String>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
     s.workspace = workspace;
+    if let Some(v) = quickadd_shortcut { if !v.is_empty() { s.quickadd_shortcut = v; } }
+    if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {
