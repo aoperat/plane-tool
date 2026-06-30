@@ -25,7 +25,11 @@ function renderDropdown() {
   for (const p of projects) {
     const item = document.createElement("div");
     item.className = "dd-item" + (p.id === selectedId ? " sel" : "");
-    item.innerHTML = `<span class="dot" style="background:${colorForId(p.id)}"></span>${p.name}`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = colorForId(p.id);
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(p.name));
     item.onclick = () => { selectedId = p.id; renderSelected(); dropdown.hidden = true; titleEl.focus(); };
     dropdown.appendChild(item);
   }
@@ -42,6 +46,7 @@ async function load() {
 projBtn.onclick = () => { dropdown.hidden = !dropdown.hidden; };
 
 titleEl.addEventListener("keydown", async (e) => {
+  titleEl.classList.remove("error");
   if (e.key === "Escape") { await win.hide(); }
   if (e.key === "Enter") {
     const name = titleEl.value.trim();
