@@ -7,6 +7,8 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
+use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
@@ -15,12 +17,36 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
+fn toggle_window(app: &tauri::AppHandle, label: &str) {
+    if let Some(win) = app.get_webview_window(label) {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            if label == "sidebar" {
+                position_sidebar(&win);
+            }
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
+}
+
+fn position_sidebar(win: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = win.primary_monitor() {
+        let screen = monitor.size();
+        let scale = monitor.scale_factor();
+        let w = (320.0 * scale) as i32;
+        let x = screen.width as i32 - w;
+        let _ = win.set_position(tauri::PhysicalPosition { x, y: 0 });
+        let _ = win.set_size(tauri::PhysicalSize { width: w as u32, height: screen.height });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -34,6 +60,37 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            let s = config::load_settings(app.handle());
+            let qa = s.quickadd_shortcut.clone();
+            let sb = s.sidebar_shortcut.clone();
+            app.handle().plugin(
+                ShortcutBuilder::new()
+                    .with_handler(move |app, shortcut, event| {
+                        if event.state() != ShortcutState::Pressed { return; }
+                        let pressed = shortcut.to_string();
+                        if pressed.eq_ignore_ascii_case(&qa) {
+                            toggle_window(app, "quickadd");
+                        } else if pressed.eq_ignore_ascii_case(&sb) {
+                            toggle_window(app, "sidebar");
+                        }
+                    })
+                    .build(),
+            )?;
+            app.global_shortcut().register(s.quickadd_shortcut.as_str())?;
+            app.global_shortcut().register(s.sidebar_shortcut.as_str())?;
+
+            for label in ["quickadd", "sidebar"] {
+                if let Some(win) = app.get_webview_window(label) {
+                    let w = win.clone();
+                    win.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Focused(false) = event {
+                            let _ = w.hide();
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

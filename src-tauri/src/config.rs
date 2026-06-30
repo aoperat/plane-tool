@@ -6,11 +6,30 @@ const STORE_KEY: &str = "settings";
 const KEYRING_SERVICE: &str = "plane-quick-dock";
 const KEYRING_ACCOUNT: &str = "api-token";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     pub base_url: String,
     pub workspace: String,
     pub last_project_id: Option<String>,
+    #[serde(default = "default_quickadd_shortcut")]
+    pub quickadd_shortcut: String,
+    #[serde(default = "default_sidebar_shortcut")]
+    pub sidebar_shortcut: String,
+}
+
+fn default_quickadd_shortcut() -> String { "Alt+Space".into() }
+fn default_sidebar_shortcut() -> String { "Alt+S".into() }
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            base_url: String::new(),
+            workspace: String::new(),
+            last_project_id: None,
+            quickadd_shortcut: default_quickadd_shortcut(),
+            sidebar_shortcut: default_sidebar_shortcut(),
+        }
+    }
 }
 
 pub fn load_settings(app: &tauri::AppHandle) -> Settings {
@@ -56,6 +75,8 @@ mod tests {
             base_url: "https://plane.example.com".into(),
             workspace: "acme".into(),
             last_project_id: Some("proj-123".into()),
+            quickadd_shortcut: "Alt+Space".into(),
+            sidebar_shortcut: "Alt+S".into(),
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -68,5 +89,7 @@ mod tests {
         assert_eq!(s.base_url, "");
         assert_eq!(s.workspace, "");
         assert_eq!(s.last_project_id, None);
+        assert_eq!(s.quickadd_shortcut, "Alt+Space");
+        assert_eq!(s.sidebar_shortcut, "Alt+S");
     }
 }
