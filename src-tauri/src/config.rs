@@ -17,8 +17,8 @@ pub struct Settings {
     pub sidebar_shortcut: String,
 }
 
-fn default_quickadd_shortcut() -> String { "Alt+Space".into() }
-fn default_sidebar_shortcut() -> String { "Alt+S".into() }
+fn default_quickadd_shortcut() -> String { "F1".into() }
+fn default_sidebar_shortcut() -> String { "F2".into() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(s.base_url, "");
         assert_eq!(s.workspace, "");
         assert_eq!(s.last_project_id, None);
-        assert_eq!(s.quickadd_shortcut, "Alt+Space");
-        assert_eq!(s.sidebar_shortcut, "Alt+S");
+        assert_eq!(s.quickadd_shortcut, "F1");
+        assert_eq!(s.sidebar_shortcut, "F2");
     }
 }

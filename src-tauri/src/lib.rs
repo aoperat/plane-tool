@@ -113,3 +113,26 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Settings;
+
+    #[test]
+    fn default_shortcuts_parse_as_valid_accelerators() {
+        // The whole app hinges on these registering; guard that the defaults
+        // are always parseable by the global-shortcut plugin.
+        let s = Settings::default();
+        assert!(
+            s.quickadd_shortcut.parse::<Shortcut>().is_ok(),
+            "quickadd default '{}' is not a valid shortcut",
+            s.quickadd_shortcut
+        );
+        assert!(
+            s.sidebar_shortcut.parse::<Shortcut>().is_ok(),
+            "sidebar default '{}' is not a valid shortcut",
+            s.sidebar_shortcut
+        );
+    }
+}
