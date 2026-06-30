@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Plane Quick Dock",
+  "version": "0.1.0",
+  "identifier": "dev.aoperat.plane-quick-dock",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "quickadd",
+        "url": "src/quickadd/index.html",
+        "width": 540, "height": 132,
+        "decorations": false, "transparent": true, "alwaysOnTop": true,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": false
+      },
+      {
+        "label": "sidebar",
+        "url": "src/sidebar/index.html",
+        "width": 320, "height": 720,
+        "decorations": false, "alwaysOnTop": true,
+        "skipTaskbar": true, "visible": false, "resizable": false
+      },
+      {
+        "label": "settings",
+        "url": "src/settings/index.html",
+        "width": 460, "height": 420,
+        "decorations": true, "skipTaskbar": false, "visible": false, "resizable": false
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico"] }
+}
