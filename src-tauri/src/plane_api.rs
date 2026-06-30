@@ -202,6 +202,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .and(header("X-Api-Key", "secret-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "results": [{
                     "id": "i1", "name": "Fix bug", "priority": "high",
@@ -226,6 +227,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
             .and(header("X-Api-Key", "secret-key"))
+            .and(wiremock::matchers::body_json(serde_json::json!({ "name": "Hello" })))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "id": "new-1", "name": "Hello", "priority": "none",
                 "target_date": serde_json::Value::Null, "assignees": []
@@ -243,6 +245,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v1/users/me/"))
+            .and(header("X-Api-Key", "secret-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "me", "display_name": "Aoperat"
             })))
