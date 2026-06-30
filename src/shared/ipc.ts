@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto } from "./types";
+import type { SidebarData, SettingsDto, Project } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -19,3 +19,4 @@ export const saveSettings = (
 export const createIssue = (project_id: string, name: string) =>
   invoke<void>("create_issue", { projectId: project_id, name });
 export const fetchSidebarData = () => invoke<SidebarData>("fetch_sidebar_data");
+export const listProjects = () => invoke<Project[]>("list_projects");

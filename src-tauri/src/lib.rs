@@ -7,7 +7,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
-use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, ShortcutState};
+use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, Shortcut, ShortcutState};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 fn show_window(app: &tauri::AppHandle, label: &str) {
@@ -64,14 +64,15 @@ pub fn run() {
             let s = config::load_settings(app.handle());
             let qa = s.quickadd_shortcut.clone();
             let sb = s.sidebar_shortcut.clone();
+            let qa_sc: Option<Shortcut> = qa.parse().ok();
+            let sb_sc: Option<Shortcut> = sb.parse().ok();
             app.handle().plugin(
                 ShortcutBuilder::new()
                     .with_handler(move |app, shortcut, event| {
                         if event.state() != ShortcutState::Pressed { return; }
-                        let pressed = shortcut.to_string();
-                        if pressed.eq_ignore_ascii_case(&qa) {
+                        if qa_sc.as_ref() == Some(shortcut) {
                             toggle_window(app, "quickadd");
-                        } else if pressed.eq_ignore_ascii_case(&sb) {
+                        } else if sb_sc.as_ref() == Some(shortcut) {
                             toggle_window(app, "sidebar");
                         }
                     })
@@ -106,7 +107,8 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::create_issue,
-            commands::fetch_sidebar_data
+            commands::fetch_sidebar_data,
+            commands::list_projects
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

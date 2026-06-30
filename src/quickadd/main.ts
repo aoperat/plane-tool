@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createIssue, fetchSidebarData, getSettings } from "../shared/ipc";
+import { createIssue, listProjects, getSettings } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import type { Project } from "../shared/types";
 import "../shared/app.css";
@@ -36,8 +36,8 @@ function renderDropdown() {
 }
 
 async function load() {
-  const [settings, data] = await Promise.all([getSettings(), fetchSidebarData().catch(() => null)]);
-  projects = data?.projects ?? [];
+  const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
+  projects = fetched;
   selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
   renderSelected();
   renderDropdown();

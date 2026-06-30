@@ -79,7 +79,7 @@ pub fn save_settings(
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
-    s.workspace = workspace;
+    s.workspace = workspace.trim().trim_matches('/').to_string();
     if let Some(v) = quickadd_shortcut { if !v.is_empty() { s.quickadd_shortcut = v; } }
     if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
     config::save_settings(&app, &s)?;
@@ -115,6 +115,16 @@ pub async fn fetch_sidebar_data(app: tauri::AppHandle) -> Result<SidebarData, St
         }
     }
     Ok(assemble_sidebar(&user.id, projects, all_items))
+}
+
+#[tauri::command]
+pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, String> {
+    let (client, _s) = client(&app)?;
+    let projects = client.list_projects().await?;
+    Ok(projects
+        .into_iter()
+        .map(|p| ProjectDto { id: p.id, name: p.name, identifier: p.identifier })
+        .collect())
 }
 
 #[cfg(test)]
