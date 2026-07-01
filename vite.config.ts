@@ -10,6 +10,7 @@ export default defineConfig({
         quickadd: resolve(__dirname, "src/quickadd/index.html"),
         sidebar: resolve(__dirname, "src/sidebar/index.html"),
         settings: resolve(__dirname, "src/settings/index.html"),
+        editmodal: resolve(__dirname, "src/editmodal/index.html"),
       },
     },
   },
