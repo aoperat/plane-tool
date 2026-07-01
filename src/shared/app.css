@@ -66,6 +66,16 @@ kbd {
 }
 .title-input::placeholder { color: var(--muted-2); }
 .title-input.error { color: var(--red); }
+.desc-toggle { color: var(--muted-2); }
+.desc-toggle:hover { color: var(--text); }
+.desc-toggle.active { color: var(--accent); }
+.description-input {
+  display: block; width: 100%; box-sizing: border-box; resize: none; border: none; outline: none;
+  background: transparent; color: var(--text); font-size: 13px; font-family: inherit;
+  padding: 0 18px 12px;
+}
+.description-input::placeholder { color: var(--muted-2); }
+.description-input[hidden] { display: none; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; position: relative; }
 .chip {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;

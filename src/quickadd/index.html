@@ -10,7 +10,9 @@
       <div class="popup-top">
         <div class="accent-bar"></div>
         <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Enter…" autofocus />
+        <button type="button" class="icon-btn desc-toggle" id="descToggle" tabindex="-1" title="설명 추가"></button>
       </div>
+      <textarea id="description" class="description-input" placeholder="설명을 입력하세요…" rows="3" hidden></textarea>
       <div class="chip-row" id="chipRow">
         <button type="button" class="chip" id="chipAssignee"></button>
         <button type="button" class="chip" id="chipStart"></button>

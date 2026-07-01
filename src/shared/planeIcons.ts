@@ -10,6 +10,9 @@ export const CALENDAR_ICON =
 export const FLAG_ICON =
   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a909c" stroke-width="2"><path d="M5 21V4h13l-3 4 3 4H5"/></svg>`;
 
+export const DESCRIPTION_ICON =
+  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="17" y2="12"/><line x1="3" y1="18" x2="13" y2="18"/></svg>`;
+
 // Priority icon shapes: lucide-static v1.22.0 (ISC license) — AlertCircle, SignalHigh,
 // SignalMedium, SignalLow, Ban. https://lucide.dev — colors approximate Plane's
 // packages/tailwind-config/variables.css --priority-* oklch tokens.
