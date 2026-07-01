@@ -1,4 +1,4 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { createIssue, listProjects, listMembers, getSettings } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import type { Project, Member } from "../shared/types";
@@ -28,13 +28,34 @@ let members: Member[] = [];
 let membersLoadedForProject: string | null = null;
 
 let assigneeIds: string[] = []; // empty = server defaults to self
-let startPreset: DatePresetKey = "today";
-let duePreset: DatePresetKey = "today";
+type DateChoice = DatePresetKey | "custom";
+let startChoice: DateChoice = "today";
+let startCustomDate = ""; // ISO yyyy-mm-dd, used when startChoice === "custom"
+let dueChoice: DateChoice = "today";
+let dueCustomDate = "";
 let priority: Priority = "none";
 let stateGroup: StateGroup = "backlog";
 
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
 let openPopover: PopoverKind = null;
+
+const BASE_HEIGHT = 175;
+const EXPANDED_HEIGHT = 330;
+
+function resizeWindow(expanded: boolean) {
+  win.setSize(new LogicalSize(540, expanded ? EXPANDED_HEIGHT : BASE_HEIGHT)).catch((err) => {
+    console.error("resizeWindow failed:", err);
+  });
+}
+
+function dateChoiceLabel(choice: DateChoice, custom: string): string {
+  if (choice === "custom") return custom || "날짜 선택";
+  return DATE_PRESETS.find((d) => d.key === choice)!.label;
+}
+
+function resolveDateChoice(choice: DateChoice, custom: string): string {
+  return choice === "custom" ? custom : resolveDatePreset(choice);
+}
 
 function renderSelected() {
   const p = projects.find((x) => x.id === selectedId);
@@ -90,8 +111,8 @@ function renderAssigneeChip() {
 
 function renderChips() {
   renderAssigneeChip();
-  chipStart.innerHTML = `${CALENDAR_ICON} ${DATE_PRESETS.find((d) => d.key === startPreset)!.label}`;
-  chipDue.innerHTML = `${FLAG_ICON} ${DATE_PRESETS.find((d) => d.key === duePreset)!.label}`;
+  chipStart.innerHTML = `${CALENDAR_ICON} ${dateChoiceLabel(startChoice, startCustomDate)}`;
+  chipDue.innerHTML = `${FLAG_ICON} ${dateChoiceLabel(dueChoice, dueCustomDate)}`;
   chipPriority.innerHTML =
     `${priorityIcon(priority)} <span class="${priority === "none" ? "muted" : ""}">${priorityLabel(priority)}</span>`;
   chipState.innerHTML = `${stateIcon(stateGroup)} ${stateLabel(stateGroup)}`;
@@ -101,6 +122,7 @@ function closePopover() {
   openPopover = null;
   fieldPopover.hidden = true;
   fieldPopover.innerHTML = "";
+  resizeWindow(false);
 }
 
 function toggleAssignee(id: string | null) {
@@ -145,26 +167,51 @@ async function openAssigneePopover() {
   renderAssigneePopoverItems();
   fieldPopover.hidden = false;
   openPopover = "assignee";
+  resizeWindow(true);
 }
 
 function openDatePopover(kind: "start" | "due") {
   fieldPopover.innerHTML = "";
-  const current = kind === "start" ? startPreset : duePreset;
+  const current = kind === "start" ? startChoice : dueChoice;
   for (const preset of DATE_PRESETS) {
     const item = document.createElement("div");
     item.className = "dd-item" + (preset.key === current ? " sel" : "");
     item.textContent = preset.label;
     item.onclick = () => {
-      if (kind === "start") startPreset = preset.key;
-      else duePreset = preset.key;
+      if (kind === "start") startChoice = preset.key;
+      else dueChoice = preset.key;
       renderChips();
       closePopover();
       titleEl.focus();
     };
     fieldPopover.appendChild(item);
   }
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  fieldPopover.appendChild(divider);
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.className = "popover-date-input";
+  if (current === "custom") {
+    dateInput.value = kind === "start" ? startCustomDate : dueCustomDate;
+  }
+  dateInput.onchange = () => {
+    if (!dateInput.value) return;
+    if (kind === "start") {
+      startChoice = "custom";
+      startCustomDate = dateInput.value;
+    } else {
+      dueChoice = "custom";
+      dueCustomDate = dateInput.value;
+    }
+    renderChips();
+    closePopover();
+    titleEl.focus();
+  };
+  fieldPopover.appendChild(dateInput);
   fieldPopover.hidden = false;
   openPopover = kind;
+  resizeWindow(true);
 }
 
 function openPriorityPopover() {
@@ -183,6 +230,7 @@ function openPriorityPopover() {
   }
   fieldPopover.hidden = false;
   openPopover = "priority";
+  resizeWindow(true);
 }
 
 function openStatePopover() {
@@ -201,6 +249,7 @@ function openStatePopover() {
   }
   fieldPopover.hidden = false;
   openPopover = "state";
+  resizeWindow(true);
 }
 
 chipAssignee.onclick = () => { openPopover === "assignee" ? closePopover() : openAssigneePopover(); };
@@ -211,8 +260,10 @@ chipState.onclick = () => { openPopover === "state" ? closePopover() : openState
 
 function resetFields() {
   assigneeIds = [];
-  startPreset = "today";
-  duePreset = "today";
+  startChoice = "today";
+  startCustomDate = "";
+  dueChoice = "today";
+  dueCustomDate = "";
   priority = "none";
   stateGroup = "backlog";
   closePopover();
@@ -246,8 +297,8 @@ titleEl.addEventListener("keydown", async (e) => {
         selectedId,
         name,
         assigneeIds,
-        resolveDatePreset(startPreset),
-        resolveDatePreset(duePreset),
+        resolveDateChoice(startChoice, startCustomDate),
+        resolveDateChoice(dueChoice, dueCustomDate),
         priority,
         stateGroup,
       );
