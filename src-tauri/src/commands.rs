@@ -1,5 +1,5 @@
 use crate::config;
-use crate::plane_api::{filter_assigned_visible, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -124,6 +124,7 @@ pub async fn create_issue(
     target_date: Option<String>,
     priority: String,
     state_group: String,
+    description: Option<String>,
 ) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("empty_title".into());
@@ -138,6 +139,9 @@ pub async fn create_issue(
     let states = client.list_states(&project_id).await?;
     let state_id = resolve_state_id(&states, &state_group)
         .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
+    let description_html = description
+        .filter(|d| !d.is_empty())
+        .map(|d| plain_text_to_description_html(&d));
     let item = NewWorkItem {
         name: name.trim(),
         assignee_ids: &assignees,
@@ -145,6 +149,7 @@ pub async fn create_issue(
         target_date: target_date.as_deref(),
         priority: &priority,
         state_id: &state_id,
+        description_html: description_html.as_deref(),
     };
     client.create_work_item(&project_id, &item).await?;
     config::set_last_project(&app, &project_id)?;

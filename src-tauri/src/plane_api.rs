@@ -31,6 +31,7 @@ pub struct NewWorkItem<'a> {
     pub target_date: Option<&'a str>,
     pub priority: &'a str,
     pub state_id: &'a str,
+    pub description_html: Option<&'a str>,
 }
 
 pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
@@ -225,6 +226,7 @@ impl PlaneClient {
                 "target_date": item.target_date,
                 "priority": item.priority,
                 "state": item.state_id,
+                "description_html": item.description_html,
             }))
             .send()
             .await
@@ -390,7 +392,8 @@ mod tests {
                 "start_date": "2026-07-01",
                 "target_date": "2026-07-02",
                 "priority": "high",
-                "state": "state-1"
+                "state": "state-1",
+                "description_html": "<p>World</p>"
             })))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
             .mount(&server)
@@ -403,6 +406,38 @@ mod tests {
             target_date: Some("2026-07-02"),
             priority: "high",
             state_id: "state-1",
+            description_html: Some("<p>World</p>"),
+        };
+        client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_work_item_sends_null_description_when_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "name": "Hello",
+                "assignees": ["me"],
+                "start_date": null,
+                "target_date": null,
+                "priority": "none",
+                "state": "state-1",
+                "description_html": null
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        let item = NewWorkItem {
+            name: "Hello",
+            assignee_ids: &["me".to_string()],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "state-1",
+            description_html: None,
         };
         client_for(&server).await.create_work_item("p1", &item).await.unwrap();
     }
