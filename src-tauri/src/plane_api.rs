@@ -23,6 +23,15 @@ pub struct ProjectState { pub id: String, pub group: String }
 #[derive(Debug, Clone)]
 pub struct Member { pub id: String, pub display_name: String }
 
+pub struct NewWorkItem<'a> {
+    pub name: &'a str,
+    pub assignee_ids: &'a [String],
+    pub start_date: Option<&'a str>,
+    pub target_date: Option<&'a str>,
+    pub priority: &'a str,
+    pub state_id: &'a str,
+}
+
 pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
     states.iter().find(|s| s.group == group).map(|s| s.id.clone())
 }
@@ -154,8 +163,7 @@ impl PlaneClient {
     pub async fn create_work_item(
         &self,
         project_id: &str,
-        name: &str,
-        assignee_id: &str,
+        item: &NewWorkItem<'_>,
     ) -> Result<(), String> {
         // The create endpoint (no `expand` param) returns `assignees`/`state` as
         // flat id strings, not the nested objects `RawWorkItem` expects (that
@@ -165,7 +173,14 @@ impl PlaneClient {
         self.http
             .post(&url)
             .header("X-Api-Key", &self.api_key)
-            .json(&serde_json::json!({ "name": name, "assignees": [assignee_id] }))
+            .json(&serde_json::json!({
+                "name": item.name,
+                "assignees": item.assignee_ids,
+                "start_date": item.start_date,
+                "target_date": item.target_date,
+                "priority": item.priority,
+                "state": item.state_id,
+            }))
             .send()
             .await
             .map_err(|e| e.to_string())?
@@ -266,30 +281,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_work_item_assigns_creator() {
+    async fn create_work_item_sends_all_fields() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
             .and(header("X-Api-Key", "secret-key"))
-            .and(wiremock::matchers::body_json(
-                serde_json::json!({ "name": "Hello", "assignees": ["me"] }),
-            ))
-            // Real create-endpoint response: assignees/state are flat id
-            // strings (no `expand` param), unlike the list endpoint's nested
-            // objects. create_work_item doesn't parse this body at all, but
-            // the mock still models the real shape for documentation value.
-            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "id": "new-1", "name": "Hello", "priority": "none",
-                "target_date": serde_json::Value::Null, "assignees": ["me"], "state": "s1"
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "name": "Hello",
+                "assignees": ["me"],
+                "start_date": "2026-07-01",
+                "target_date": "2026-07-02",
+                "priority": "high",
+                "state": "state-1"
             })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
             .mount(&server)
             .await;
 
-        client_for(&server)
-            .await
-            .create_work_item("p1", "Hello", "me")
-            .await
-            .unwrap();
+        let item = NewWorkItem {
+            name: "Hello",
+            assignee_ids: &["me".to_string()],
+            start_date: Some("2026-07-01"),
+            target_date: Some("2026-07-02"),
+            priority: "high",
+            state_id: "state-1",
+        };
+        client_for(&server).await.create_work_item("p1", &item).await.unwrap();
     }
 
     #[tokio::test]
