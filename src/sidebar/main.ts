@@ -112,7 +112,7 @@ async function duplicateWorkItem(it: WorkItem) {
     // No assignee_ids on the frontend WorkItem type — an empty list makes
     // create_issue default to the current user, which is correct here since
     // the sidebar only ever lists items already assigned to the current user.
-    await createIssue(it.project_id, it.name, [], undefined, it.target_date ?? undefined, it.priority, it.state_group);
+    await createIssue(it.project_id, it.name, [], undefined, it.target_date ?? undefined, it.priority, it.state_group, "");
     await refresh();
   } catch (err) {
     synced.textContent = "복사본 생성 실패: " + err;
