@@ -34,7 +34,7 @@ let startCustomDate = ""; // ISO yyyy-mm-dd, used when startChoice === "custom"
 let dueChoice: DateChoice = "today";
 let dueCustomDate = "";
 let priority: Priority = "none";
-let stateGroup: StateGroup = "backlog";
+let stateGroup: StateGroup = "unstarted";
 
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
 let openPopover: PopoverKind = null;
@@ -286,7 +286,7 @@ function resetFields() {
   dueChoice = "today";
   dueCustomDate = "";
   priority = "none";
-  stateGroup = "backlog";
+  stateGroup = "unstarted";
   closePopover();
   renderChips();
 }
