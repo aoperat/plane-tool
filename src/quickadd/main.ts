@@ -39,12 +39,20 @@ let stateGroup: StateGroup = "backlog";
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
 let openPopover: PopoverKind = null;
 
-const BASE_HEIGHT = 175;
-const EXPANDED_HEIGHT = 330;
+const popupEl = document.querySelector(".popup") as HTMLElement;
 
-function resizeWindow(expanded: boolean) {
-  win.setSize(new LogicalSize(540, expanded ? EXPANDED_HEIGHT : BASE_HEIGHT)).catch((err) => {
-    console.error("resizeWindow failed:", err);
+// Measures actual rendered content instead of guessing pixel constants —
+// the popup's own box for the idle height, plus the open popover's real
+// bottom edge (which varies with its content and can't be hardcoded).
+function resizeToFit() {
+  let height = Math.ceil(popupEl.getBoundingClientRect().height);
+  if (openPopover && !fieldPopover.hidden) {
+    const popoverBottom = Math.ceil(fieldPopover.getBoundingClientRect().bottom);
+    height = Math.max(height, popoverBottom);
+  }
+  height += 4; // small buffer so a border/shadow pixel never gets clipped
+  win.setSize(new LogicalSize(540, height)).catch((err) => {
+    console.error("resizeToFit failed:", err);
   });
 }
 
@@ -122,7 +130,7 @@ function closePopover() {
   openPopover = null;
   fieldPopover.hidden = true;
   fieldPopover.innerHTML = "";
-  resizeWindow(false);
+  resizeToFit();
 }
 
 function toggleAssignee(id: string | null) {
@@ -167,7 +175,7 @@ async function openAssigneePopover() {
   renderAssigneePopoverItems();
   fieldPopover.hidden = false;
   openPopover = "assignee";
-  resizeWindow(true);
+  resizeToFit();
 }
 
 function openDatePopover(kind: "start" | "due") {
@@ -211,7 +219,7 @@ function openDatePopover(kind: "start" | "due") {
   fieldPopover.appendChild(dateInput);
   fieldPopover.hidden = false;
   openPopover = kind;
-  resizeWindow(true);
+  resizeToFit();
 }
 
 function openPriorityPopover() {
@@ -230,7 +238,7 @@ function openPriorityPopover() {
   }
   fieldPopover.hidden = false;
   openPopover = "priority";
-  resizeWindow(true);
+  resizeToFit();
 }
 
 function openStatePopover() {
@@ -249,7 +257,7 @@ function openStatePopover() {
   }
   fieldPopover.hidden = false;
   openPopover = "state";
-  resizeWindow(true);
+  resizeToFit();
 }
 
 chipAssignee.onclick = () => { openPopover === "assignee" ? closePopover() : openAssigneePopover(); };
@@ -319,4 +327,5 @@ win.listen("tauri://focus", () => {
   load();
 });
 renderChips();
+resizeToFit();
 load();
