@@ -24,6 +24,19 @@ pub struct ProjectState { pub id: String, pub group: String, pub project_id: Str
 #[derive(Debug, Clone)]
 pub struct Member { pub id: String, pub display_name: String }
 
+#[derive(Debug, Clone)]
+pub struct WorkItemDetail {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub assignee_ids: Vec<String>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+    pub priority: String,
+    pub state_group: String,
+    pub project_id: String,
+}
+
 pub struct NewWorkItem<'a> {
     pub name: &'a str,
     pub assignee_ids: &'a [String],
@@ -146,9 +159,11 @@ struct RawWorkItem {
     name: String,
     #[serde(default = "priority_none")] priority: String,
     #[serde(default)] target_date: Option<String>,
+    #[serde(default)] start_date: Option<String>,
     #[serde(default)] state: Option<RawState>,
     #[serde(default)] assignees: Vec<RawAssignee>,
     #[serde(default)] completed_at: Option<String>,
+    #[serde(default)] description_html: Option<String>,
 }
 
 fn priority_none() -> String { "none".into() }
@@ -224,6 +239,20 @@ impl PlaneClient {
         let page: Paginated<RawWorkItem> =
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
         Ok(page.results.into_iter().map(|w| map_work_item(w, project_id)).collect())
+    }
+
+    // A single item's detail response uses the same `expand=assignees,state`
+    // shape as the list endpoint (nested state/assignee objects), unlike the
+    // create endpoint's flat id strings — see the comment on create_work_item.
+    pub async fn get_work_item(&self, project_id: &str, item_id: &str) -> Result<WorkItemDetail, String> {
+        let url = format!(
+            "{}/projects/{}/work-items/{}/?expand=assignees,state",
+            self.ws_base(),
+            project_id,
+            item_id
+        );
+        let raw: RawWorkItem = self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(map_work_item_detail(raw, project_id))
     }
 
     pub async fn list_states(&self, project_id: &str) -> Result<Vec<ProjectState>, String> {
@@ -325,6 +354,20 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
     }
 }
 
+fn map_work_item_detail(w: RawWorkItem, project_id: &str) -> WorkItemDetail {
+    WorkItemDetail {
+        id: w.id,
+        name: w.name,
+        description: description_html_to_plain_text(w.description_html.as_deref()),
+        assignee_ids: w.assignees.into_iter().map(|a| a.id).collect(),
+        start_date: w.start_date,
+        target_date: w.target_date,
+        priority: w.priority,
+        state_group: w.state.map(|s| s.group).unwrap_or_default(),
+        project_id: project_id.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,6 +464,55 @@ mod tests {
         assert_eq!(items[0].assignee_ids, vec!["me".to_string()]);
         assert_eq!(items[0].project_id, "p1");
         assert_eq!(items[0].completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn get_work_item_parses_description_dates_and_assignees() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "i1", "name": "Fix bug", "priority": "high",
+                "start_date": "2026-07-01",
+                "target_date": "2026-07-05",
+                "state": { "group": "started" },
+                "assignees": [{ "id": "me" }],
+                "description_html": "<p>Steps to repro</p>"
+            })))
+            .mount(&server)
+            .await;
+
+        let detail = client_for(&server).await.get_work_item("p1", "i1").await.unwrap();
+        assert_eq!(detail.id, "i1");
+        assert_eq!(detail.name, "Fix bug");
+        assert_eq!(detail.description, "Steps to repro");
+        assert_eq!(detail.assignee_ids, vec!["me".to_string()]);
+        assert_eq!(detail.start_date.as_deref(), Some("2026-07-01"));
+        assert_eq!(detail.target_date.as_deref(), Some("2026-07-05"));
+        assert_eq!(detail.priority, "high");
+        assert_eq!(detail.state_group, "started");
+        assert_eq!(detail.project_id, "p1");
+    }
+
+    #[tokio::test]
+    async fn get_work_item_defaults_description_to_empty_when_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i2/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "i2", "name": "No description yet", "priority": "none",
+                "state": { "group": "backlog" },
+                "assignees": []
+            })))
+            .mount(&server)
+            .await;
+
+        let detail = client_for(&server).await.get_work_item("p1", "i2").await.unwrap();
+        assert_eq!(detail.description, "");
+        assert_eq!(detail.start_date, None);
+        assert!(detail.assignee_ids.is_empty());
     }
 
     #[tokio::test]
