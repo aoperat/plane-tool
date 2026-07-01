@@ -143,6 +143,16 @@ async function copyIssueLink(it: WorkItem) {
 
 const CONTEXT_MENU_WIDTH = 180;
 
+/** Attaches `pop` to `rowEl` and nudges it upward if it would overflow the bottom of the window. */
+function attachPopover(pop: HTMLElement, rowEl: HTMLElement, offsetY: number) {
+  rowEl.appendChild(pop);
+  const overflow = rowEl.getBoundingClientRect().top + offsetY + pop.offsetHeight - window.innerHeight;
+  if (overflow > 0) {
+    pop.style.top = Math.max(0, offsetY - overflow) + "px";
+  }
+  openPopover = pop;
+}
+
 function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
   closePopover();
   const pop = document.createElement("div");
@@ -173,8 +183,7 @@ function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offs
 
   addItem("삭제", () => openDeleteConfirm(rowEl, it, offsetX, offsetY));
 
-  rowEl.appendChild(pop);
-  openPopover = pop;
+  attachPopover(pop, rowEl, offsetY);
 }
 
 function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
@@ -186,8 +195,7 @@ function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, of
   pop.style.top = offsetY + "px";
 
   const msg = document.createElement("div");
-  msg.className = "pop-item";
-  msg.style.cursor = "default";
+  msg.className = "pop-msg";
   msg.textContent = "정말 삭제하시겠습니까?";
   pop.appendChild(msg);
 
@@ -214,8 +222,7 @@ function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, of
   };
   pop.appendChild(cancel);
 
-  rowEl.appendChild(pop);
-  openPopover = pop;
+  attachPopover(pop, rowEl, offsetY);
 }
 
 function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
