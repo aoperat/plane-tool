@@ -47,6 +47,25 @@ kbd {
 }
 .title-input::placeholder { color: var(--muted-2); }
 .title-input.error { color: var(--red); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; position: relative; }
+.chip {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+  font-size: 12.5px; color: var(--text); cursor: pointer; font-family: inherit;
+}
+.chip:hover { border-color: var(--accent); }
+.chip .muted { color: var(--muted-2); }
+.chip .avatar {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: 8px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.field-popover {
+  position: absolute; top: 100%; left: 18px; right: 18px; margin-top: 4px;
+  max-height: 200px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 6px; z-index: 50;
+}
 
 .popup-bottom {
   display: flex; align-items: center; justify-content: space-between;
