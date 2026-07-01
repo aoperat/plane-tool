@@ -1,4 +1,5 @@
 export interface Project { id: string; name: string; identifier: string; }
+export interface Member { id: string; display_name: string; }
 export interface WorkItem {
   id: string; name: string; priority: string;
   target_date: string | null; state_group: string; project_id: string;
