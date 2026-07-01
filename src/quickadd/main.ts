@@ -401,7 +401,14 @@ async function load() {
   renderDropdown();
 }
 
-projBtn.onclick = () => { dropdown.hidden = !dropdown.hidden; };
+projBtn.onclick = () => {
+  dropdown.hidden = !dropdown.hidden;
+  if (!dropdown.hidden) initKeyboardFocus(dropdown);
+};
+projBtn.addEventListener(
+  "keydown",
+  handleDropdownKeydown(dropdown, () => !dropdown.hidden, () => { dropdown.hidden = true; }),
+);
 
 titleEl.addEventListener("keydown", async (e) => {
   titleEl.classList.remove("error");
