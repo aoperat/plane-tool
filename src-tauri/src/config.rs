@@ -84,6 +84,21 @@ mod tests {
     }
 
     #[test]
+    fn keyring_backend_persists_across_entries() {
+        // A fresh Entry must be able to read what another Entry wrote — exactly
+        // how set_token writes and get_token (a separate Entry) reads. The
+        // no-backend keyring mock fails this; a real OS backend passes.
+        let svc = "plane-quick-dock-selftest";
+        let acct = "roundtrip";
+        let e1 = keyring::Entry::new(svc, acct).expect("entry");
+        e1.set_password("probe-value").expect("set_password should succeed");
+        let e2 = keyring::Entry::new(svc, acct).expect("entry");
+        let got = e2.get_password();
+        let _ = e2.delete_credential();
+        assert_eq!(got.ok().as_deref(), Some("probe-value"));
+    }
+
+    #[test]
     fn settings_default_has_empty_strings_and_no_project() {
         let s = Settings::default();
         assert_eq!(s.base_url, "");
