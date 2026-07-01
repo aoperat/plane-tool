@@ -264,3 +264,42 @@ kbd {
   font-family: inherit;
 }
 .settings button:hover { opacity: 0.85; }
+
+/* ============ SURFACE 4: EDIT MODAL ============ */
+.editmodal {
+  width: 480px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); color: var(--text); overflow: visible;
+}
+.em-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.em-title { font-size: 14px; font-weight: 600; }
+.em-browser-btn {
+  margin-left: auto; background: transparent; border: 1px solid var(--border); border-radius: 7px;
+  color: var(--muted); font-size: 12px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+}
+.em-browser-btn:hover { border-color: var(--accent); color: var(--text); }
+.em-close { background: transparent; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px; line-height: 1; }
+.em-close:hover { color: var(--text); }
+.em-loading { padding: 30px 18px; text-align: center; color: var(--muted); font-size: 13px; margin: 0; }
+.em-form .title-input { width: 100%; font-size: 16px; }
+.em-error { color: var(--red); font-size: 12px; margin: 0; padding: 0 18px 12px; }
+.em-foot {
+  position: relative; display: flex; align-items: center;
+  padding: 12px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.em-delete { background: transparent; border: none; color: var(--red); font-size: 12.5px; cursor: pointer; padding: 6px 4px; font-family: inherit; }
+.em-delete:hover { text-decoration: underline; }
+.em-delete-confirm { position: absolute; bottom: 100%; left: 18px; margin-bottom: 6px; width: 170px; }
+.em-foot-right { margin-left: auto; display: flex; gap: 8px; }
+.em-btn { padding: 7px 16px; border-radius: 8px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.em-btn-primary { background: var(--accent); color: #fff; border: none; }
+.em-btn-primary:hover { opacity: 0.85; }
+.em-btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+
+/* sidebar row hover "open in browser" icon */
+.row-browser-btn { margin-left: auto; opacity: 0; transition: opacity .1s; }
+.task:hover .row-browser-btn { opacity: 1; }
