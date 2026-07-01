@@ -2,7 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
-import { priorityIcon, priorityColor, stateIcon, stateColor } from "../shared/planeIcons";
+import { priorityIcon, priorityColor, stateIcon } from "../shared/planeIcons";
 import { countAssignedByProject, resolveStateId } from "./logic";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
 import "../shared/app.css";
@@ -80,7 +80,7 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
-  pop.style.top = "22px";
+  pop.style.top = "20px";
   pop.style.left = "0px";
   for (const p of PRIORITIES) {
     const opt = document.createElement("div");
