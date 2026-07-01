@@ -252,6 +252,7 @@ titleEl.addEventListener("keydown", async (e) => {
 
 win.listen("tauri://focus", () => {
   titleEl.focus();
+  titleEl.value = "";
   resetFields();
   load();
 });
