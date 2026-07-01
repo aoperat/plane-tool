@@ -18,7 +18,7 @@ pub struct WorkItem {
 pub struct CurrentUser { pub id: String, pub display_name: String }
 
 #[derive(Debug, Clone)]
-pub struct ProjectState { pub id: String, pub group: String }
+pub struct ProjectState { pub id: String, pub group: String, pub project_id: String, pub default: bool }
 
 #[derive(Debug, Clone)]
 pub struct Member { pub id: String, pub display_name: String }
@@ -72,7 +72,11 @@ fn priority_none() -> String { "none".into() }
 struct RawUser { id: String, #[serde(default)] display_name: String }
 
 #[derive(Deserialize)]
-struct RawProjectState { id: String, group: String }
+struct RawProjectState {
+    id: String,
+    group: String,
+    #[serde(default)] default: bool,
+}
 
 #[derive(Deserialize)]
 struct RawMember { id: String, #[serde(default)] display_name: String }
@@ -144,7 +148,7 @@ impl PlaneClient {
         Ok(page
             .results
             .into_iter()
-            .map(|s| ProjectState { id: s.id, group: s.group })
+            .map(|s| ProjectState { id: s.id, group: s.group, project_id: project_id.to_string(), default: s.default })
             .collect())
     }
 
@@ -329,32 +333,36 @@ mod tests {
     #[test]
     fn resolve_state_id_finds_id_for_group() {
         let states = vec![
-            ProjectState { id: "s-backlog".into(), group: "backlog".into() },
-            ProjectState { id: "s-todo".into(), group: "unstarted".into() },
+            ProjectState { id: "s-backlog".into(), group: "backlog".into(), project_id: "p1".into(), default: false },
+            ProjectState { id: "s-todo".into(), group: "unstarted".into(), project_id: "p1".into(), default: false },
         ];
         assert_eq!(resolve_state_id(&states, "backlog"), Some("s-backlog".to_string()));
         assert_eq!(resolve_state_id(&states, "cancelled"), None);
     }
 
     #[tokio::test]
-    async fn list_states_parses_group_and_id() {
+    async fn list_states_parses_group_id_and_default() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p1/states/"))
             .and(header("X-Api-Key", "secret-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "results": [
-                    { "id": "s1", "name": "Backlog", "group": "backlog" },
-                    { "id": "s2", "name": "Todo", "group": "unstarted" }
+                    { "id": "s1", "name": "Backlog", "group": "backlog", "default": false },
+                    { "id": "s2", "name": "In Progress", "group": "started", "default": true },
+                    { "id": "s3", "name": "In Review", "group": "started", "default": false }
                 ]
             })))
             .mount(&server)
             .await;
 
         let states = client_for(&server).await.list_states("p1").await.unwrap();
-        assert_eq!(states.len(), 2);
+        assert_eq!(states.len(), 3);
         assert_eq!(states[0].id, "s1");
         assert_eq!(states[0].group, "backlog");
+        assert_eq!(states[0].project_id, "p1");
+        assert!(!states[0].default);
+        assert!(states[1].default);
     }
 
     #[tokio::test]
