@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon } from "../shared/planeIcons";
-import { computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
 import { applyTheme } from "../shared/theme";
 import { resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
@@ -93,6 +93,19 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
   openPopover = pop;
 }
 
+async function openInBrowser(it: WorkItem) {
+  const url = buildIssueUrl(baseUrl, workspace, it.project_id, it.id);
+  try {
+    // Drop always-on-top so the browser window we're about to open can
+    // appear above the sidebar instead of behind it.
+    await win.setAlwaysOnTop(false);
+    await openUrl(url);
+  } catch (err) {
+    synced.textContent = "열기 실패: " + err;
+    console.error("openUrl failed:", url, err);
+  }
+}
+
 function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
   const el = document.createElement("div");
   el.className = "task" + (it.state_group === "completed" ? " completed" : "");
@@ -172,18 +185,7 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   body.appendChild(meta);
   el.appendChild(body);
 
-  el.onclick = async () => {
-    const url = `${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`;
-    try {
-      // Drop always-on-top so the browser window we're about to open can
-      // appear above the sidebar instead of behind it.
-      await win.setAlwaysOnTop(false);
-      await openUrl(url);
-    } catch (err) {
-      synced.textContent = "열기 실패: " + err;
-      console.error("openUrl failed:", url, err);
-    }
-  };
+  el.onclick = () => openInBrowser(it);
 
   return el;
 }
