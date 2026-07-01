@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>할 일 수정</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <div class="editmodal">
+      <div class="em-head">
+        <strong class="em-title">할 일 수정</strong>
+        <button type="button" class="em-browser-btn" id="emBrowserBtn">🌐 브라우저에서 열기</button>
+        <button type="button" class="em-close" id="emClose">✕</button>
+      </div>
+      <p class="em-loading" id="emLoading">불러오는 중…</p>
+      <div class="em-form" id="emForm" hidden>
+        <div class="popup-top">
+          <input id="emTitleInput" class="title-input" placeholder="제목" />
+        </div>
+        <textarea id="emDescription" class="description-input" placeholder="설명을 입력하세요…" rows="4"></textarea>
+        <div class="chip-row" id="emChipRow">
+          <button type="button" class="chip" id="emChipAssignee"></button>
+          <button type="button" class="chip" id="emChipStart"></button>
+          <button type="button" class="chip" id="emChipDue"></button>
+          <button type="button" class="chip" id="emChipState"></button>
+          <button type="button" class="chip" id="emChipPriority"></button>
+          <div id="emFieldPopover" class="field-popover" hidden></div>
+        </div>
+        <p class="em-error" id="emError" hidden></p>
+      </div>
+      <div class="em-foot">
+        <button type="button" class="em-delete" id="emDelete">삭제</button>
+        <div class="pop em-delete-confirm" id="emDeleteConfirm" hidden>
+          <div class="pop-msg">정말 삭제하시겠습니까?</div>
+          <div class="popover-divider"></div>
+          <div class="pop-item" id="emDeleteConfirmYes">삭제</div>
+          <div class="pop-item" id="emDeleteConfirmNo">취소</div>
+        </div>
+        <div class="em-foot-right">
+          <button type="button" class="em-btn em-btn-ghost" id="emCancel">취소</button>
+          <button type="button" class="em-btn em-btn-primary" id="emSave">저장</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
