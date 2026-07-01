@@ -38,3 +38,7 @@ export const listMembers = (project_id: string) =>
   invoke<Member[]>("list_members", { projectId: project_id });
 export const fetchSidebarData = () => invoke<SidebarData>("fetch_sidebar_data");
 export const listProjects = () => invoke<Project[]>("list_projects");
+export const updateWorkItemPriority = (project_id: string, item_id: string, priority: string) =>
+  invoke<void>("update_work_item_priority", { projectId: project_id, itemId: item_id, priority });
+export const updateWorkItemState = (project_id: string, item_id: string, state_id: string) =>
+  invoke<void>("update_work_item_state", { projectId: project_id, itemId: item_id, stateId: state_id });
