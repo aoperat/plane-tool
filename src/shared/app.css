@@ -16,6 +16,7 @@
   font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+body { margin: 0; }
 
 /* Transparent window body — used by QuickAdd and Sidebar windows */
 body.transparent-body {
@@ -80,6 +81,7 @@ kbd {
   background: var(--panel); border-left: 1px solid var(--border);
   box-shadow: -8px 0 40px rgba(0,0,0,0.45); z-index: 20;
   display: flex; flex-direction: column;
+  color: var(--text);
 }
 .sb-head {
   display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px;
@@ -93,7 +95,7 @@ kbd {
 .sb-section { padding: 14px 14px 6px; }
 .sb-section .h {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-2);
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
   margin-bottom: 8px;
 }
 .sb-section .h .count { color: var(--muted); }
