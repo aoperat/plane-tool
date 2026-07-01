@@ -45,3 +45,5 @@ export const updateWorkItemPriority = (project_id: string, item_id: string, prio
   invoke<void>("update_work_item_priority", { projectId: project_id, itemId: item_id, priority });
 export const updateWorkItemState = (project_id: string, item_id: string, state_id: string) =>
   invoke<void>("update_work_item_state", { projectId: project_id, itemId: item_id, stateId: state_id });
+export const deleteWorkItem = (project_id: string, item_id: string) =>
+  invoke<void>("delete_work_item", { projectId: project_id, itemId: item_id });

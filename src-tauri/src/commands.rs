@@ -202,6 +202,12 @@ pub async fn update_work_item_state(
 }
 
 #[tauri::command]
+pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<(), String> {
+    let (client, _s) = client(&app)?;
+    client.delete_work_item(&project_id, &item_id).await
+}
+
+#[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, String> {
     let (client, _s) = client(&app)?;
     let projects = client.list_projects().await?;
