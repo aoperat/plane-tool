@@ -1,9 +1,9 @@
 import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
-import { priorityIcon, priorityColor, stateIcon } from "../shared/planeIcons";
+import { priorityIcon, priorityColor, stateIcon, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
 import { applyTheme } from "../shared/theme";
 import { resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
@@ -123,7 +123,6 @@ async function duplicateWorkItem(it: WorkItem) {
 async function deleteWorkItemAction(it: WorkItem) {
   try {
     await deleteWorkItem(it.project_id, it.id);
-    await refresh();
   } catch (err) {
     synced.textContent = "삭제 실패: " + err;
     console.error("deleteWorkItem failed:", err);
@@ -309,7 +308,17 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   body.appendChild(meta);
   el.appendChild(body);
 
-  el.onclick = () => openInBrowser(it);
+  const browserBtn = document.createElement("span");
+  browserBtn.className = "icon-btn row-browser-btn";
+  browserBtn.title = "브라우저에서 열기";
+  browserBtn.innerHTML = EXTERNAL_LINK_ICON;
+  browserBtn.onclick = (e) => {
+    e.stopPropagation();
+    openInBrowser(it);
+  };
+  el.appendChild(browserBtn);
+
+  el.onclick = () => openEditModal(it.project_id, it.id);
   el.oncontextmenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -458,6 +467,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 win.listen("tauri://focus", refresh);
+win.listen("refresh-sidebar", refresh);
 win.listen("tauri://blur", () => {
   if (!pinned) slideOut();
 });
