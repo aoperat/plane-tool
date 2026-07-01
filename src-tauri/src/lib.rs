@@ -100,7 +100,8 @@ pub fn run() {
             commands::save_settings,
             commands::create_issue,
             commands::fetch_sidebar_data,
-            commands::list_projects
+            commands::list_projects,
+            commands::list_members
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

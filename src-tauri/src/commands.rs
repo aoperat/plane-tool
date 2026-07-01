@@ -1,5 +1,5 @@
 use crate::config;
-use crate::plane_api::{filter_assigned_open, PlaneClient, Project, WorkItem};
+use crate::plane_api::{filter_assigned_open, resolve_state_id, NewWorkItem, PlaneClient, Project, WorkItem};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -14,6 +14,9 @@ pub struct SettingsDto {
 
 #[derive(Serialize)]
 pub struct ProjectDto { pub id: String, pub name: String, pub identifier: String }
+
+#[derive(Serialize)]
+pub struct MemberDto { pub id: String, pub display_name: String }
 
 #[derive(Serialize)]
 pub struct WorkItemDto {
@@ -92,13 +95,38 @@ pub fn save_settings(
 }
 
 #[tauri::command]
-pub async fn create_issue(app: tauri::AppHandle, project_id: String, name: String) -> Result<(), String> {
+pub async fn create_issue(
+    app: tauri::AppHandle,
+    project_id: String,
+    name: String,
+    assignee_ids: Vec<String>,
+    start_date: Option<String>,
+    target_date: Option<String>,
+    priority: String,
+    state_group: String,
+) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("empty_title".into());
     }
     let (client, _s) = client(&app)?;
-    let user = client.current_user().await?;
-    client.create_work_item(&project_id, name.trim(), &user.id).await?;
+    let assignees = if assignee_ids.is_empty() {
+        let user = client.current_user().await?;
+        vec![user.id]
+    } else {
+        assignee_ids
+    };
+    let states = client.list_states(&project_id).await?;
+    let state_id = resolve_state_id(&states, &state_group)
+        .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
+    let item = NewWorkItem {
+        name: name.trim(),
+        assignee_ids: &assignees,
+        start_date: start_date.as_deref(),
+        target_date: target_date.as_deref(),
+        priority: &priority,
+        state_id: &state_id,
+    };
+    client.create_work_item(&project_id, &item).await?;
     config::set_last_project(&app, &project_id)?;
     Ok(())
 }
@@ -125,6 +153,16 @@ pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, Str
     Ok(projects
         .into_iter()
         .map(|p| ProjectDto { id: p.id, name: p.name, identifier: p.identifier })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn list_members(app: tauri::AppHandle, project_id: String) -> Result<Vec<MemberDto>, String> {
+    let (client, _s) = client(&app)?;
+    let members = client.list_members(&project_id).await?;
+    Ok(members
+        .into_iter()
+        .map(|m| MemberDto { id: m.id, display_name: m.display_name })
         .collect())
 }
 
