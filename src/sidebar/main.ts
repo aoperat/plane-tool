@@ -1,9 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { fetchSidebarData, getSettings } from "../shared/ipc";
+import { fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
-import { countAssignedByProject } from "./logic";
-import type { SidebarData, Project, WorkItem } from "../shared/types";
+import { priorityIcon, priorityColor, stateIcon, stateColor } from "../shared/planeIcons";
+import { countAssignedByProject, resolveStateId } from "./logic";
+import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
 import "../shared/app.css";
 
 const win = getCurrentWindow();
@@ -14,15 +15,23 @@ const taskCount = document.getElementById("taskCount")!;
 const synced = document.getElementById("synced")!;
 let baseUrl = "";
 let workspace = "";
+let states: ProjectState[] = [];
+let openPopover: HTMLElement | null = null;
 
-function dotClass(group: string): string {
-  if (group === "completed") return "state-done";
-  if (group === "started") return "state-prog";
-  return "state-todo";
-}
+const STATE_GROUPS = ["backlog", "unstarted", "started", "completed", "cancelled"] as const;
+const STATE_LABELS: Record<string, string> = {
+  backlog: "백로그", unstarted: "시작 전", started: "진행 중", completed: "완료", cancelled: "취소",
+};
+const PRIORITIES = ["urgent", "high", "medium", "low", "none"] as const;
+const PRIORITY_LABELS: Record<string, string> = {
+  urgent: "긴급", high: "높음", medium: "보통", low: "낮음", none: "없음",
+};
 
-function prioLabel(p: string): string {
-  return p === "urgent" || p === "high" ? "높음" : p === "medium" ? "보통" : "";
+function closePopover() {
+  if (openPopover) {
+    openPopover.remove();
+    openPopover = null;
+  }
 }
 
 function renderProjects(projects: Project[], counts: Record<string, number>) {
@@ -45,6 +54,51 @@ function renderProjects(projects: Project[], counts: Record<string, number>) {
   }
 }
 
+function openStatePopover(anchor: HTMLElement, item: WorkItem, onPicked: (group: string) => void) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.top = "26px";
+  pop.style.left = "0px";
+  for (const group of STATE_GROUPS) {
+    const opt = document.createElement("div");
+    opt.className = "pop-item" + (group === item.state_group ? " sel" : "");
+    opt.innerHTML = stateIcon(group);
+    opt.appendChild(document.createTextNode(STATE_LABELS[group]));
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      onPicked(group);
+    };
+    pop.appendChild(opt);
+  }
+  anchor.appendChild(pop);
+  openPopover = pop;
+}
+
+function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (priority: string) => void) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.top = "22px";
+  pop.style.left = "0px";
+  for (const p of PRIORITIES) {
+    const opt = document.createElement("div");
+    opt.className = "pop-item" + (p === item.priority ? " sel" : "");
+    opt.style.color = priorityColor(p as any);
+    opt.innerHTML = priorityIcon(p as any);
+    opt.appendChild(document.createTextNode(PRIORITY_LABELS[p]));
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      onPicked(p);
+    };
+    pop.appendChild(opt);
+  }
+  anchor.appendChild(pop);
+  openPopover = pop;
+}
+
 function renderTasks(items: WorkItem[]) {
   taskCount.textContent = String(items.length);
   tasksEl.innerHTML = "";
@@ -52,32 +106,65 @@ function renderTasks(items: WorkItem[]) {
     const el = document.createElement("div");
     el.className = "task";
 
-    // state dot — static structure, no API data
-    const stateDot = document.createElement("span");
-    stateDot.className = "state-dot " + dotClass(it.state_group);
-    el.appendChild(stateDot);
+    const stateBtn = document.createElement("span");
+    stateBtn.className = "icon-btn";
+    stateBtn.title = "상태: " + STATE_LABELS[it.state_group];
+    stateBtn.innerHTML = stateIcon(it.state_group as any);
+    stateBtn.onclick = (e) => {
+      e.stopPropagation();
+      openStatePopover(stateBtn, it, (group) => {
+        const stateId = resolveStateId(states, it.project_id, group);
+        if (!stateId) {
+          synced.textContent = "상태 변경 실패: 해당 그룹의 상태를 찾을 수 없음";
+          return;
+        }
+        const prev = it.state_group;
+        it.state_group = group;
+        renderTasks(items);
+        updateWorkItemState(it.project_id, it.id, stateId).catch((err) => {
+          it.state_group = prev;
+          renderTasks(items);
+          synced.textContent = "상태 변경 실패: " + err;
+          console.error("updateWorkItemState failed:", err);
+        });
+      });
+    };
+    el.appendChild(stateBtn);
 
-    // body container
     const body = document.createElement("div");
     body.className = "body";
 
-    // task name — textContent only
     const nameEl = document.createElement("div");
     nameEl.className = "name";
     nameEl.textContent = it.name;
     body.appendChild(nameEl);
 
-    // meta row
     const meta = document.createElement("div");
     meta.className = "meta";
 
-    const prio = prioLabel(it.priority);
-    if (prio) {
-      const prioEl = document.createElement("span");
-      prioEl.className = "prio";
-      prioEl.textContent = prio;
-      meta.appendChild(prioEl);
+    const prioEl = document.createElement("span");
+    prioEl.className = "prio";
+    prioEl.style.color = priorityColor(it.priority as any);
+    prioEl.innerHTML = priorityIcon(it.priority as any);
+    const prioLabel = PRIORITY_LABELS[it.priority];
+    if (it.priority !== "none" && prioLabel) {
+      prioEl.appendChild(document.createTextNode(prioLabel));
     }
+    prioEl.onclick = (e) => {
+      e.stopPropagation();
+      openPriorityPopover(prioEl, it, (priority) => {
+        const prev = it.priority;
+        it.priority = priority;
+        renderTasks(items);
+        updateWorkItemPriority(it.project_id, it.id, priority).catch((err) => {
+          it.priority = prev;
+          renderTasks(items);
+          synced.textContent = "우선순위 변경 실패: " + err;
+          console.error("updateWorkItemPriority failed:", err);
+        });
+      });
+    };
+    meta.appendChild(prioEl);
 
     if (it.target_date) {
       const dueEl = document.createElement("span");
@@ -89,7 +176,6 @@ function renderTasks(items: WorkItem[]) {
     body.appendChild(meta);
     el.appendChild(body);
 
-    // open issue in browser — /issues/ web route
     el.onclick = async () => {
       const url = `${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`;
       try {
@@ -111,6 +197,7 @@ async function refresh() {
     baseUrl = s.base_url;
     workspace = s.workspace;
     const data: SidebarData = await fetchSidebarData();
+    states = data.states;
     renderProjects(data.projects, countAssignedByProject(data.assigned));
     renderTasks(data.assigned);
     synced.textContent = "동기화 완료";
@@ -123,8 +210,15 @@ async function refresh() {
 }
 
 document.getElementById("refresh")!.onclick = refresh;
+document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") win.hide();
+  if (e.key === "Escape") {
+    if (openPopover) {
+      closePopover();
+    } else {
+      win.hide();
+    }
+  }
 });
 win.listen("tauri://focus", refresh);
 refresh();
