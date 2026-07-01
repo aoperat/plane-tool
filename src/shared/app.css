@@ -16,6 +16,7 @@
   font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+html, body { height: 100%; }
 body { margin: 0; }
 
 /* Transparent window body — used by QuickAdd and Sidebar windows */
@@ -37,7 +38,7 @@ kbd {
   position: fixed; top: 230px; left: 50%; transform: translateX(-50%);
   width: 540px; background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); z-index: 30; overflow: hidden;
+  box-shadow: var(--shadow); z-index: 30; overflow: visible;
 }
 .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
 .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); }
@@ -70,6 +71,7 @@ kbd {
 .popup-bottom {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 .proj-select {
   display: flex; align-items: center; gap: 8px; padding: 6px 11px;
