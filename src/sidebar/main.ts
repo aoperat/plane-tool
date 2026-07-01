@@ -1,7 +1,7 @@
 import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
@@ -120,6 +120,16 @@ async function duplicateWorkItem(it: WorkItem) {
   }
 }
 
+async function deleteWorkItemAction(it: WorkItem) {
+  try {
+    await deleteWorkItem(it.project_id, it.id);
+    await refresh();
+  } catch (err) {
+    synced.textContent = "삭제 실패: " + err;
+    console.error("deleteWorkItem failed:", err);
+  }
+}
+
 async function copyIssueLink(it: WorkItem) {
   const url = buildIssueUrl(baseUrl, workspace, it.project_id, it.id);
   try {
@@ -156,6 +166,53 @@ function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offs
   addItem("복사본 만들기", () => duplicateWorkItem(it));
   addItem("새 탭에서 열기", () => openInBrowser(it));
   addItem("링크 복사", () => copyIssueLink(it));
+
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  pop.appendChild(divider);
+
+  addItem("삭제", () => openDeleteConfirm(rowEl, it, offsetX, offsetY));
+
+  rowEl.appendChild(pop);
+  openPopover = pop;
+}
+
+function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.width = CONTEXT_MENU_WIDTH + "px";
+  pop.style.left = Math.min(offsetX, rowEl.clientWidth - CONTEXT_MENU_WIDTH) + "px";
+  pop.style.top = offsetY + "px";
+
+  const msg = document.createElement("div");
+  msg.className = "pop-item";
+  msg.style.cursor = "default";
+  msg.textContent = "정말 삭제하시겠습니까?";
+  pop.appendChild(msg);
+
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  pop.appendChild(divider);
+
+  const del = document.createElement("div");
+  del.className = "pop-item";
+  del.textContent = "삭제";
+  del.onclick = (e) => {
+    e.stopPropagation();
+    closePopover();
+    deleteWorkItemAction(it);
+  };
+  pop.appendChild(del);
+
+  const cancel = document.createElement("div");
+  cancel.className = "pop-item";
+  cancel.textContent = "취소";
+  cancel.onclick = (e) => {
+    e.stopPropagation();
+    closePopover();
+  };
+  pop.appendChild(cancel);
 
   rowEl.appendChild(pop);
   openPopover = pop;
