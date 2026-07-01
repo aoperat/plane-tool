@@ -179,6 +179,9 @@ function renderTasks(items: WorkItem[]) {
     el.onclick = async () => {
       const url = `${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`;
       try {
+        // Drop always-on-top so the browser window we're about to open can
+        // appear above the sidebar instead of behind it.
+        await win.setAlwaysOnTop(false);
         await openUrl(url);
       } catch (err) {
         synced.textContent = "열기 실패: " + err;

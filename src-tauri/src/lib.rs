@@ -24,6 +24,9 @@ fn toggle_window(app: &tauri::AppHandle, label: &str) {
         } else {
             if label == "sidebar" {
                 position_sidebar(&win);
+                // Re-assert always-on-top: a task click may have dropped it
+                // (see sidebar/main.ts) so a browser window could appear above it.
+                let _ = win.set_always_on_top(true);
             }
             let _ = win.show();
             let _ = win.set_focus();
