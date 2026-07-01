@@ -37,6 +37,21 @@ pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> 
     states.iter().find(|s| s.group == group).map(|s| s.id.clone())
 }
 
+/// Converts plain text (as typed into QuickAdd's description textarea) into the
+/// minimal HTML Plane's `description_html` field expects: HTML-escape special
+/// characters, then wrap each line in its own `<p>` paragraph. No rich text
+/// (bold/lists/links) is supported — this is intentionally the only formatting.
+pub fn plain_text_to_description_html(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("<p>{}</p>", escape_html(line)))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// Keeps items assigned to `user_id` that are still open, plus completed items
 /// whose (UTC) completion date falls within `[completed_after, completed_before]`
 /// (inclusive ISO `YYYY-MM-DD` bounds) — so today's wins still show up briefly
@@ -448,6 +463,27 @@ mod tests {
         ];
         assert_eq!(resolve_state_id(&states, "backlog"), Some("s-backlog".to_string()));
         assert_eq!(resolve_state_id(&states, "cancelled"), None);
+    }
+
+    #[test]
+    fn plain_text_to_html_escapes_special_characters() {
+        assert_eq!(
+            plain_text_to_description_html("A & B <tag>"),
+            "<p>A &amp; B &lt;tag&gt;</p>"
+        );
+    }
+
+    #[test]
+    fn plain_text_to_html_splits_multiline_input_into_paragraphs() {
+        assert_eq!(
+            plain_text_to_description_html("Line one\nLine two"),
+            "<p>Line one</p><p>Line two</p>"
+        );
+    }
+
+    #[test]
+    fn plain_text_to_html_returns_empty_string_for_empty_input() {
+        assert_eq!(plain_text_to_description_html(""), "");
     }
 
     #[tokio::test]
