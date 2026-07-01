@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getSettings, saveSettings } from "../shared/ipc";
+import { applyTheme } from "../shared/theme";
 import "../shared/app.css";
 
 const baseUrl = document.getElementById("baseUrl") as HTMLInputElement;
@@ -7,6 +8,7 @@ const workspace = document.getElementById("workspace") as HTMLInputElement;
 const token = document.getElementById("token") as HTMLInputElement;
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
+const theme = document.getElementById("theme") as HTMLSelectElement;
 const status = document.getElementById("status")!;
 
 async function load() {
@@ -16,7 +18,11 @@ async function load() {
   token.placeholder = s.has_token ? "(저장됨 — 변경 시에만 입력)" : "API 토큰 입력";
   qaShortcut.value = s.quickadd_shortcut;
   sbShortcut.value = s.sidebar_shortcut;
+  theme.value = s.theme;
+  applyTheme(s.theme);
 }
+
+theme.onchange = () => applyTheme(theme.value);
 
 document.getElementById("save")!.onclick = async () => {
   status.textContent = "저장 중…";
@@ -27,6 +33,7 @@ document.getElementById("save")!.onclick = async () => {
       token.value || undefined,
       qaShortcut.value.trim() || undefined,
       sbShortcut.value.trim() || undefined,
+      theme.value,
     );
     token.value = "";
     status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";

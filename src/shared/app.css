@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0d0e12;
   --panel: #16181d;
   --panel-2: #1c1f26;
@@ -14,6 +15,23 @@
   --radius: 12px;
   --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
   font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+}
+/* Light mode overrides — applied via shared/theme.ts setting <html data-theme="light"> */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --panel-2: #eef0f3;
+  --border: #dfe2e7;
+  --text: #1c1f26;
+  --muted: #6b7280;
+  --muted-2: #9aa1ac;
+  --accent: #3f68e0;
+  --accent-soft: rgba(63,104,224,0.12);
+  --green: #1f9d55;
+  --amber: #b06a00;
+  --red: #d6414d;
+  --shadow: 0 12px 40px rgba(15,23,42,0.12), 0 2px 8px rgba(15,23,42,0.08);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -71,7 +89,6 @@ kbd {
 .popover-date-input {
   width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
   color: var(--text); font-size: 13px; padding: 6px 8px; font-family: inherit; outline: none;
-  color-scheme: dark;
 }
 .popover-date-input:focus { border-color: var(--accent); }
 
@@ -119,6 +136,9 @@ kbd {
 .sb-head .t { font-weight: 600; font-size: 14px; }
 .sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); }
 .refresh { color: var(--muted); cursor: pointer; font-size: 14px; }
+.pin { color: var(--muted); cursor: pointer; font-size: 13px; padding: 3px 5px; border-radius: 6px; line-height: 1; }
+.pin:hover { background: var(--panel-2); }
+.pin.active { color: var(--accent); background: var(--accent-soft); }
 
 .sb-section { padding: 14px 14px 6px; }
 .sb-section .h {
@@ -128,16 +148,25 @@ kbd {
 }
 .sb-section .h .count { color: var(--muted); }
 
-.proj-row { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 8px; cursor: pointer; font-size: 13.5px; }
-.proj-row:hover { background: var(--panel-2); }
-.proj-row .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.proj-row .pcount { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 1px 7px; border-radius: 20px; }
-.proj-row .pcount.zero { color: var(--muted-2); background: transparent; font-weight: 500; }
+.grp {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px 7px 4px;
+  cursor: pointer; user-select: none;
+  position: sticky; top: 0; background: var(--panel); z-index: 1;
+}
+.grp.with-divider { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.grp .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.grp .name { font-size: 12px; font-weight: 700; color: var(--text); }
+.grp .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.grp .chev { color: var(--muted); font-size: 10px; transition: transform .15s; flex: none; width: 10px; text-align: center; }
+.grp.collapsed .chev { transform: rotate(-90deg); }
 
-.divider { height: 1px; background: var(--border); margin: 8px 0; }
+.grp-body { display: flex; flex-direction: column; }
+.grp-body.collapsed { display: none; }
 
-.task { display: flex; gap: 10px; padding: 9px 9px; border-radius: 8px; cursor: pointer; position: relative; }
+.task { display: flex; gap: 10px; padding: 9px 9px 9px 20px; border-radius: 8px; cursor: pointer; position: relative; }
 .task:hover { background: var(--panel-2); }
+.task.completed { opacity: 0.45; }
+.task.completed:hover { opacity: 0.75; }
 .icon-btn { display: flex; margin-top: 2px; flex: none; cursor: pointer; border-radius: 4px; }
 .icon-btn:hover { outline: 1px dashed var(--accent); outline-offset: 2px; }
 .task .body { min-width: 0; flex: 1; }
@@ -193,6 +222,18 @@ kbd {
 }
 .settings input:focus { border-color: var(--accent); }
 .settings input::placeholder { color: var(--muted-2); }
+.settings select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  padding: 8px 12px;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+.settings select:focus { border-color: var(--accent); }
 .settings .status {
   font-size: 12.5px;
   color: var(--muted);

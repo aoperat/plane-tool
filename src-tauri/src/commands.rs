@@ -1,5 +1,5 @@
 use crate::config;
-use crate::plane_api::{filter_assigned_open, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{filter_assigned_visible, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -10,6 +10,7 @@ pub struct SettingsDto {
     pub has_token: bool,
     pub quickadd_shortcut: String,
     pub sidebar_shortcut: String,
+    pub theme: String,
 }
 
 #[derive(Serialize)]
@@ -26,6 +27,7 @@ pub struct WorkItemDto {
     pub target_date: Option<String>,
     pub state_group: String,
     pub project_id: String,
+    pub completed_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -43,12 +45,14 @@ pub fn assemble_sidebar(
     projects: Vec<Project>,
     items: Vec<WorkItem>,
     states: Vec<ProjectState>,
+    completed_after: &str,
+    completed_before: &str,
 ) -> SidebarData {
-    let assigned = filter_assigned_open(items, user_id)
+    let assigned = filter_assigned_visible(items, user_id, completed_after, completed_before)
         .into_iter()
         .map(|w| WorkItemDto {
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
-            state_group: w.state_group, project_id: w.project_id,
+            state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
         })
         .collect();
     let projects = projects
@@ -81,6 +85,7 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         has_token: config::get_token().is_some(),
         quickadd_shortcut: s.quickadd_shortcut,
         sidebar_shortcut: s.sidebar_shortcut,
+        theme: s.theme,
     }
 }
 
@@ -92,12 +97,14 @@ pub fn save_settings(
     token: Option<String>,
     quickadd_shortcut: Option<String>,
     sidebar_shortcut: Option<String>,
+    theme: Option<String>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
     s.workspace = workspace.trim().trim_matches('/').to_string();
     if let Some(v) = quickadd_shortcut { if !v.is_empty() { s.quickadd_shortcut = v; } }
     if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
+    if let Some(v) = theme { if v == "auto" || v == "light" || v == "dark" { s.theme = v; } }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {
@@ -145,7 +152,11 @@ pub async fn create_issue(
 }
 
 #[tauri::command]
-pub async fn fetch_sidebar_data(app: tauri::AppHandle) -> Result<SidebarData, String> {
+pub async fn fetch_sidebar_data(
+    app: tauri::AppHandle,
+    completed_after: String,
+    completed_before: String,
+) -> Result<SidebarData, String> {
     let (client, _s) = client(&app)?;
     let user = client.current_user().await?;
     let projects = client.list_projects().await?;
@@ -161,7 +172,7 @@ pub async fn fetch_sidebar_data(app: tauri::AppHandle) -> Result<SidebarData, St
             Err(_) => continue, // skip a project that fails; keep the rest
         }
     }
-    Ok(assemble_sidebar(&user.id, projects, all_items, all_states))
+    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, &completed_after, &completed_before))
 }
 
 #[tauri::command]
@@ -216,10 +227,15 @@ mod tests {
     use crate::plane_api::{Project, ProjectState, WorkItem};
 
     fn wi(id: &str, group: &str, assignees: &[&str], project: &str) -> WorkItem {
+        wi_completed(id, group, assignees, project, None)
+    }
+
+    fn wi_completed(id: &str, group: &str, assignees: &[&str], project: &str, completed_at: Option<&str>) -> WorkItem {
         WorkItem {
             id: id.into(), name: format!("n{id}"), priority: "none".into(),
             target_date: None, state_group: group.into(), project_id: project.into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
+            completed_at: completed_at.map(|s| s.to_string()),
         }
     }
 
@@ -231,14 +247,14 @@ mod tests {
         ];
         let items = vec![
             wi("a", "started", &["me"], "p1"),
-            wi("b", "completed", &["me"], "p1"),
+            wi("b", "completed", &["me"], "p1"), // no completed_at: dropped
             wi("c", "backlog", &["me"], "p2"),
             wi("d", "started", &["other"], "p2"),
         ];
         let states = vec![
             ProjectState { id: "s1".into(), group: "started".into(), project_id: "p1".into(), default: true },
         ];
-        let data = assemble_sidebar("me", projects, items, states);
+        let data = assemble_sidebar("me", projects, items, states, "2026-06-30", "2026-07-02");
         assert_eq!(data.projects.len(), 2);
         let ids: Vec<_> = data.assigned.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["a", "c"]);
@@ -246,5 +262,20 @@ mod tests {
         assert_eq!(data.states[0].id, "s1");
         assert_eq!(data.states[0].project_id, "p1");
         assert!(data.states[0].default);
+    }
+
+    #[test]
+    fn assemble_includes_items_completed_within_the_window() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let items = vec![
+            wi("a", "started", &["me"], "p1"),
+            wi_completed("b", "completed", &["me"], "p1", Some("2026-07-01T09:00:00Z")), // in window
+            wi_completed("c", "completed", &["me"], "p1", Some("2026-06-29T09:00:00Z")), // outside window
+        ];
+        let data = assemble_sidebar("me", projects, items, vec![], "2026-06-30", "2026-07-02");
+        let ids: Vec<_> = data.assigned.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b"]);
+        let completed = data.assigned.iter().find(|i| i.id == "b").unwrap();
+        assert_eq!(completed.completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
     }
 }

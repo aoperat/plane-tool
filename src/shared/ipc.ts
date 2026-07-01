@@ -8,6 +8,7 @@ export const saveSettings = (
   token?: string,
   quickaddShortcut?: string,
   sidebarShortcut?: string,
+  theme?: string,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -15,6 +16,7 @@ export const saveSettings = (
     token,
     quickaddShortcut,
     sidebarShortcut,
+    theme,
   });
 export const createIssue = (
   project_id: string,
@@ -36,7 +38,8 @@ export const createIssue = (
   });
 export const listMembers = (project_id: string) =>
   invoke<Member[]>("list_members", { projectId: project_id });
-export const fetchSidebarData = () => invoke<SidebarData>("fetch_sidebar_data");
+export const fetchSidebarData = (completedAfter: string, completedBefore: string) =>
+  invoke<SidebarData>("fetch_sidebar_data", { completedAfter, completedBefore });
 export const listProjects = () => invoke<Project[]>("list_projects");
 export const updateWorkItemPriority = (project_id: string, item_id: string, priority: string) =>
   invoke<void>("update_work_item_priority", { projectId: project_id, itemId: item_id, priority });

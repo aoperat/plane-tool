@@ -5,7 +5,7 @@ pub mod plane_api;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, Shortcut, ShortcutState};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -22,26 +22,9 @@ fn toggle_window(app: &tauri::AppHandle, label: &str) {
         if win.is_visible().unwrap_or(false) {
             let _ = win.hide();
         } else {
-            if label == "sidebar" {
-                position_sidebar(&win);
-                // Re-assert always-on-top: a task click may have dropped it
-                // (see sidebar/main.ts) so a browser window could appear above it.
-                let _ = win.set_always_on_top(true);
-            }
             let _ = win.show();
             let _ = win.set_focus();
         }
-    }
-}
-
-fn position_sidebar(win: &tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = win.primary_monitor() {
-        let screen = monitor.size();
-        let scale = monitor.scale_factor();
-        let w = (320.0 * scale) as i32;
-        let x = screen.width as i32 - w;
-        let _ = win.set_position(tauri::PhysicalPosition { x, y: 0 });
-        let _ = win.set_size(tauri::PhysicalSize { width: w as u32, height: screen.height });
     }
 }
 
@@ -76,7 +59,10 @@ pub fn run() {
                         if qa_sc.as_ref() == Some(shortcut) {
                             toggle_window(app, "quickadd");
                         } else if sb_sc.as_ref() == Some(shortcut) {
-                            toggle_window(app, "sidebar");
+                            // The sidebar animates its own show/hide (slide in/out
+                            // from the screen edge), so just ask it to toggle
+                            // itself instead of driving show()/hide() here.
+                            let _ = app.emit_to("sidebar", "toggle-sidebar", ());
                         }
                     })
                     .build(),
@@ -92,9 +78,10 @@ pub fn run() {
             if cfg.base_url.is_empty() {
                 show_window(app.handle(), "settings");
             }
-            // Note: no focus-loss auto-hide — the QuickAdd popup and the Sidebar
-            // are allowed to stay open at the same time. Each is dismissed with
-            // Esc (handled in the page) or by toggling its shortcut again.
+            // Note: no focus-loss auto-hide here — QuickAdd stays open until
+            // dismissed with Esc or its shortcut. The Sidebar auto-hides on
+            // focus loss instead (see sidebar/main.ts's tauri://blur listener),
+            // unless the user has pinned it via the pin button.
 
             Ok(())
         })

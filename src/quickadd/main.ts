@@ -7,6 +7,7 @@ import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
+import { applyTheme } from "../shared/theme";
 import "../shared/app.css";
 
 const win = getCurrentWindow();
@@ -293,6 +294,7 @@ function resetFields() {
 
 async function load() {
   const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
+  applyTheme(settings.theme);
   projects = fetched;
   selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
   renderSelected();

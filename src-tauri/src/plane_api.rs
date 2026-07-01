@@ -12,6 +12,7 @@ pub struct WorkItem {
     pub state_group: String,
     pub project_id: String,
     pub assignee_ids: Vec<String>,
+    pub completed_at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,12 +37,36 @@ pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> 
     states.iter().find(|s| s.group == group).map(|s| s.id.clone())
 }
 
-pub fn filter_assigned_open(items: Vec<WorkItem>, user_id: &str) -> Vec<WorkItem> {
+/// Keeps items assigned to `user_id` that are still open, plus completed items
+/// whose (UTC) completion date falls within `[completed_after, completed_before]`
+/// (inclusive ISO `YYYY-MM-DD` bounds) — so today's wins still show up briefly
+/// instead of vanishing the instant they're marked done. Cancelled items and
+/// items completed outside the window are dropped.
+///
+/// This is a coarse, timezone-naive prefilter meant to bound how much history
+/// crosses the IPC boundary — callers should pass a window a day wider than
+/// "today" on each side (e.g. yesterday..tomorrow) and do the precise "is this
+/// actually today in the user's local timezone" check client-side, where
+/// `Date` can convert the UTC timestamp to local time correctly.
+pub fn filter_assigned_visible(
+    items: Vec<WorkItem>,
+    user_id: &str,
+    completed_after: &str,
+    completed_before: &str,
+) -> Vec<WorkItem> {
     items
         .into_iter()
         .filter(|i| i.assignee_ids.iter().any(|a| a == user_id))
-        .filter(|i| i.state_group != "completed" && i.state_group != "cancelled")
+        .filter(|i| i.state_group != "cancelled")
+        .filter(|i| i.state_group != "completed" || completed_within(i, completed_after, completed_before))
         .collect()
+}
+
+fn completed_within(item: &WorkItem, after: &str, before: &str) -> bool {
+    item.completed_at
+        .as_deref()
+        .and_then(|ts| ts.get(0..10))
+        .is_some_and(|day| day >= after && day <= before)
 }
 
 #[derive(Deserialize)]
@@ -64,6 +89,7 @@ struct RawWorkItem {
     #[serde(default)] target_date: Option<String>,
     #[serde(default)] state: Option<RawState>,
     #[serde(default)] assignees: Vec<RawAssignee>,
+    #[serde(default)] completed_at: Option<String>,
 }
 
 fn priority_none() -> String { "none".into() }
@@ -222,6 +248,7 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         state_group: w.state.map(|s| s.group).unwrap_or_default(),
         project_id: project_id.to_string(),
         assignee_ids: w.assignees.into_iter().map(|a| a.id).collect(),
+        completed_at: w.completed_at,
     }
 }
 
@@ -230,25 +257,43 @@ mod tests {
     use super::*;
 
     fn wi(id: &str, group: &str, assignees: &[&str]) -> WorkItem {
+        wi_completed(id, group, assignees, None)
+    }
+
+    fn wi_completed(id: &str, group: &str, assignees: &[&str], completed_at: Option<&str>) -> WorkItem {
         WorkItem {
             id: id.into(), name: format!("item {id}"), priority: "none".into(),
             target_date: None, state_group: group.into(), project_id: "p1".into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
+            completed_at: completed_at.map(|s| s.to_string()),
         }
     }
 
     #[test]
-    fn filter_keeps_my_open_items_only() {
+    fn filter_keeps_my_open_items_and_drops_cancelled() {
         let items = vec![
             wi("a", "started", &["me"]),     // keep
-            wi("b", "completed", &["me"]),   // drop: completed
             wi("c", "unstarted", &["other"]),// drop: not mine
             wi("d", "cancelled", &["me"]),   // drop: cancelled
             wi("e", "backlog", &["me", "x"]),// keep
         ];
-        let kept = filter_assigned_open(items, "me");
+        let kept = filter_assigned_visible(items, "me", "2026-06-30", "2026-07-02");
         let ids: Vec<_> = kept.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["a", "e"]);
+    }
+
+    #[test]
+    fn filter_keeps_items_completed_within_the_window_inclusive() {
+        let items = vec![
+            wi_completed("a", "completed", &["me"], Some("2026-07-01T09:00:00Z")), // keep: window start
+            wi_completed("b", "completed", &["me"], Some("2026-07-02T09:00:00Z")), // keep: window end
+            wi_completed("c", "completed", &["me"], Some("2026-06-30T23:59:00Z")), // drop: before window
+            wi_completed("d", "completed", &["me"], Some("2026-07-03T00:01:00Z")), // drop: after window
+            wi_completed("e", "completed", &["me"], None),                        // drop: no timestamp
+        ];
+        let kept = filter_assigned_visible(items, "me", "2026-07-01", "2026-07-02");
+        let ids: Vec<_> = kept.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b"]);
     }
 
     use wiremock::matchers::{header, method, path};
@@ -290,7 +335,8 @@ mod tests {
                     "id": "i1", "name": "Fix bug", "priority": "high",
                     "target_date": "2026-06-30",
                     "state": { "group": "started" },
-                    "assignees": [{ "id": "me" }]
+                    "assignees": [{ "id": "me" }],
+                    "completed_at": "2026-07-01T09:00:00Z"
                 }]
             })))
             .mount(&server)
@@ -301,6 +347,7 @@ mod tests {
         assert_eq!(items[0].state_group, "started");
         assert_eq!(items[0].assignee_ids, vec!["me".to_string()]);
         assert_eq!(items[0].project_id, "p1");
+        assert_eq!(items[0].completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
     }
 
     #[tokio::test]
