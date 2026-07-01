@@ -19,3 +19,10 @@ export function resolveDatePreset(key: DatePresetKey, now: Date = new Date()): s
   if (key === "next_week") d.setDate(d.getDate() + 7);
   return toIsoDate(d);
 }
+
+export function shiftIsoDate(iso: string, days: number): string {
+  const [y, m, day] = iso.split("-").map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + days);
+  return toIsoDate(d);
+}

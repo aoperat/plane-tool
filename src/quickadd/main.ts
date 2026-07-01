@@ -2,7 +2,7 @@ import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { createIssue, listProjects, listMembers, getSettings } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import type { Project, Member } from "../shared/types";
-import { DATE_PRESETS, resolveDatePreset, type DatePresetKey } from "../shared/datePresets";
+import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
@@ -63,6 +63,19 @@ function dateChoiceLabel(choice: DateChoice, custom: string): string {
 
 function resolveDateChoice(choice: DateChoice, custom: string): string {
   return choice === "custom" ? custom : resolveDatePreset(choice);
+}
+
+function shiftDateField(kind: "start" | "due", delta: number) {
+  if (kind === "start") {
+    const current = resolveDateChoice(startChoice, startCustomDate);
+    startCustomDate = shiftIsoDate(current, delta);
+    startChoice = "custom";
+  } else {
+    const current = resolveDateChoice(dueChoice, dueCustomDate);
+    dueCustomDate = shiftIsoDate(current, delta);
+    dueChoice = "custom";
+  }
+  renderChips();
 }
 
 function renderSelected() {
@@ -294,6 +307,12 @@ titleEl.addEventListener("keydown", async (e) => {
     if (openPopover) { closePopover(); return; }
     if (!dropdown.hidden) { dropdown.hidden = true; return; }
     await win.hide();
+    return;
+  }
+  if (!openPopover && (e.key === "[" || e.key === "]")) {
+    e.preventDefault();
+    const delta = e.key === "]" ? 1 : -1;
+    shiftDateField(e.ctrlKey ? "due" : "start", delta);
     return;
   }
   if (e.key === "Enter") {

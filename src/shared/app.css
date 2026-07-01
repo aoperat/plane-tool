@@ -71,6 +71,7 @@ kbd {
 .popover-date-input {
   width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
   color: var(--text); font-size: 13px; padding: 6px 8px; font-family: inherit; outline: none;
+  color-scheme: dark;
 }
 .popover-date-input:focus { border-color: var(--accent); }
 
