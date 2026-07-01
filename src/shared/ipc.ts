@@ -22,8 +22,8 @@ export const createIssue = (
   project_id: string,
   name: string,
   assignee_ids: string[],
-  start_date: string,
-  target_date: string,
+  start_date: string | undefined,
+  target_date: string | undefined,
   priority: string,
   state_group: string,
 ) =>

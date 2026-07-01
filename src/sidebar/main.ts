@@ -1,6 +1,7 @@
 import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { createIssue, fetchSidebarData, getSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
@@ -106,6 +107,60 @@ async function openInBrowser(it: WorkItem) {
   }
 }
 
+async function duplicateWorkItem(it: WorkItem) {
+  try {
+    // No assignee_ids on the frontend WorkItem type — an empty list makes
+    // create_issue default to the current user, which is correct here since
+    // the sidebar only ever lists items already assigned to the current user.
+    await createIssue(it.project_id, it.name, [], undefined, it.target_date ?? undefined, it.priority, it.state_group);
+    await refresh();
+  } catch (err) {
+    synced.textContent = "복사본 생성 실패: " + err;
+    console.error("createIssue (duplicate) failed:", err);
+  }
+}
+
+async function copyIssueLink(it: WorkItem) {
+  const url = buildIssueUrl(baseUrl, workspace, it.project_id, it.id);
+  try {
+    await writeText(url);
+    synced.textContent = "링크 복사됨";
+  } catch (err) {
+    synced.textContent = "링크 복사 실패: " + err;
+    console.error("writeText failed:", err);
+  }
+}
+
+const CONTEXT_MENU_WIDTH = 180;
+
+function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.width = CONTEXT_MENU_WIDTH + "px";
+  pop.style.left = Math.min(offsetX, rowEl.clientWidth - CONTEXT_MENU_WIDTH) + "px";
+  pop.style.top = offsetY + "px";
+
+  const addItem = (label: string, onClick: () => void) => {
+    const opt = document.createElement("div");
+    opt.className = "pop-item";
+    opt.textContent = label;
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      onClick();
+    };
+    pop.appendChild(opt);
+  };
+
+  addItem("복사본 만들기", () => duplicateWorkItem(it));
+  addItem("새 탭에서 열기", () => openInBrowser(it));
+  addItem("링크 복사", () => copyIssueLink(it));
+
+  rowEl.appendChild(pop);
+  openPopover = pop;
+}
+
 function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
   const el = document.createElement("div");
   el.className = "task" + (it.state_group === "completed" ? " completed" : "");
@@ -186,6 +241,12 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   el.appendChild(body);
 
   el.onclick = () => openInBrowser(it);
+  el.oncontextmenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = el.getBoundingClientRect();
+    openContextMenu(el, it, e.clientX - rect.left, e.clientY - rect.top);
+  };
 
   return el;
 }
