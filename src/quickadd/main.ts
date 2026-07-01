@@ -5,7 +5,7 @@ import type { Project, Member } from "../shared/types";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
-  CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
+  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import "../shared/app.css";
@@ -22,6 +22,9 @@ const chipDue = document.getElementById("chipDue")!;
 const chipPriority = document.getElementById("chipPriority")!;
 const chipState = document.getElementById("chipState")!;
 const fieldPopover = document.getElementById("fieldPopover")!;
+const descToggle = document.getElementById("descToggle")!;
+const descriptionEl = document.getElementById("description") as HTMLTextAreaElement;
+descToggle.innerHTML = DESCRIPTION_ICON;
 
 let projects: Project[] = [];
 let selectedId: string | null = null;
@@ -36,6 +39,7 @@ let dueChoice: DateChoice = "today";
 let dueCustomDate = "";
 let priority: Priority = "none";
 let stateGroup: StateGroup = "unstarted";
+let descriptionOpen = false;
 
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
 let openPopover: PopoverKind = null;
@@ -77,6 +81,29 @@ function shiftDateField(kind: "start" | "due", delta: number) {
     dueChoice = "custom";
   }
   renderChips();
+}
+
+async function submitIssue() {
+  const name = titleEl.value.trim();
+  if (!name || !selectedId) return;
+  try {
+    await createIssue(
+      selectedId,
+      name,
+      assigneeIds,
+      resolveDateChoice(startChoice, startCustomDate),
+      resolveDateChoice(dueChoice, dueCustomDate),
+      priority,
+      stateGroup,
+      descriptionEl.value,
+    );
+    titleEl.value = "";
+    resetFields();
+    await win.hide();
+  } catch (err) {
+    titleEl.classList.add("error");
+    console.error(err);
+  }
 }
 
 function renderSelected() {
@@ -139,6 +166,21 @@ function renderChips() {
     `${priorityIcon(priority)} <span class="${priority === "none" ? "muted" : ""}">${priorityLabel(priority)}</span>`;
   chipState.innerHTML = `${stateIcon(stateGroup)} ${stateLabel(stateGroup)}`;
 }
+
+function updateDescToggleActive() {
+  descToggle.classList.toggle("active", descriptionOpen || descriptionEl.value.trim().length > 0);
+}
+
+function setDescriptionOpen(open: boolean) {
+  descriptionOpen = open;
+  descriptionEl.hidden = !open;
+  updateDescToggleActive();
+  resizeToFit();
+  if (open) descriptionEl.focus();
+}
+
+descToggle.onclick = () => setDescriptionOpen(!descriptionOpen);
+descriptionEl.addEventListener("input", updateDescToggleActive);
 
 function closePopover() {
   openPopover = null;
@@ -288,6 +330,8 @@ function resetFields() {
   dueCustomDate = "";
   priority = "none";
   stateGroup = "unstarted";
+  descriptionEl.value = "";
+  setDescriptionOpen(false);
   closePopover();
   renderChips();
 }
@@ -311,6 +355,11 @@ titleEl.addEventListener("keydown", async (e) => {
     await win.hide();
     return;
   }
+  if (e.key === "Tab" && !descriptionOpen) {
+    e.preventDefault();
+    setDescriptionOpen(true);
+    return;
+  }
   if (!openPopover && (e.key === "[" || e.key === "]")) {
     e.preventDefault();
     const delta = e.key === "]" ? 1 : -1;
@@ -319,25 +368,14 @@ titleEl.addEventListener("keydown", async (e) => {
   }
   if (e.key === "Enter") {
     if (openPopover) return;
-    const name = titleEl.value.trim();
-    if (!name || !selectedId) return;
-    try {
-      await createIssue(
-        selectedId,
-        name,
-        assigneeIds,
-        resolveDateChoice(startChoice, startCustomDate),
-        resolveDateChoice(dueChoice, dueCustomDate),
-        priority,
-        stateGroup,
-      );
-      titleEl.value = "";
-      resetFields();
-      await win.hide();
-    } catch (err) {
-      titleEl.classList.add("error");
-      console.error(err);
-    }
+    await submitIssue();
+  }
+});
+
+descriptionEl.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter" && e.ctrlKey) {
+    e.preventDefault();
+    await submitIssue();
   }
 });
 
