@@ -79,6 +79,40 @@ pub fn assemble_sidebar(
     SidebarData { projects, assigned, states }
 }
 
+pub fn build_update_body(
+    name: Option<&str>,
+    description_html: Option<&str>,
+    assignee_ids: Option<&[String]>,
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: Option<&str>,
+    state_id: Option<&str>,
+) -> serde_json::Value {
+    let mut body = serde_json::Map::new();
+    if let Some(n) = name {
+        body.insert("name".into(), serde_json::json!(n));
+    }
+    if let Some(d) = description_html {
+        body.insert("description_html".into(), serde_json::json!(d));
+    }
+    if let Some(a) = assignee_ids {
+        body.insert("assignees".into(), serde_json::json!(a));
+    }
+    if let Some(sd) = start_date {
+        body.insert("start_date".into(), serde_json::json!(sd));
+    }
+    if let Some(td) = target_date {
+        body.insert("target_date".into(), serde_json::json!(td));
+    }
+    if let Some(p) = priority {
+        body.insert("priority".into(), serde_json::json!(p));
+    }
+    if let Some(sid) = state_id {
+        body.insert("state".into(), serde_json::json!(sid));
+    }
+    serde_json::Value::Object(body)
+}
+
 fn client(app: &tauri::AppHandle) -> Result<(PlaneClient, config::Settings), String> {
     let s = config::load_settings(app);
     if s.base_url.is_empty() || s.workspace.is_empty() {
@@ -318,5 +352,53 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
         let completed = data.assigned.iter().find(|i| i.id == "b").unwrap();
         assert_eq!(completed.completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
+    }
+
+    #[test]
+    fn build_update_body_includes_only_provided_fields() {
+        let body = build_update_body(Some("New title"), None, None, None, None, None, None);
+        assert_eq!(body, serde_json::json!({ "name": "New title" }));
+    }
+
+    #[test]
+    fn build_update_body_includes_all_fields_when_all_provided() {
+        let assignees = vec!["u1".to_string()];
+        let body = build_update_body(
+            Some("Title"),
+            Some("<p>Desc</p>"),
+            Some(&assignees),
+            Some("2026-07-01"),
+            Some("2026-07-05"),
+            Some("high"),
+            Some("state-1"),
+        );
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "name": "Title",
+                "description_html": "<p>Desc</p>",
+                "assignees": ["u1"],
+                "start_date": "2026-07-01",
+                "target_date": "2026-07-05",
+                "priority": "high",
+                "state": "state-1",
+            })
+        );
+    }
+
+    #[test]
+    fn build_update_body_returns_empty_object_when_nothing_provided() {
+        let body = build_update_body(None, None, None, None, None, None, None);
+        assert_eq!(body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn build_update_body_includes_empty_assignee_list_to_unassign() {
+        // Regression guard: unlike create_issue (where an empty assignee list means
+        // "default to the current user"), editing must send an explicitly empty list
+        // through as-is — the user may genuinely want to unassign everyone.
+        let empty: Vec<String> = vec![];
+        let body = build_update_body(None, None, Some(&empty), None, None, None, None);
+        assert_eq!(body, serde_json::json!({ "assignees": [] }));
     }
 }
