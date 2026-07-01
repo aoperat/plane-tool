@@ -143,23 +143,29 @@ async function copyIssueLink(it: WorkItem) {
 
 const CONTEXT_MENU_WIDTH = 180;
 
-/** Attaches `pop` to `rowEl` and nudges it upward if it would overflow the bottom of the window. */
-function attachPopover(pop: HTMLElement, rowEl: HTMLElement, offsetY: number) {
-  rowEl.appendChild(pop);
-  const overflow = rowEl.getBoundingClientRect().top + offsetY + pop.offsetHeight - window.innerHeight;
-  if (overflow > 0) {
-    pop.style.top = Math.max(0, offsetY - overflow) + "px";
-  }
+/**
+ * Attaches `pop` to `document.body` (not the row it was triggered from) with
+ * fixed positioning at viewport coordinates (x, y), clamped to stay on
+ * screen. The context menu and delete-confirm popovers are taller than a
+ * single row, so nesting them inside a row (like the state/priority
+ * popovers do) let them visually spill into sibling rows below — since
+ * those siblings are later in the DOM, they'd win hover/click there instead
+ * of the menu. Body-level fixed positioning sidesteps that entirely.
+ */
+function attachPopover(pop: HTMLElement, x: number, y: number) {
+  document.body.appendChild(pop);
+  const rect = pop.getBoundingClientRect();
+  pop.style.left = Math.max(0, Math.min(x, window.innerWidth - rect.width)) + "px";
+  pop.style.top = Math.max(0, Math.min(y, window.innerHeight - rect.height)) + "px";
   openPopover = pop;
 }
 
-function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
+function openContextMenu(it: WorkItem, x: number, y: number) {
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
+  pop.style.position = "fixed";
   pop.style.width = CONTEXT_MENU_WIDTH + "px";
-  pop.style.left = Math.min(offsetX, rowEl.clientWidth - CONTEXT_MENU_WIDTH) + "px";
-  pop.style.top = offsetY + "px";
 
   const addItem = (label: string, onClick: () => void) => {
     const opt = document.createElement("div");
@@ -181,18 +187,17 @@ function openContextMenu(rowEl: HTMLElement, it: WorkItem, offsetX: number, offs
   divider.className = "popover-divider";
   pop.appendChild(divider);
 
-  addItem("삭제", () => openDeleteConfirm(rowEl, it, offsetX, offsetY));
+  addItem("삭제", () => openDeleteConfirm(it, x, y));
 
-  attachPopover(pop, rowEl, offsetY);
+  attachPopover(pop, x, y);
 }
 
-function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, offsetY: number) {
+function openDeleteConfirm(it: WorkItem, x: number, y: number) {
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
+  pop.style.position = "fixed";
   pop.style.width = CONTEXT_MENU_WIDTH + "px";
-  pop.style.left = Math.min(offsetX, rowEl.clientWidth - CONTEXT_MENU_WIDTH) + "px";
-  pop.style.top = offsetY + "px";
 
   const msg = document.createElement("div");
   msg.className = "pop-msg";
@@ -222,7 +227,7 @@ function openDeleteConfirm(rowEl: HTMLElement, it: WorkItem, offsetX: number, of
   };
   pop.appendChild(cancel);
 
-  attachPopover(pop, rowEl, offsetY);
+  attachPopover(pop, x, y);
 }
 
 function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
@@ -308,8 +313,7 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   el.oncontextmenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const rect = el.getBoundingClientRect();
-    openContextMenu(el, it, e.clientX - rect.left, e.clientY - rect.top);
+    openContextMenu(it, e.clientX, e.clientY);
   };
 
   return el;
