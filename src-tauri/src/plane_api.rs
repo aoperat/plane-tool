@@ -237,6 +237,19 @@ impl PlaneClient {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub async fn delete_work_item(&self, project_id: &str, item_id: &str) -> Result<(), String> {
+        let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
+        self.http
+            .delete(&url)
+            .header("X-Api-Key", &self.api_key)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .error_for_status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
@@ -395,6 +408,19 @@ mod tests {
             .update_work_item("p1", "i1", serde_json::json!({ "priority": "high" }))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_work_item_sends_delete_request() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        client_for(&server).await.delete_work_item("p1", "i1").await.unwrap();
     }
 
     #[tokio::test]
