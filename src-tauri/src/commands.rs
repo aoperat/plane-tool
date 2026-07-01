@@ -165,6 +165,32 @@ pub async fn fetch_sidebar_data(app: tauri::AppHandle) -> Result<SidebarData, St
 }
 
 #[tauri::command]
+pub async fn update_work_item_priority(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+    priority: String,
+) -> Result<(), String> {
+    let (client, _s) = client(&app)?;
+    client
+        .update_work_item(&project_id, &item_id, serde_json::json!({ "priority": priority }))
+        .await
+}
+
+#[tauri::command]
+pub async fn update_work_item_state(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+    state_id: String,
+) -> Result<(), String> {
+    let (client, _s) = client(&app)?;
+    client
+        .update_work_item(&project_id, &item_id, serde_json::json!({ "state": state_id }))
+        .await
+}
+
+#[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, String> {
     let (client, _s) = client(&app)?;
     let projects = client.list_projects().await?;
