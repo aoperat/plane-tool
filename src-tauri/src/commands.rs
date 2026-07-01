@@ -1,5 +1,5 @@
 use crate::config;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
 
@@ -296,7 +296,9 @@ pub async fn update_work_item_fields(
 #[tauri::command]
 pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client.delete_work_item(&project_id, &item_id).await
+    client.delete_work_item(&project_id, &item_id).await?;
+    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -334,6 +336,19 @@ pub async fn get_work_item(app: tauri::AppHandle, project_id: String, item_id: S
         state_group: d.state_group,
         project_id: d.project_id,
     })
+}
+
+#[tauri::command]
+pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: String) {
+    if let Some(win) = app.get_webview_window("editmodal") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+    let _ = app.emit_to(
+        "editmodal",
+        "load-item",
+        serde_json::json!({ "projectId": project_id, "itemId": item_id }),
+    );
 }
 
 #[cfg(test)]
