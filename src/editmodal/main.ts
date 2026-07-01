@@ -41,6 +41,8 @@ let original: WorkItemDetail | null = null;
 let members: Member[] = [];
 let membersLoadedForProject: string | null = null;
 
+let loadRequestId = 0;
+
 let assigneeIds: string[] = [];
 type DateChoice = DatePresetKey | "custom";
 let startChoice: DateChoice = "custom";
@@ -244,6 +246,13 @@ emChipPriority.onclick = () => { openPopover === "priority" ? closePopover() : o
 emChipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
 
 async function loadItem(pid: string, iid: string) {
+  // Re-assert always-on-top every time an item is loaded, mirroring the
+  // sidebar's slideIn() — openInBrowser() drops it so the browser window can
+  // surface above the modal, and nothing else restores it afterward.
+  win.setAlwaysOnTop(true).catch((err) => {
+    console.error("setAlwaysOnTop failed:", err);
+  });
+  const requestId = ++loadRequestId;
   projectId = pid;
   itemId = iid;
   original = null;
@@ -259,6 +268,7 @@ async function loadItem(pid: string, iid: string) {
   resizeToFit();
   try {
     const detail = await getWorkItem(pid, iid);
+    if (requestId !== loadRequestId) return;
     original = detail;
     emTitleInput.value = detail.name;
     emDescription.value = detail.description;
@@ -281,6 +291,7 @@ async function loadItem(pid: string, iid: string) {
   } catch (err) {
     emLoading.textContent = "불러오기 실패: " + err;
     console.error("getWorkItem failed:", err);
+    resizeToFit();
   }
 }
 
