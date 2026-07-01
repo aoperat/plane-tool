@@ -61,10 +61,7 @@ lucide-static(ISC)에서 받은 24x24 stroke 기반 SVG(`stroke-width 2, stroke-
 
 > **라이선스 주의**: `src/shared/icons/state.ts`는 Plane `packages/propel`(AGPL-3.0-only) 소스 로직을 포팅한 것 — 사용자 확인 후 그대로 포함하기로 결정(현재 plane-tool은 개인용, 배포 계획 없음). **이 앱을 배포/공유하게 되면 AGPL 의무(소스 공개 등) 재검토 필요.** 파일 상단에 원본 출처(`C:\WorkSpaces\plane\packages\propel\src\icons\state\`)와 SPDX 식별자를 주석으로 남긴다.
 
-**공용 모듈 구조** (F1 QuickAdd/F2 사이드바 등 여러 창에서 재사용 가능하도록 `src/shared/color.ts`와 같은 패턴):
-- `src/shared/icons/priority.ts` — `priorityColor(priority): string`, `priorityIconSvg(priority): string`
-- `src/shared/icons/state.ts` — `stateGroupColor(group): string`, `stateGroupIconSvg(group): string`
-- `src/shared/icons/index.ts` — 위 두 모듈 re-export
+**공용 모듈 구조**: 이 스펙 작성 이후 별도로 진행 중이던 "QuickAdd 필드 확장" 작업이 이미 `src/shared/planeIcons.ts`(F1 QuickAdd 칩 툴바용, 자체 SVG)를 커밋했다. 새 모듈을 따로 만드는 대신 **`planeIcons.ts`를 Plane 실제 아이콘으로 업그레이드**해 F1/F2가 공유한다(사용자 확인 완료) — `priorityIcon`/`priorityLabel`/`stateIcon`/`stateLabel` 등 기존 함수 시그니처는 유지하고 내부 SVG만 교체, `priorityColor`/`stateColor`를 새로 추가한다. 자세한 내용은 [`docs/superpowers/plans/2026-07-01-sidebar-inline-edit.md`](../plans/2026-07-01-sidebar-inline-edit.md)의 "동시 작업 이력" 절 참고.
 
 > 확정 목업(아이콘 반영): [`docs/mockups/sidebar-inline-edit-mockup.html`](../../mockups/sidebar-inline-edit-mockup.html)
 
