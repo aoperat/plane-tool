@@ -31,6 +31,13 @@
         "url": "src/settings/index.html",
         "width": 460, "height": 420,
         "decorations": true, "skipTaskbar": false, "visible": false, "resizable": false
+      },
+      {
+        "label": "editmodal",
+        "url": "src/editmodal/index.html",
+        "width": 480, "height": 320,
+        "decorations": false, "transparent": true, "alwaysOnTop": true,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       }
     ],
     "security": { "csp": null }
