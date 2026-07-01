@@ -1,5 +1,5 @@
 use crate::config;
-use crate::plane_api::{filter_assigned_open, resolve_state_id, NewWorkItem, PlaneClient, Project, WorkItem};
+use crate::plane_api::{filter_assigned_open, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -29,12 +29,21 @@ pub struct WorkItemDto {
 }
 
 #[derive(Serialize)]
+pub struct StateDto { pub id: String, pub group: String, pub project_id: String, pub default: bool }
+
+#[derive(Serialize)]
 pub struct SidebarData {
     pub projects: Vec<ProjectDto>,
     pub assigned: Vec<WorkItemDto>,
+    pub states: Vec<StateDto>,
 }
 
-pub fn assemble_sidebar(user_id: &str, projects: Vec<Project>, items: Vec<WorkItem>) -> SidebarData {
+pub fn assemble_sidebar(
+    user_id: &str,
+    projects: Vec<Project>,
+    items: Vec<WorkItem>,
+    states: Vec<ProjectState>,
+) -> SidebarData {
     let assigned = filter_assigned_open(items, user_id)
         .into_iter()
         .map(|w| WorkItemDto {
@@ -46,7 +55,11 @@ pub fn assemble_sidebar(user_id: &str, projects: Vec<Project>, items: Vec<WorkIt
         .into_iter()
         .map(|p| ProjectDto { id: p.id, name: p.name, identifier: p.identifier })
         .collect();
-    SidebarData { projects, assigned }
+    let states = states
+        .into_iter()
+        .map(|s| StateDto { id: s.id, group: s.group, project_id: s.project_id, default: s.default })
+        .collect();
+    SidebarData { projects, assigned, states }
 }
 
 fn client(app: &tauri::AppHandle) -> Result<(PlaneClient, config::Settings), String> {
@@ -137,13 +150,18 @@ pub async fn fetch_sidebar_data(app: tauri::AppHandle) -> Result<SidebarData, St
     let user = client.current_user().await?;
     let projects = client.list_projects().await?;
     let mut all_items: Vec<WorkItem> = Vec::new();
+    let mut all_states: Vec<ProjectState> = Vec::new();
     for p in &projects {
         match client.list_work_items(&p.id).await {
             Ok(mut items) => all_items.append(&mut items),
             Err(_) => continue, // skip a project that fails; keep the rest
         }
+        match client.list_states(&p.id).await {
+            Ok(mut states) => all_states.append(&mut states),
+            Err(_) => continue, // skip a project that fails; keep the rest
+        }
     }
-    Ok(assemble_sidebar(&user.id, projects, all_items))
+    Ok(assemble_sidebar(&user.id, projects, all_items, all_states))
 }
 
 #[tauri::command]
@@ -169,7 +187,7 @@ pub async fn list_members(app: tauri::AppHandle, project_id: String) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plane_api::{Project, WorkItem};
+    use crate::plane_api::{Project, ProjectState, WorkItem};
 
     fn wi(id: &str, group: &str, assignees: &[&str], project: &str) -> WorkItem {
         WorkItem {
@@ -191,9 +209,16 @@ mod tests {
             wi("c", "backlog", &["me"], "p2"),
             wi("d", "started", &["other"], "p2"),
         ];
-        let data = assemble_sidebar("me", projects, items);
+        let states = vec![
+            ProjectState { id: "s1".into(), group: "started".into(), project_id: "p1".into(), default: true },
+        ];
+        let data = assemble_sidebar("me", projects, items, states);
         assert_eq!(data.projects.len(), 2);
         let ids: Vec<_> = data.assigned.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["a", "c"]);
+        assert_eq!(data.states.len(), 1);
+        assert_eq!(data.states[0].id, "s1");
+        assert_eq!(data.states[0].project_id, "p1");
+        assert!(data.states[0].default);
     }
 }
