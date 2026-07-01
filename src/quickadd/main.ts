@@ -189,6 +189,51 @@ function closePopover() {
   resizeToFit();
 }
 
+/** Puts the keyboard cursor on `container`'s current `.sel` item, or its first item if none is selected. */
+function initKeyboardFocus(container: HTMLElement) {
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
+  items.forEach((el) => el.classList.remove("kbd-focus"));
+  const current = items.find((el) => el.classList.contains("sel")) ?? items[0];
+  current?.classList.add("kbd-focus");
+}
+
+/** Moves the keyboard cursor to the next/previous `.dd-item` in `container`, wrapping at either end. */
+function moveKeyboardFocus(container: HTMLElement, delta: 1 | -1) {
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
+  if (items.length === 0) return;
+  const currentIndex = items.findIndex((el) => el.classList.contains("kbd-focus"));
+  const nextIndex =
+    currentIndex === -1 ? (delta > 0 ? 0 : items.length - 1) : (currentIndex + delta + items.length) % items.length;
+  items.forEach((el) => el.classList.remove("kbd-focus"));
+  items[nextIndex].classList.add("kbd-focus");
+  items[nextIndex].scrollIntoView({ block: "nearest" });
+}
+
+/** Clicks `container`'s current keyboard-cursor item, reusing its existing onclick handler. */
+function selectKeyboardFocus(container: HTMLElement) {
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
+  items.find((el) => el.classList.contains("kbd-focus"))?.click();
+}
+
+/** Builds a keydown handler for a dropdown trigger button: arrow keys move, Enter selects, Escape closes.
+ *  Does nothing (and doesn't call preventDefault) while `isOpen()` is false, so the trigger button's own
+ *  native Enter-activates-click behavior still opens the dropdown as before. */
+function handleDropdownKeydown(container: HTMLElement, isOpen: () => boolean, onClose: () => void) {
+  return (e: KeyboardEvent) => {
+    if (!isOpen()) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      moveKeyboardFocus(container, e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      selectKeyboardFocus(container);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
+  };
+}
+
 function toggleAssignee(id: string | null) {
   if (id === null) {
     assigneeIds = [];
@@ -215,6 +260,7 @@ function renderAssigneePopoverItems() {
     item.onclick = () => toggleAssignee(m.id);
     fieldPopover.appendChild(item);
   }
+  initKeyboardFocus(fieldPopover);
 }
 
 async function openAssigneePopover() {
@@ -273,6 +319,7 @@ function openDatePopover(kind: "start" | "due") {
     titleEl.focus();
   };
   fieldPopover.appendChild(dateInput);
+  initKeyboardFocus(fieldPopover);
   fieldPopover.hidden = false;
   openPopover = kind;
   resizeToFit();
@@ -292,6 +339,7 @@ function openPriorityPopover() {
     };
     fieldPopover.appendChild(item);
   }
+  initKeyboardFocus(fieldPopover);
   fieldPopover.hidden = false;
   openPopover = "priority";
   resizeToFit();
@@ -311,6 +359,7 @@ function openStatePopover() {
     };
     fieldPopover.appendChild(item);
   }
+  initKeyboardFocus(fieldPopover);
   fieldPopover.hidden = false;
   openPopover = "state";
   resizeToFit();
@@ -321,6 +370,13 @@ chipStart.onclick = () => { openPopover === "start" ? closePopover() : openDateP
 chipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopover("due"); };
 chipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
 chipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
+
+const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopover !== null, closePopover);
+chipAssignee.addEventListener("keydown", fieldPopoverKeydown);
+chipStart.addEventListener("keydown", fieldPopoverKeydown);
+chipDue.addEventListener("keydown", fieldPopoverKeydown);
+chipPriority.addEventListener("keydown", fieldPopoverKeydown);
+chipState.addEventListener("keydown", fieldPopoverKeydown);
 
 function resetFields() {
   assigneeIds = [];

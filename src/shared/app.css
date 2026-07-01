@@ -126,6 +126,7 @@ kbd {
 .dd-item:hover, .dd-item.sel { background: var(--accent-soft); }
 .dd-item.sel::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 12px; }
 .dd-item .dot { width: 9px; height: 9px; border-radius: 50%; }
+.dd-item.kbd-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* shared dot used across surfaces */
 .dot { display: inline-block; border-radius: 50%; }
