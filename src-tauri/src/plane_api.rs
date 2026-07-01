@@ -53,6 +53,49 @@ fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+/// Converts Plane's `description_html` back into plain text for display in the
+/// edit modal's textarea. This is a best-effort inverse of
+/// `plain_text_to_description_html`: it round-trips content this app wrote itself
+/// exactly, and degrades gracefully (strips tags, decodes common entities) for
+/// richer HTML written by Plane's own web editor. No rich-text formatting is
+/// preserved — this app only ever shows/edits plain text.
+pub fn description_html_to_plain_text(html: Option<&str>) -> String {
+    let html = match html {
+        Some(h) if !h.is_empty() => h,
+        _ => return String::new(),
+    };
+    let with_breaks = html
+        .replace("</p>", "\n")
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<br>", "\n");
+    let stripped = strip_tags(&with_breaks);
+    decode_entities(&stripped).trim().to_string()
+}
+
+fn strip_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn decode_entities(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&") // must run last, or "&amp;lt;" would double-decode into "<"
+}
+
 /// Keeps items assigned to `user_id` that are still open, plus completed items
 /// whose (UTC) completion date falls within `[completed_after, completed_before]`
 /// (inclusive ISO `YYYY-MM-DD` bounds) — so today's wins still show up briefly
@@ -519,6 +562,31 @@ mod tests {
     #[test]
     fn plain_text_to_html_returns_empty_string_for_empty_input() {
         assert_eq!(plain_text_to_description_html(""), "");
+    }
+
+    #[test]
+    fn description_html_to_plain_text_round_trips_our_own_output() {
+        let html = plain_text_to_description_html("Line one\nLine two");
+        assert_eq!(description_html_to_plain_text(Some(&html)), "Line one\nLine two");
+    }
+
+    #[test]
+    fn description_html_to_plain_text_strips_foreign_tags() {
+        assert_eq!(
+            description_html_to_plain_text(Some("<p><strong>Bold</strong> text</p>")),
+            "Bold text"
+        );
+    }
+
+    #[test]
+    fn description_html_to_plain_text_decodes_entities() {
+        assert_eq!(description_html_to_plain_text(Some("<p>A &amp; B &lt;tag&gt;</p>")), "A & B <tag>");
+    }
+
+    #[test]
+    fn description_html_to_plain_text_returns_empty_string_for_none_or_empty() {
+        assert_eq!(description_html_to_plain_text(None), "");
+        assert_eq!(description_html_to_plain_text(Some("")), "");
     }
 
     #[tokio::test]
