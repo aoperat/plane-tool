@@ -31,6 +31,19 @@ pub struct WorkItemDto {
 }
 
 #[derive(Serialize)]
+pub struct WorkItemDetailDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub assignee_ids: Vec<String>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+    pub priority: String,
+    pub state_group: String,
+    pub project_id: String,
+}
+
+#[derive(Serialize)]
 pub struct StateDto { pub id: String, pub group: String, pub project_id: String, pub default: bool }
 
 #[derive(Serialize)]
@@ -230,6 +243,23 @@ pub async fn list_members(app: tauri::AppHandle, project_id: String) -> Result<V
         .into_iter()
         .map(|m| MemberDto { id: m.id, display_name: m.display_name })
         .collect())
+}
+
+#[tauri::command]
+pub async fn get_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<WorkItemDetailDto, String> {
+    let (client, _s) = client(&app)?;
+    let d = client.get_work_item(&project_id, &item_id).await?;
+    Ok(WorkItemDetailDto {
+        id: d.id,
+        name: d.name,
+        description: d.description,
+        assignee_ids: d.assignee_ids,
+        start_date: d.start_date,
+        target_date: d.target_date,
+        priority: d.priority,
+        state_group: d.state_group,
+        project_id: d.project_id,
+    })
 }
 
 #[cfg(test)]
