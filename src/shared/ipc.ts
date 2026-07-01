@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -49,3 +49,32 @@ export const updateWorkItemState = (project_id: string, item_id: string, state_i
   invoke<void>("update_work_item_state", { projectId: project_id, itemId: item_id, stateId: state_id });
 export const deleteWorkItem = (project_id: string, item_id: string) =>
   invoke<void>("delete_work_item", { projectId: project_id, itemId: item_id });
+
+export const getWorkItem = (project_id: string, item_id: string) =>
+  invoke<WorkItemDetail>("get_work_item", { projectId: project_id, itemId: item_id });
+
+export interface UpdateWorkItemFields {
+  name?: string;
+  description?: string;
+  assignee_ids?: string[];
+  start_date?: string;
+  target_date?: string;
+  priority?: string;
+  state_group?: string;
+}
+
+export const updateWorkItemFields = (project_id: string, item_id: string, fields: UpdateWorkItemFields) =>
+  invoke<void>("update_work_item_fields", {
+    projectId: project_id,
+    itemId: item_id,
+    name: fields.name,
+    description: fields.description,
+    assigneeIds: fields.assignee_ids,
+    startDate: fields.start_date,
+    targetDate: fields.target_date,
+    priority: fields.priority,
+    stateGroup: fields.state_group,
+  });
+
+export const openEditModal = (project_id: string, item_id: string) =>
+  invoke<void>("open_edit_modal", { projectId: project_id, itemId: item_id });
