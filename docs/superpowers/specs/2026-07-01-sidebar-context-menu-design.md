@@ -6,13 +6,14 @@ Add a right-click context menu to issue rows in the sidebar (`src/sidebar/main.t
 
 ## Menu items
 
-In order, matching the reference screenshot (minus Edit), with a divider before 아카이브 and before 삭제:
+In order, matching the reference screenshot (minus Edit and Archive), with a divider before 삭제:
 
 1. **복사본 만들기** (Duplicate) — always shown
 2. **새 탭에서 열기** (Open in browser) — always shown
 3. **링크 복사** (Copy link) — always shown
-4. **아카이브** (Archive) — shown only when `it.state_group` is `"completed"` or `"cancelled"`
-5. **삭제** (Delete) — always shown
+4. **삭제** (Delete) — always shown
+
+**아카이브 excluded**: the sidebar's assigned-items list already filters out `completed`/`cancelled` items entirely (`filter_assigned_open`, `src-tauri/src/plane_api.rs:39-45`) — no row visible in the sidebar could ever satisfy the reference screenshot's "archive only completed/cancelled" condition, so the menu item would be permanently unreachable dead code. Revisit if the sidebar's filtering scope changes.
 
 ## Trigger & placement
 
@@ -25,8 +26,9 @@ In order, matching the reference screenshot (minus Edit), with a divider before 
 
 ### 복사본 만들기 (Duplicate)
 
-- Uses only fields already present on the loaded `WorkItem`: `name`, `priority`, `assignee_ids`, `target_date`, `project_id`, `state_group`. Description is **not** copied (the sidebar's list-fetch API doesn't return it, and re-fetching full issue detail before duplicating is out of scope).
-- Calls the existing `createIssue(project_id, name, assignee_ids, undefined, target_date, priority, state_group)` IPC wrapper (`src/shared/ipc.ts`) — backed by the existing `create_issue` Tauri command, no backend changes needed.
+- Uses only fields already present on the loaded `WorkItem`: `name`, `priority`, `target_date`, `project_id`, `state_group`. Description is **not** copied (the sidebar's list-fetch API doesn't return it, and re-fetching full issue detail before duplicating is out of scope).
+- The frontend `WorkItem` type has no `assignee_ids` field, so the duplicate is created with an empty assignee list. The existing `create_issue` backend command already defaults an empty assignee list to the current user — which is correct here, since the sidebar only ever lists items assigned to the current user in the first place.
+- Calls the existing `createIssue(project_id, name, [], undefined, target_date, priority, state_group)` IPC wrapper (`src/shared/ipc.ts`) — backed by the existing `create_issue` Tauri command. Its TS signature needs `start_date`/`target_date` widened from `string` to `string | undefined` since this caller (unlike QuickAdd) doesn't always have a target date.
 - On success, calls the existing `refresh()` function to reload the full sidebar dataset (simplest way to pick up the new item's server-assigned id, consistent with the manual refresh button's behavior).
 - On failure, set `synced.textContent` to an error message, matching the existing error-handling convention for priority/state updates.
 
@@ -39,14 +41,6 @@ In order, matching the reference screenshot (minus Edit), with a divider before 
 - Add `@tauri-apps/plugin-clipboard-manager` (JS) and the matching `tauri-plugin-clipboard-manager` (Rust crate) as new dependencies, plus a `clipboard-manager:allow-write-text` (or equivalent) permission in `src-tauri/capabilities/default.json`.
 - Build the same issue URL used for "새 탭에서 열기" (`${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`) and write it via the plugin's `writeText`.
 
-### 아카이브 (Archive)
-
-- Plane's REST API has no dedicated archive endpoint for work items (confirmed against developers.plane.so — only modules have one). Archiving is a PATCH to the work-item with `archived_at` set.
-- Add a new Tauri command `archive_work_item(project_id, item_id)` in `src-tauri/src/commands.rs`, reusing the existing generic `PlaneClient::update_work_item` with body `{"archived_at": <current UTC ISO-8601 timestamp>}`.
-- Add a matching `archiveWorkItem` wrapper in `src/shared/ipc.ts`.
-- Only rendered/clickable when `it.state_group` is `completed` or `cancelled`.
-- On success, call `refresh()`. On failure, set `synced.textContent`.
-
 ### 삭제 (Delete)
 
 - Add `delete_work_item` to `PlaneClient` in `src-tauri/src/plane_api.rs`: `DELETE /workspaces/{slug}/projects/{project_id}/work-items/{id}/`, expecting `204 No Content`.
@@ -56,10 +50,10 @@ In order, matching the reference screenshot (minus Edit), with a divider before 
 
 ## Error handling & refresh strategy
 
-All four mutating actions (duplicate, archive, delete — open-in-browser and copy-link are non-mutating) follow the existing convention: on failure, log to console and show a short error in the `synced` status element. On success, call the existing `refresh()` function to reload the full sidebar dataset from the server, rather than attempting fine-grained local list surgery (simpler, and consistent with how the manual refresh button already works).
+Both mutating actions (duplicate, delete — open-in-browser and copy-link are non-mutating) follow the existing convention: on failure, log to console and show a short error in the `synced` status element. On success, call the existing `refresh()` function to reload the full sidebar dataset from the server, rather than attempting fine-grained local list surgery (simpler, and consistent with how the manual refresh button already works).
 
 ## Out of scope
 
 - 편집 (Edit) — no edit UI exists in this app; excluded from this feature.
+- 아카이브 (Archive) — unreachable given the sidebar's current `completed`/`cancelled` filtering; see Menu items section.
 - Preserving `description` when duplicating.
-- Un-archiving from the sidebar.
