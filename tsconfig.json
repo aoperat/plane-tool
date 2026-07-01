@@ -14,11 +14,6 @@
     "allowJs": true
   },
   "include": ["src"],
-  "exclude": ["node_modules"],
-  "ts-node": {
-    "compilerOptions": {
-      "module": "commonjs"
-    }
-  }
+  "exclude": ["node_modules"]
 }
 

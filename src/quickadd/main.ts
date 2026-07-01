@@ -67,18 +67,29 @@ function renderDropdown() {
   }
 }
 
-function assigneeChipHtml(): string {
-  if (assigneeIds.length === 0) return `<span class="avatar">나</span> 나`;
-  if (assigneeIds.length === 1) {
+function renderAssigneeChip() {
+  chipAssignee.textContent = "";
+  const avatar = document.createElement("span");
+  avatar.className = "avatar";
+  let label: string;
+  if (assigneeIds.length === 0) {
+    avatar.textContent = "나";
+    label = "나";
+  } else if (assigneeIds.length === 1) {
     const m = members.find((x) => x.id === assigneeIds[0]);
     const name = m ? m.display_name : "1명";
-    return `<span class="avatar">${name.slice(0, 1)}</span> ${name}`;
+    avatar.textContent = name.slice(0, 1);
+    label = name;
+  } else {
+    avatar.textContent = String(assigneeIds.length);
+    label = `${assigneeIds.length}명`;
   }
-  return `<span class="avatar">${assigneeIds.length}</span> ${assigneeIds.length}명`;
+  chipAssignee.appendChild(avatar);
+  chipAssignee.appendChild(document.createTextNode(" " + label));
 }
 
 function renderChips() {
-  chipAssignee.innerHTML = assigneeChipHtml();
+  renderAssigneeChip();
   chipStart.innerHTML = `${CALENDAR_ICON} ${DATE_PRESETS.find((d) => d.key === startPreset)!.label}`;
   chipDue.innerHTML = `${FLAG_ICON} ${DATE_PRESETS.find((d) => d.key === duePreset)!.label}`;
   chipPriority.innerHTML =
