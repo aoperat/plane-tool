@@ -97,7 +97,8 @@ pub async fn create_issue(app: tauri::AppHandle, project_id: String, name: Strin
         return Err("empty_title".into());
     }
     let (client, _s) = client(&app)?;
-    client.create_work_item(&project_id, name.trim()).await?;
+    let user = client.current_user().await?;
+    client.create_work_item(&project_id, name.trim(), &user.id).await?;
     config::set_last_project(&app, &project_id)?;
     Ok(())
 }
