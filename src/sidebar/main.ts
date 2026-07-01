@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { fetchSidebarData, getSettings } from "../shared/ipc";
 import { colorForId } from "../shared/color";
+import { countAssignedByProject } from "./logic";
 import type { SidebarData, Project, WorkItem } from "../shared/types";
 import "../shared/app.css";
 
@@ -24,7 +25,7 @@ function prioLabel(p: string): string {
   return p === "urgent" || p === "high" ? "높음" : p === "medium" ? "보통" : "";
 }
 
-function renderProjects(projects: Project[]) {
+function renderProjects(projects: Project[], counts: Record<string, number>) {
   projCount.textContent = String(projects.length);
   projectsEl.innerHTML = "";
   for (const p of projects) {
@@ -35,6 +36,11 @@ function renderProjects(projects: Project[]) {
     dot.style.background = colorForId(p.id);
     row.appendChild(dot);
     row.appendChild(document.createTextNode(p.name));
+    const count = counts[p.id] ?? 0;
+    const badge = document.createElement("span");
+    badge.className = "pcount" + (count === 0 ? " zero" : "");
+    badge.textContent = String(count);
+    row.appendChild(badge);
     projectsEl.appendChild(row);
   }
 }
@@ -105,7 +111,7 @@ async function refresh() {
     baseUrl = s.base_url;
     workspace = s.workspace;
     const data: SidebarData = await fetchSidebarData();
-    renderProjects(data.projects);
+    renderProjects(data.projects, countAssignedByProject(data.assigned));
     renderTasks(data.assigned);
     synced.textContent = "동기화 완료";
   } catch (e) {
