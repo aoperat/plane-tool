@@ -84,8 +84,15 @@ function renderTasks(items: WorkItem[]) {
     el.appendChild(body);
 
     // open issue in browser — /issues/ web route
-    el.onclick = () =>
-      openUrl(`${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`);
+    el.onclick = async () => {
+      const url = `${baseUrl}/${workspace}/projects/${it.project_id}/issues/${it.id}`;
+      try {
+        await openUrl(url);
+      } catch (err) {
+        synced.textContent = "열기 실패: " + err;
+        console.error("openUrl failed:", url, err);
+      }
+    };
 
     tasksEl.appendChild(el);
   }
@@ -102,7 +109,9 @@ async function refresh() {
     renderTasks(data.assigned);
     synced.textContent = "동기화 완료";
   } catch (e) {
-    synced.textContent = "동기화 실패 — 설정을 확인하세요";
+    const msg = typeof e === "string" ? e : ((e as any)?.message ?? JSON.stringify(e));
+    synced.textContent = "동기화 실패: " + msg;
+    synced.title = msg;
     console.error(e);
   }
 }

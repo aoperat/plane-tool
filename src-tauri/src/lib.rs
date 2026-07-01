@@ -89,17 +89,9 @@ pub fn run() {
             if cfg.base_url.is_empty() {
                 show_window(app.handle(), "settings");
             }
-
-            for label in ["quickadd", "sidebar"] {
-                if let Some(win) = app.get_webview_window(label) {
-                    let w = win.clone();
-                    win.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Focused(false) = event {
-                            let _ = w.hide();
-                        }
-                    });
-                }
-            }
+            // Note: no focus-loss auto-hide — the QuickAdd popup and the Sidebar
+            // are allowed to stay open at the same time. Each is dismissed with
+            // Esc (handled in the page) or by toggling its shortcut again.
 
             Ok(())
         })
