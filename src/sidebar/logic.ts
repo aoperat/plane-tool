@@ -63,6 +63,11 @@ export function resolveStateId(states: ProjectState[], projectId: string, group:
   return (matches.find((s) => s.default) ?? matches[0])?.id;
 }
 
+/** Builds the web URL for a Plane issue, matching the format used to open issues in the browser. */
+export function buildIssueUrl(baseUrl: string, workspace: string, projectId: string, itemId: string): string {
+  return `${baseUrl}/${workspace}/projects/${projectId}/issues/${itemId}`;
+}
+
 export interface SidebarGeometry {
   width: number;
   height: number;

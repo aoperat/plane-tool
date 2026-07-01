@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, isCompletedToday, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -175,5 +175,13 @@ describe("resolveStateId", () => {
   it("prefers the state flagged default over the first match", () => {
     const dup = [st("s5", "started", "p1"), st("s6", "started", "p1", true)];
     expect(resolveStateId(dup, "p1", "started")).toBe("s6");
+  });
+});
+
+describe("buildIssueUrl", () => {
+  it("joins base url, workspace, project id and item id into a Plane issue url", () => {
+    expect(buildIssueUrl("https://plane.example.com", "acme", "p1", "i1")).toBe(
+      "https://plane.example.com/acme/projects/p1/issues/i1",
+    );
   });
 });
