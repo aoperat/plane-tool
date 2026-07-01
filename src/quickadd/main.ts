@@ -355,7 +355,7 @@ titleEl.addEventListener("keydown", async (e) => {
     await win.hide();
     return;
   }
-  if (e.key === "Tab" && !descriptionOpen) {
+  if (e.key === "Tab" && !e.shiftKey && !openPopover && !descriptionOpen) {
     e.preventDefault();
     setDescriptionOpen(true);
     return;
