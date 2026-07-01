@@ -28,10 +28,45 @@ F2(사이드바 단축키) 사이드바에서:
 > 확정 목업: [`docs/mockups/sidebar-inline-edit-mockup.html`](../../mockups/sidebar-inline-edit-mockup.html)
 
 - **인터랙션 패턴**: 클릭 → 그 자리에 드롭다운 팝오버가 뜨는 방식 (Linear 스타일). 호버 아이콘이나 상시 노출 칩 방식은 기각 — 사이드바가 320px로 좁아 평소엔 최대한 깔끔하게 유지.
-- **상태 점 클릭**: 팝오버에 5개 그룹(백로그/시작 전/진행 중/완료/취소)이 점 색으로 표시, 현재 값에 체크/하이라이트.
-- **우선순위 텍스트 클릭**: 팝오버에 5개 값(🚨 긴급/🔴 높음/🟡 보통/⚪ 낮음/— 없음).
+- **상태 점 클릭**: 팝오버에 5개 그룹(백로그/시작 전/진행 중/완료/취소)이 Plane 실제 상태 아이콘(3.1절)으로 표시, 현재 값에 체크/하이라이트. 작업 행 자체의 상태 점도 지금의 단순화된 3색 점(할일/진행/완료) 대신 동일한 5종 Plane 아이콘으로 교체(백로그/취소도 시각적으로 구분).
+- **우선순위 텍스트 클릭**: 팝오버에 5개 값(긴급/높음/보통/낮음/없음), 각각 Plane 실제 우선순위 아이콘(3.1절) 사용. 작업 행의 우선순위 표시도 텍스트 라벨 대신 아이콘(+텍스트 유지)으로 교체.
 - **프로젝트 배지**: 프로젝트 행 오른쪽 끝에 개수. 1 이상이면 파란 필(accent-soft 배경), 0이면 텍스트만 흐리게(`muted-2`, 배경 없음) — 숨기지 않고 항상 자리 차지(레이아웃 흔들림 방지).
 - 팝오버는 바깥 클릭 또는 `Esc`로 닫힘. 상태/우선순위 클릭은 `stopPropagation`으로 행 전체의 "브라우저에서 열기" 클릭과 분리되어야 함.
+
+### 3.1 아이콘 소스 (Plane 실제 아이콘 사용)
+
+사용자 요청: 이모지 대신 Plane이 실제로 쓰는 아이콘을 그대로 사용. 두 그룹으로 나뉘며 라이선스가 다르다.
+
+**우선순위 아이콘** — Plane의 `PriorityIcon`(`packages/propel/src/icons/priority-icon.tsx`)은 자체 SVG가 아니라 **lucide-react**(ISC 라이선스, permissive) 아이콘을 그대로 매핑해 쓴다:
+
+| priority | lucide 아이콘 | 색상(hex) |
+|---|---|---|
+| urgent | `AlertCircle` | `#D7443E` |
+| high | `SignalHigh` | `#DB7A2A` |
+| medium | `SignalMedium` | `#D9A916` |
+| low | `SignalLow` | `#3D6FD9` |
+| none | `Ban` | `#8C9199` |
+
+lucide-static(ISC)에서 받은 24x24 stroke 기반 SVG(`stroke-width 2, stroke-linecap round`)를 `src/shared/icons/priority.ts`에 상수 문자열로 저장. ISC는 permissive라 그대로 번들링해도 문제없음(저작권 고지만 파일 상단에 남김).
+
+**상태 아이콘** — Plane의 `StateGroupIcon`(`packages/propel/src/icons/state/*.tsx`)은 커스텀 SVG(점선 원/진행 원/체크·X 컷아웃)이며, **이 소스는 AGPL-3.0**이다 (`packages/propel`는 Plane 코어와 동일 라이선스).
+
+| group | 색상(hex) | 모양 |
+|---|---|---|
+| backlog | `#60646C` | 15개 점선 세그먼트로 이루어진 원 (진행 없음) |
+| unstarted | `#60646C` | 속이 빈 원형 링 |
+| started | `#F59E0B` | 바깥 링 + 안쪽 작은 원(2중 링, 진행 표시) |
+| completed | `#46A758` | 체크마크가 뚫린 채워진 원 |
+| cancelled | `#9AA4BC` | X가 뚫린 채워진 원 |
+
+> **라이선스 주의**: `src/shared/icons/state.ts`는 Plane `packages/propel`(AGPL-3.0-only) 소스 로직을 포팅한 것 — 사용자 확인 후 그대로 포함하기로 결정(현재 plane-tool은 개인용, 배포 계획 없음). **이 앱을 배포/공유하게 되면 AGPL 의무(소스 공개 등) 재검토 필요.** 파일 상단에 원본 출처(`C:\WorkSpaces\plane\packages\propel\src\icons\state\`)와 SPDX 식별자를 주석으로 남긴다.
+
+**공용 모듈 구조** (F1 QuickAdd/F2 사이드바 등 여러 창에서 재사용 가능하도록 `src/shared/color.ts`와 같은 패턴):
+- `src/shared/icons/priority.ts` — `priorityColor(priority): string`, `priorityIconSvg(priority): string`
+- `src/shared/icons/state.ts` — `stateGroupColor(group): string`, `stateGroupIconSvg(group): string`
+- `src/shared/icons/index.ts` — 위 두 모듈 re-export
+
+> 확정 목업(아이콘 반영): [`docs/mockups/sidebar-inline-edit-mockup.html`](../../mockups/sidebar-inline-edit-mockup.html)
 
 ## 4. 데이터 흐름 & 백엔드 변경
 
@@ -54,10 +89,11 @@ Plane API의 워크아이템 PATCH는 `state` 필드에 **특정 state의 UUID**
   - 새 커맨드: `update_work_item_state(project_id, item_id, state_id: String) -> Result<(), String>`
   - 같은 그룹에 state가 여러 개인 프로젝트는 **응답에서 먼저 나온 것**을 사용 (단순화, 커스텀 다중 state 그룹 매핑은 범위 밖)
 
-### 4.3 프론트엔드 변경 (`src/sidebar/main.ts`, `src/shared/types.ts`, `src/shared/ipc.ts`)
+### 4.3 프론트엔드 변경 (`src/sidebar/main.ts`, `src/shared/types.ts`, `src/shared/ipc.ts`, `src/shared/icons/*`)
 
 - `types.ts`: `State { id, group, project_id }` 추가, `SidebarData`에 `states` 추가
 - `ipc.ts`: `updateWorkItemPriority`, `updateWorkItemState` invoke 래퍼 추가
+- `icons/priority.ts`, `icons/state.ts`, `icons/index.ts`: 3.1절대로 신설 — 순수 함수만 노출, DOM/프레임워크 의존 없음(F1 QuickAdd 창에서도 재사용 가능)
 - `main.ts`
   - `renderProjects`: `assigned` 목록을 `project_id`로 group-by한 카운트 맵을 만들어 각 행에 배지 렌더 (0이면 `pcount zero` 클래스)
   - group→stateId 매핑 함수를 순수 함수로 분리: `resolveStateId(states: State[], projectId: string, group: string): string | undefined`
@@ -77,7 +113,7 @@ Plane API의 워크아이템 PATCH는 `state` 필드에 **특정 state의 UUID**
 
 - Rust (`plane_api.rs`): `list_states` wiremock 테스트 (states 엔드포인트 파싱), `update_work_item` PATCH 요청 바디/헤더 검증 테스트
 - Rust (`commands.rs`): `fetch_sidebar_data`가 `states`를 포함해 조립하는지 통합 테스트 (기존 `assemble_sidebar` 테스트 확장)
-- TS (vitest): `resolveStateId` 순수 함수 단위 테스트 (그룹 매칭/중복/누락 케이스), 프로젝트별 배지 카운트 집계 함수 단위 테스트
+- TS (vitest): `resolveStateId` 순수 함수 단위 테스트 (그룹 매칭/중복/누락 케이스), 프로젝트별 배지 카운트 집계 함수 단위 테스트, `priorityIconSvg`/`stateGroupIconSvg`가 5개 값 모두에 대해 빈 문자열이 아닌 SVG를 반환하는지 스모크 테스트
 - 수동 QA: 실제 sidebar 창에서 상태/우선순위 변경 후 Plane 웹에서 반영 확인, 실패 시 롤백 확인 (네트워크 끊고 테스트)
 
 ## 7. 열린 결정 (구현 시)
