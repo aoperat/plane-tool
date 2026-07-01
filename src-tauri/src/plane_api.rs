@@ -192,6 +192,25 @@ impl PlaneClient {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub async fn update_work_item(
+        &self,
+        project_id: &str,
+        item_id: &str,
+        body: serde_json::Value,
+    ) -> Result<(), String> {
+        let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
+        self.http
+            .patch(&url)
+            .header("X-Api-Key", &self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .error_for_status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
@@ -311,6 +330,24 @@ mod tests {
             state_id: "state-1",
         };
         client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_work_item_sends_patch_with_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .and(wiremock::matchers::body_json(serde_json::json!({ "priority": "high" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        client_for(&server)
+            .await
+            .update_work_item("p1", "i1", serde_json::json!({ "priority": "high" }))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
