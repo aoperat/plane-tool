@@ -17,6 +17,16 @@ pub struct WorkItem {
 #[derive(Debug, Clone)]
 pub struct CurrentUser { pub id: String, pub display_name: String }
 
+#[derive(Debug, Clone)]
+pub struct ProjectState { pub id: String, pub group: String }
+
+#[derive(Debug, Clone)]
+pub struct Member { pub id: String, pub display_name: String }
+
+pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
+    states.iter().find(|s| s.group == group).map(|s| s.id.clone())
+}
+
 pub fn filter_assigned_open(items: Vec<WorkItem>, user_id: &str) -> Vec<WorkItem> {
     items
         .into_iter()
@@ -51,6 +61,12 @@ fn priority_none() -> String { "none".into() }
 
 #[derive(Deserialize)]
 struct RawUser { id: String, #[serde(default)] display_name: String }
+
+#[derive(Deserialize)]
+struct RawProjectState { id: String, group: String }
+
+#[derive(Deserialize)]
+struct RawMember { id: String, #[serde(default)] display_name: String }
 
 pub struct PlaneClient {
     base_url: String,
@@ -112,22 +128,50 @@ impl PlaneClient {
         Ok(page.results.into_iter().map(|w| map_work_item(w, project_id)).collect())
     }
 
-    pub async fn create_work_item(&self, project_id: &str, name: &str) -> Result<WorkItem, String> {
+    pub async fn list_states(&self, project_id: &str) -> Result<Vec<ProjectState>, String> {
+        let url = format!("{}/projects/{}/states/", self.ws_base(), project_id);
+        let page: Paginated<RawProjectState> =
+            self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(page
+            .results
+            .into_iter()
+            .map(|s| ProjectState { id: s.id, group: s.group })
+            .collect())
+    }
+
+    // Unlike every other list endpoint in this file, /members/ returns a bare
+    // JSON array — no `{"results": [...]}` wrapper. Confirmed against the
+    // live server; do not wrap this in `Paginated<T>`.
+    pub async fn list_members(&self, project_id: &str) -> Result<Vec<Member>, String> {
+        let url = format!("{}/projects/{}/members/", self.ws_base(), project_id);
+        let raw: Vec<RawMember> = self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(raw
+            .into_iter()
+            .map(|m| Member { id: m.id, display_name: m.display_name })
+            .collect())
+    }
+
+    pub async fn create_work_item(
+        &self,
+        project_id: &str,
+        name: &str,
+        assignee_id: &str,
+    ) -> Result<(), String> {
+        // The create endpoint (no `expand` param) returns `assignees`/`state` as
+        // flat id strings, not the nested objects `RawWorkItem` expects (that
+        // shape only applies to the `expand=assignees,state` list endpoint).
+        // Nothing consumes the created item, so skip parsing the body.
         let url = format!("{}/projects/{}/work-items/", self.ws_base(), project_id);
-        let raw: RawWorkItem = self
-            .http
+        self.http
             .post(&url)
             .header("X-Api-Key", &self.api_key)
-            .json(&serde_json::json!({ "name": name }))
+            .json(&serde_json::json!({ "name": name, "assignees": [assignee_id] }))
             .send()
             .await
             .map_err(|e| e.to_string())?
             .error_for_status()
-            .map_err(|e| e.to_string())?
-            .json()
-            .await
             .map_err(|e| e.to_string())?;
-        Ok(map_work_item(raw, project_id))
+        Ok(())
     }
 }
 
@@ -222,22 +266,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_work_item_posts_name_only() {
+    async fn create_work_item_assigns_creator() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
             .and(header("X-Api-Key", "secret-key"))
-            .and(wiremock::matchers::body_json(serde_json::json!({ "name": "Hello" })))
+            .and(wiremock::matchers::body_json(
+                serde_json::json!({ "name": "Hello", "assignees": ["me"] }),
+            ))
+            // Real create-endpoint response: assignees/state are flat id
+            // strings (no `expand` param), unlike the list endpoint's nested
+            // objects. create_work_item doesn't parse this body at all, but
+            // the mock still models the real shape for documentation value.
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "id": "new-1", "name": "Hello", "priority": "none",
-                "target_date": serde_json::Value::Null, "assignees": []
+                "target_date": serde_json::Value::Null, "assignees": ["me"], "state": "s1"
             })))
             .mount(&server)
             .await;
 
-        let created = client_for(&server).await.create_work_item("p1", "Hello").await.unwrap();
-        assert_eq!(created.id, "new-1");
-        assert_eq!(created.name, "Hello");
+        client_for(&server)
+            .await
+            .create_work_item("p1", "Hello", "me")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -255,5 +307,55 @@ mod tests {
         let user = client_for(&server).await.current_user().await.unwrap();
         assert_eq!(user.id, "me");
         assert_eq!(user.display_name, "Aoperat");
+    }
+
+    #[test]
+    fn resolve_state_id_finds_id_for_group() {
+        let states = vec![
+            ProjectState { id: "s-backlog".into(), group: "backlog".into() },
+            ProjectState { id: "s-todo".into(), group: "unstarted".into() },
+        ];
+        assert_eq!(resolve_state_id(&states, "backlog"), Some("s-backlog".to_string()));
+        assert_eq!(resolve_state_id(&states, "cancelled"), None);
+    }
+
+    #[tokio::test]
+    async fn list_states_parses_group_and_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/states/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "s1", "name": "Backlog", "group": "backlog" },
+                    { "id": "s2", "name": "Todo", "group": "unstarted" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let states = client_for(&server).await.list_states("p1").await.unwrap();
+        assert_eq!(states.len(), 2);
+        assert_eq!(states[0].id, "s1");
+        assert_eq!(states[0].group, "backlog");
+    }
+
+    #[tokio::test]
+    async fn list_members_parses_plain_array_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/members/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "id": "u1", "display_name": "Alice" },
+                { "id": "u2", "display_name": "Bob" }
+            ])))
+            .mount(&server)
+            .await;
+
+        let members = client_for(&server).await.list_members("p1").await.unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0].id, "u1");
+        assert_eq!(members[1].display_name, "Bob");
     }
 }
