@@ -1,4 +1,5 @@
 use crate::config;
+use tauri::Emitter;
 use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
 
@@ -251,6 +252,45 @@ pub async fn update_work_item_state(
     client
         .update_work_item(&project_id, &item_id, serde_json::json!({ "state": state_id }))
         .await
+}
+
+#[tauri::command]
+pub async fn update_work_item_fields(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+    name: Option<String>,
+    description: Option<String>,
+    assignee_ids: Option<Vec<String>>,
+    start_date: Option<String>,
+    target_date: Option<String>,
+    priority: Option<String>,
+    state_group: Option<String>,
+) -> Result<(), String> {
+    let (client, _s) = client(&app)?;
+    let description_html = description.as_deref().map(plain_text_to_description_html);
+    let state_id = match &state_group {
+        Some(sg) => {
+            let states = client.list_states(&project_id).await?;
+            Some(resolve_state_id(&states, sg).ok_or_else(|| format!("no state found for group '{sg}'"))?)
+        }
+        None => None,
+    };
+    let body = build_update_body(
+        name.as_deref(),
+        description_html.as_deref(),
+        assignee_ids.as_deref(),
+        start_date.as_deref(),
+        target_date.as_deref(),
+        priority.as_deref(),
+        state_id.as_deref(),
+    );
+    if body.as_object().is_some_and(|m| m.is_empty()) {
+        return Ok(());
+    }
+    client.update_work_item(&project_id, &item_id, body).await?;
+    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    Ok(())
 }
 
 #[tauri::command]
