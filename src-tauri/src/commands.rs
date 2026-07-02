@@ -103,10 +103,12 @@ pub fn build_update_body(
         body.insert("assignees".into(), serde_json::json!(a));
     }
     if let Some(sd) = start_date {
-        body.insert("start_date".into(), serde_json::json!(sd));
+        let v = if sd.is_empty() { serde_json::Value::Null } else { serde_json::json!(sd) };
+        body.insert("start_date".into(), v);
     }
     if let Some(td) = target_date {
-        body.insert("target_date".into(), serde_json::json!(td));
+        let v = if td.is_empty() { serde_json::Value::Null } else { serde_json::json!(td) };
+        body.insert("target_date".into(), v);
     }
     if let Some(p) = priority {
         body.insert("priority".into(), serde_json::json!(p));
@@ -469,5 +471,12 @@ mod tests {
         let empty: Vec<String> = vec![];
         let body = build_update_body(None, None, Some(&empty), None, None, None, None);
         assert_eq!(body, serde_json::json!({ "assignees": [] }));
+    }
+
+    #[test]
+    fn build_update_body_turns_empty_date_strings_into_null() {
+        // The sidebar's date popover sends "" to clear a date; Plane expects null.
+        let body = build_update_body(None, None, None, Some(""), Some(""), None, None);
+        assert_eq!(body, serde_json::json!({ "start_date": null, "target_date": null }));
     }
 }
