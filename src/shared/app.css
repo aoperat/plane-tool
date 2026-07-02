@@ -71,6 +71,9 @@ kbd {
   background: transparent; color: var(--text); font-size: 13px; font-family: inherit;
   padding: 0 18px 12px; overflow: hidden;
 }
+/* `display: block` above beats the UA's [hidden] { display: none } — restate it,
+   or the description-toggle's `hidden` attribute has no visible effect. */
+.description-input[hidden] { display: none; }
 .description-input::placeholder { color: var(--muted-2); }
 /* nowrap: the chip row must stay a single line in any environment — extreme
    content (long member names) shrinks and clips a chip instead of wrapping. */
