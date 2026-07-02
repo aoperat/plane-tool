@@ -378,6 +378,22 @@ chipDue.addEventListener("keydown", fieldPopoverKeydown);
 chipPriority.addEventListener("keydown", fieldPopoverKeydown);
 chipState.addEventListener("keydown", fieldPopoverKeydown);
 
+// DOM order of the field chips, used for ArrowLeft/ArrowRight navigation between them.
+const chips = [chipAssignee, chipStart, chipDue, chipState, chipPriority];
+
+/** Moves focus to the previous/next chip in `chips` (no wrap). No-op while a dropdown is open,
+ *  since ArrowUp/ArrowDown already own navigation there (see `handleDropdownKeydown`). */
+function handleChipArrowNav(e: KeyboardEvent) {
+  if (openPopover !== null) return;
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const currentIndex = chips.indexOf(e.currentTarget as HTMLElement);
+  const nextIndex = currentIndex + (e.key === "ArrowRight" ? 1 : -1);
+  if (nextIndex < 0 || nextIndex >= chips.length) return;
+  e.preventDefault();
+  chips[nextIndex].focus();
+}
+chips.forEach((chip) => chip.addEventListener("keydown", handleChipArrowNav));
+
 function resetFields() {
   assigneeIds = [];
   startChoice = "today";
