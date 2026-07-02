@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Sidebar 개선안 목업 — 3가지 방향 비교</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0e12;
+    --panel: #16181d;
+    --panel-2: #1c1f26;
+    --border: #2a2e37;
+    --text: #e6e8ec;
+    --muted: #8a909c;
+    --muted-2: #5c626d;
+    --accent: #4f7cff;
+    --accent-soft: rgba(79,124,255,0.14);
+    --green: #2ecc71;
+    --amber: #f5a623;
+    --red: #ef4d56;
+    --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); padding: 28px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  .lede { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .grid { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 320px; flex: none; }
+  .col > .label { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .col > .desc { font-size: 11.5px; color: var(--muted); line-height: 1.5; min-height: 72px; margin-bottom: 10px; }
+  .col .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-right: 6px; vertical-align: 1px; }
+  .badge.cur { background: #3a3f4a; color: #aab0bc; }
+  .badge.rec { background: var(--accent); color: #fff; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; box-shadow: var(--shadow);
+  }
+
+  /* ---------- shared header ---------- */
+  .head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--border); }
+  .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; font-size: 13px; font-weight: 800; flex: none; }
+  .head .t { font-weight: 600; font-size: 14px; }
+  .head .spacer { margin-left: auto; }
+  .hbtn {
+    width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center;
+    color: var(--muted); cursor: pointer; flex: none;
+  }
+  .hbtn:hover { background: var(--panel-2); color: var(--text); }
+  .hbtn.active { color: var(--accent); background: var(--accent-soft); }
+  .hbtn svg { width: 15px; height: 15px; }
+
+  .section-h { display: flex; align-items: center; justify-content: space-between; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 12px 14px 6px; }
+  .grp { display: flex; align-items: center; gap: 8px; padding: 8px 14px 6px; font-size: 12px; font-weight: 700; }
+  .grp .dot { width: 9px; height: 9px; border-radius: 50%; background: #e8734a; flex: none; }
+  .grp .chev { color: var(--muted); font-size: 10px; }
+  .grp .n { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+  .foot { padding: 9px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
+
+  svg { display: block; }
+
+  /* =================================================================
+     CURRENT (reference)
+  ================================================================= */
+  .cur-task { display: flex; gap: 10px; padding: 9px 9px 9px 20px; cursor: pointer; }
+  .cur-task:hover { background: var(--panel-2); }
+  .cur-task .name { font-size: 13.5px; line-height: 1.35; }
+  .cur-task .meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 11px; color: var(--muted); }
+  .cur-task .prio { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
+  .cur-state { margin-top: 2px; flex: none; }
+
+  /* =================================================================
+     A. 칩(pill) 방식 — 모든 편집 가능한 필드를 버튼처럼
+  ================================================================= */
+  .a-task { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid rgba(42,46,55,.5); }
+  .a-task:hover { background: var(--panel-2); }
+  .a-top { display: flex; align-items: flex-start; gap: 9px; }
+  .a-state {
+    width: 26px; height: 26px; border-radius: 7px; flex: none;
+    display: grid; place-items: center; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .a-task:hover .a-state { border-color: var(--border); background: var(--bg); }
+  .a-state:hover { border-color: var(--accent) !important; }
+  .a-top .name { font-size: 13.5px; line-height: 1.4; padding-top: 4px; }
+  .a-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 35px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    font-size: 11.5px; color: var(--text); cursor: pointer; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip .cv { color: var(--muted); }
+  .chip.empty { color: var(--muted-2); border-style: dashed; }
+  .chip.empty:hover { color: var(--accent); border-color: var(--accent); }
+  .chip svg { width: 12px; height: 12px; flex: none; }
+
+  /* =================================================================
+     B. 인라인 강화 방식 — 배치는 지금과 같게, 편집 가능 요소만 버튼화
+  ================================================================= */
+  .b-task { display: flex; gap: 9px; padding: 9px 10px; cursor: pointer; }
+  .b-task:hover { background: var(--panel-2); }
+  .b-state {
+    width: 28px; height: 28px; border-radius: 7px; flex: none; margin-top: 1px;
+    display: grid; place-items: center; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border);
+  }
+  .b-state:hover { border-color: var(--accent); }
+  .b-state::after { content: "▾"; font-size: 7px; color: var(--muted-2); position: absolute; }
+  .b-state { position: relative; }
+  .b-state::after { bottom: 1px; right: 2px; }
+  .b-body { min-width: 0; flex: 1; }
+  .b-task .name { font-size: 13.5px; line-height: 1.4; }
+  .b-meta { display: flex; align-items: center; gap: 5px; margin-top: 6px; }
+  .mbtn {
+    display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
+    border-radius: 5px; font-size: 11px; cursor: pointer; color: var(--muted);
+    border: 1px solid transparent;
+  }
+  .b-task:hover .mbtn { background: var(--bg); border-color: var(--border); color: var(--text); }
+  .mbtn:hover { border-color: var(--accent) !important; }
+  .mbtn svg { width: 11px; height: 11px; }
+  .b-open { margin-left: auto; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted-2); opacity: 0; cursor: pointer; flex: none; }
+  .b-task:hover .b-open { opacity: 1; }
+  .b-open:hover { background: var(--bg); color: var(--text); }
+  .b-open svg { width: 12px; height: 12px; }
+
+  /* =================================================================
+     C. 2단 카드 방식 — 카드형 + 항상 보이는 라벨식 필드행
+  ================================================================= */
+  .c-list { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .c-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 11px; cursor: pointer;
+  }
+  .c-card:hover { border-color: #3d4350; }
+  .c-top { display: flex; align-items: flex-start; gap: 8px; }
+  .c-top .name { font-size: 13px; line-height: 1.4; flex: 1; }
+  .c-fields { display: flex; gap: 4px; margin-top: 9px; }
+  .fbtn {
+    flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 5px 7px;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--panel);
+    cursor: pointer; min-width: 0;
+  }
+  .fbtn:hover { border-color: var(--accent); }
+  .fbtn .k { font-size: 9px; color: var(--muted-2); letter-spacing: .04em; }
+  .fbtn .v { font-size: 11px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
+  .fbtn .v svg { width: 11px; height: 11px; flex: none; }
+
+  /* =================================================================
+     A-FINAL. 프로젝트 헤더 개선판
+  ================================================================= */
+  .g2 {
+    display: flex; align-items: center; gap: 7px; margin: 6px 8px 2px;
+    padding: 6px 8px; border-radius: 7px; cursor: pointer; user-select: none;
+  }
+  .g2:hover { background: var(--panel-2); }
+  .g2 .chevbtn {
+    width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center;
+    color: var(--muted); font-size: 9px; flex: none; transition: transform .15s;
+  }
+  .g2.collapsed .chevbtn { transform: rotate(-90deg); }
+  .g2 .dot { width: 9px; height: 9px; border-radius: 50%; background: #e8734a; flex: none; }
+  .g2 .name { font-size: 12px; font-weight: 700; }
+  .g2 .ident { font-size: 9.5px; font-weight: 700; color: var(--muted-2); letter-spacing: .05em; padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; }
+  .g2 .prog { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .g2 .prog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .g2 .ring { width: 14px; height: 14px; flex: none; }
+  .g2 .addbtn {
+    width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center;
+    color: var(--muted-2); opacity: 0; flex: none;
+  }
+  .g2:hover .addbtn { opacity: 1; }
+  .g2 .addbtn:hover { background: var(--bg); color: var(--accent); }
+
+  .note { margin-top: 40px; max-width: 1000px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+  .note b { color: var(--text); }
+  .note td { padding: 4px 14px 4px 0; vertical-align: top; }
+  .note td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<h1>사이드바 개선안 — 3가지 방향</h1>
+<div class="lede">공통 개선: 헤더 버튼 통일(SVG 아이콘 + 28px 히트영역), 편집 가능한 필드는 전부 "버튼처럼 보이게". 각 카드에 마우스를 올려 호버 동작을 확인하세요.</div>
+
+<div class="grid">
+
+  <!-- ============ CURRENT ============ -->
+  <div class="col">
+    <div class="label"><span class="badge cur">현재</span>기준</div>
+    <div class="desc">상태 아이콘·우선순위가 클릭 가능하지만 표시가 없음. 날짜는 표시만 되고 수정 불가. 시작일 미표시. 헤더는 이모지 버튼.</div>
+    <div class="panel">
+      <div class="head">
+        <div class="logo">P</div><div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span style="cursor:pointer;font-size:13px;color:var(--muted)">📌</span>
+        <span style="cursor:pointer;font-size:14px;color:var(--muted)">⟳</span>
+        <span style="cursor:pointer;font-size:14px;color:var(--muted)">⚙</span>
+      </div>
+      <div class="section-h"><span>나에게 할당된 작업</span><span>3</span></div>
+      <div class="grp"><span class="chev">▾</span><span class="dot"></span>웹 리뉴얼<span class="n">2</span></div>
+      <div class="cur-task">
+        <span class="cur-state"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#f5a623" stroke-width="1.6"/><circle cx="7" cy="7" r="2.4" fill="#f5a623"/></svg></span>
+        <div>
+          <div class="name">메인 배너 A/B 테스트 세팅</div>
+          <div class="meta"><span class="prio" style="color:#ef4d56"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 10V2l7 2.5L2 7" fill="#ef4d56"/></svg>긴급</span><span>· 2026-07-04</span></div>
+        </div>
+      </div>
+      <div class="cur-task">
+        <span class="cur-state"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6" stroke-dasharray="2 2"/></svg></span>
+        <div>
+          <div class="name">고객 피드백 위젯 붙이기</div>
+          <div class="meta"><span>· 2026-07-08</span></div>
+        </div>
+      </div>
+      <div class="grp"><span class="chev">▾</span><span class="dot" style="background:#4aa3e8"></span>모바일 앱<span class="n">1</span></div>
+      <div class="cur-task">
+        <span class="cur-state"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6"/></svg></span>
+        <div>
+          <div class="name">푸시 알림 딥링크 QA</div>
+          <div class="meta"><span class="prio" style="color:#f5a623"><svg width="11" height="11" viewBox="0 0 12 12"><rect x="1" y="6" width="2.6" height="4" rx="0.6" fill="#f5a623"/><rect x="4.7" y="4" width="2.6" height="6" rx="0.6" fill="#f5a623"/><rect x="8.4" y="2" width="2.6" height="8" rx="0.6" fill="#f5a623" opacity="0.35"/></svg>높음</span></div>
+        </div>
+      </div>
+      <div class="foot">동기화 완료</div>
+    </div>
+  </div>
+
+  <!-- ============ A. 칩 방식 ============ -->
+  <div class="col">
+    <div class="label"><span class="badge rec">A안 · 추천</span>칩(Chip) 방식</div>
+    <div class="desc">QuickAdd와 같은 문법. 상태·우선순위·기간이 <b>항상 테두리 있는 칩</b>으로 표시되어 클릭 가능함이 명확. 값이 없는 필드는 점선 칩("+ 마감일")으로 추가 유도. 시작일→마감일을 한 칩에 표시.</div>
+    <div class="panel">
+      <div class="head">
+        <div class="logo">P</div><div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span class="hbtn" title="고정"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.5 2l4.5 4.5-2.2.7-2.4 2.4.3 3.4-2.1-2.1L4 14.5 1.5 12l3.6-3.6L3 6.4l3.4.3 2.4-2.4z" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn" title="새로고침"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn" title="설정"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></svg></span>
+      </div>
+      <div class="section-h"><span>나에게 할당된 작업</span><span>3</span></div>
+      <div class="grp"><span class="chev">▾</span><span class="dot"></span>웹 리뉴얼<span class="n">2</span></div>
+
+      <div class="a-task">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#f5a623" stroke-width="1.6"/><circle cx="7" cy="7" r="2.4" fill="#f5a623"/></svg></span>
+          <div class="name">메인 배너 A/B 테스트 세팅</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip" title="우선순위 변경" style="color:#ef4d56"><svg viewBox="0 0 12 12"><path d="M2 10V2l7 2.5L2 7" fill="#ef4d56"/></svg>긴급</span>
+          <span class="chip" title="기간 변경"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg>7/1 <span class="cv">→</span> 7/4</span>
+        </div>
+      </div>
+
+      <div class="a-task">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6" stroke-dasharray="2 2"/></svg></span>
+          <div class="name">고객 피드백 위젯 붙이기</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip empty" title="우선순위 설정"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 2v8M2 6h8"/></svg>우선순위</span>
+          <span class="chip" title="기간 변경"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg><span class="cv">~</span> 7/8</span>
+        </div>
+      </div>
+
+      <div class="grp"><span class="chev">▾</span><span class="dot" style="background:#4aa3e8"></span>모바일 앱<span class="n">1</span></div>
+      <div class="a-task" style="border-bottom:none">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6"/></svg></span>
+          <div class="name">푸시 알림 딥링크 QA</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip" title="우선순위 변경" style="color:#f5a623"><svg viewBox="0 0 12 12"><rect x="1" y="6" width="2.6" height="4" rx="0.6" fill="#f5a623"/><rect x="4.7" y="4" width="2.6" height="6" rx="0.6" fill="#f5a623"/><rect x="8.4" y="2" width="2.6" height="8" rx="0.6" fill="#f5a623" opacity="0.35"/></svg>높음</span>
+          <span class="chip empty" title="마감일 설정"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 2v8M2 6h8"/></svg>마감일</span>
+        </div>
+      </div>
+      <div class="foot">동기화 완료</div>
+    </div>
+  </div>
+
+  <!-- ============ B. 인라인 강화 ============ -->
+  <div class="col">
+    <div class="label">B안 · 인라인 강화</div>
+    <div class="desc">현재 레이아웃 유지, 밀도 우선. 상태는 <b>테두리 있는 28px 버튼 + ▾ 표시</b>로 항상 버튼처럼 보임. 우선순위·날짜는 평소엔 조용한 텍스트, <b>행 호버 시 버튼 테두리가 드러남</b>. 한 줄 높이가 낮아 많은 항목에 유리.</div>
+    <div class="panel">
+      <div class="head">
+        <div class="logo">P</div><div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.5 2l4.5 4.5-2.2.7-2.4 2.4.3 3.4-2.1-2.1L4 14.5 1.5 12l3.6-3.6L3 6.4l3.4.3 2.4-2.4z" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></svg></span>
+      </div>
+      <div class="section-h"><span>나에게 할당된 작업</span><span>3</span></div>
+      <div class="grp"><span class="chev">▾</span><span class="dot"></span>웹 리뉴얼<span class="n">2</span></div>
+
+      <div class="b-task">
+        <span class="b-state" title="상태 변경"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#f5a623" stroke-width="1.6"/><circle cx="7" cy="7" r="2.4" fill="#f5a623"/></svg></span>
+        <div class="b-body">
+          <div class="name">메인 배너 A/B 테스트 세팅</div>
+          <div class="b-meta">
+            <span class="mbtn" style="color:#ef4d56"><svg viewBox="0 0 12 12"><path d="M2 10V2l7 2.5L2 7" fill="#ef4d56"/></svg>긴급</span>
+            <span class="mbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg>7/1→7/4</span>
+            <span class="b-open" title="브라우저에서 열기"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3H3a1.5 1.5 0 0 0-1.5 1.5V11A1.5 1.5 0 0 0 3 12.5h6.5A1.5 1.5 0 0 0 11 11V8M8.5 1.5H12.5V5.5M12.2 1.8L6.8 7.2" stroke-linecap="round"/></svg></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-task">
+        <span class="b-state" title="상태 변경"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6" stroke-dasharray="2 2"/></svg></span>
+        <div class="b-body">
+          <div class="name">고객 피드백 위젯 붙이기</div>
+          <div class="b-meta">
+            <span class="mbtn" style="color:var(--muted-2)"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 2v8M2 6h8"/></svg>우선순위</span>
+            <span class="mbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg>~7/8</span>
+            <span class="b-open"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3H3a1.5 1.5 0 0 0-1.5 1.5V11A1.5 1.5 0 0 0 3 12.5h6.5A1.5 1.5 0 0 0 11 11V8M8.5 1.5H12.5V5.5M12.2 1.8L6.8 7.2" stroke-linecap="round"/></svg></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp"><span class="chev">▾</span><span class="dot" style="background:#4aa3e8"></span>모바일 앱<span class="n">1</span></div>
+      <div class="b-task">
+        <span class="b-state" title="상태 변경"><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6"/></svg></span>
+        <div class="b-body">
+          <div class="name">푸시 알림 딥링크 QA</div>
+          <div class="b-meta">
+            <span class="mbtn" style="color:#f5a623"><svg viewBox="0 0 12 12"><rect x="1" y="6" width="2.6" height="4" rx="0.6" fill="#f5a623"/><rect x="4.7" y="4" width="2.6" height="6" rx="0.6" fill="#f5a623"/><rect x="8.4" y="2" width="2.6" height="8" rx="0.6" fill="#f5a623" opacity="0.35"/></svg>높음</span>
+            <span class="mbtn" style="color:var(--muted-2)"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 2v8M2 6h8"/></svg>마감일</span>
+            <span class="b-open"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3H3a1.5 1.5 0 0 0-1.5 1.5V11A1.5 1.5 0 0 0 3 12.5h6.5A1.5 1.5 0 0 0 11 11V8M8.5 1.5H12.5V5.5M12.2 1.8L6.8 7.2" stroke-linecap="round"/></svg></span>
+          </div>
+        </div>
+      </div>
+      <div class="foot">동기화 완료</div>
+    </div>
+  </div>
+
+  <!-- ============ C. 카드 방식 ============ -->
+  <div class="col">
+    <div class="label">C안 · 라벨 카드</div>
+    <div class="desc">각 작업을 카드로, 하단에 <b>"상태/우선순위/기간" 라벨이 붙은 필드 버튼 3개</b>를 항상 노출. 무엇이 수정 가능한지 가장 확실하지만 행 높이가 가장 크고(약 70px) 밀도가 낮음.</div>
+    <div class="panel">
+      <div class="head">
+        <div class="logo">P</div><div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.5 2l4.5 4.5-2.2.7-2.4 2.4.3 3.4-2.1-2.1L4 14.5 1.5 12l3.6-3.6L3 6.4l3.4.3 2.4-2.4z" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></svg></span>
+      </div>
+      <div class="section-h"><span>나에게 할당된 작업</span><span>3</span></div>
+      <div class="grp"><span class="chev">▾</span><span class="dot"></span>웹 리뉴얼<span class="n">2</span></div>
+      <div class="c-list">
+        <div class="c-card">
+          <div class="c-top"><div class="name">메인 배너 A/B 테스트 세팅</div></div>
+          <div class="c-fields">
+            <span class="fbtn"><span class="k">상태</span><span class="v"><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#f5a623" stroke-width="1.6"/><circle cx="7" cy="7" r="2.4" fill="#f5a623"/></svg>진행 중</span></span>
+            <span class="fbtn"><span class="k">우선순위</span><span class="v" style="color:#ef4d56"><svg viewBox="0 0 12 12"><path d="M2 10V2l7 2.5L2 7" fill="#ef4d56"/></svg>긴급</span></span>
+            <span class="fbtn"><span class="k">기간</span><span class="v">7/1 → 7/4</span></span>
+          </div>
+        </div>
+        <div class="c-card">
+          <div class="c-top"><div class="name">고객 피드백 위젯 붙이기</div></div>
+          <div class="c-fields">
+            <span class="fbtn"><span class="k">상태</span><span class="v"><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6" stroke-dasharray="2 2"/></svg>시작 전</span></span>
+            <span class="fbtn"><span class="k">우선순위</span><span class="v" style="color:var(--muted-2)">없음</span></span>
+            <span class="fbtn"><span class="k">기간</span><span class="v">~ 7/8</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="grp" style="padding-top:0"><span class="chev">▾</span><span class="dot" style="background:#4aa3e8"></span>모바일 앱<span class="n">1</span></div>
+      <div class="c-list">
+        <div class="c-card">
+          <div class="c-top"><div class="name">푸시 알림 딥링크 QA</div></div>
+          <div class="c-fields">
+            <span class="fbtn"><span class="k">상태</span><span class="v"><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6"/></svg>백로그</span></span>
+            <span class="fbtn"><span class="k">우선순위</span><span class="v" style="color:#f5a623"><svg viewBox="0 0 12 12"><rect x="1" y="6" width="2.6" height="4" rx="0.6" fill="#f5a623"/><rect x="4.7" y="4" width="2.6" height="6" rx="0.6" fill="#f5a623"/><rect x="8.4" y="2" width="2.6" height="8" rx="0.6" fill="#f5a623" opacity="0.35"/></svg>높음</span></span>
+            <span class="fbtn"><span class="k">기간</span><span class="v" style="color:var(--muted-2)">설정 안 됨</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="foot">동기화 완료</div>
+    </div>
+  </div>
+
+  <!-- ============ A-FINAL. 프로젝트 헤더 개선 포함 ============ -->
+  <div class="col">
+    <div class="label"><span class="badge rec">A안 최종</span>+ 프로젝트 헤더 개선</div>
+    <div class="desc">A안에 프로젝트 헤더 개선을 더한 최종안. 헤더 전체가 <b>호버 배경이 있는 버튼</b>이 되고, 프로젝트 식별자(<b>WEB</b>) 표시, 카운트는 <b>완료 진행률 링 + 1/2</b>로. 호버 시 <b>+ 버튼</b>으로 해당 프로젝트에 바로 작업 추가. 세 번째 그룹은 접힌 상태.</div>
+    <div class="panel">
+      <div class="head">
+        <div class="logo">P</div><div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span class="hbtn" title="고정"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.5 2l4.5 4.5-2.2.7-2.4 2.4.3 3.4-2.1-2.1L4 14.5 1.5 12l3.6-3.6L3 6.4l3.4.3 2.4-2.4z" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn" title="새로고침"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="hbtn" title="설정"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></svg></span>
+      </div>
+      <div class="section-h"><span>나에게 할당된 작업</span><span>4</span></div>
+
+      <div class="g2">
+        <span class="chevbtn">▾</span>
+        <span class="dot"></span>
+        <span class="name">웹 리뉴얼</span>
+        <span class="ident">WEB</span>
+        <span class="prog">
+          <svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/><circle cx="8" cy="8" r="6" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-dasharray="18.85 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>
+          <span class="txt">1/2</span>
+        </span>
+        <span class="addbtn" title="이 프로젝트에 작업 추가"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2v8M2 6h8" stroke-linecap="round"/></svg></span>
+      </div>
+
+      <div class="a-task">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#f5a623" stroke-width="1.6"/><circle cx="7" cy="7" r="2.4" fill="#f5a623"/></svg></span>
+          <div class="name">메인 배너 A/B 테스트 세팅</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip" title="우선순위 변경" style="color:#ef4d56"><svg viewBox="0 0 12 12"><path d="M2 10V2l7 2.5L2 7" fill="#ef4d56"/></svg>긴급</span>
+          <span class="chip" title="기간 변경"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg>7/1 <span class="cv">→</span> 7/4</span>
+        </div>
+      </div>
+      <div class="a-task" style="opacity:.5">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#2ecc71" stroke-width="1.6"/><path d="M4.4 7.2l1.8 1.8 3.4-3.8" fill="none" stroke="#2ecc71" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div class="name" style="text-decoration:line-through;color:var(--muted)">온보딩 배너 교체</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="11" height="10" rx="2"/><path d="M1.5 5.5h11M4.5 1v2.5M9.5 1v2.5"/></svg>완료 14:20</span>
+        </div>
+      </div>
+
+      <div class="g2">
+        <span class="chevbtn">▾</span>
+        <span class="dot" style="background:#4aa3e8"></span>
+        <span class="name">모바일 앱</span>
+        <span class="ident">MOB</span>
+        <span class="prog">
+          <svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/></svg>
+          <span class="txt">0/1</span>
+        </span>
+        <span class="addbtn" title="이 프로젝트에 작업 추가"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2v8M2 6h8" stroke-linecap="round"/></svg></span>
+      </div>
+      <div class="a-task">
+        <div class="a-top">
+          <span class="a-state" title="상태 변경"><svg width="15" height="15" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a909c" stroke-width="1.6"/></svg></span>
+          <div class="name">푸시 알림 딥링크 QA</div>
+        </div>
+        <div class="a-chips">
+          <span class="chip" title="우선순위 변경" style="color:#f5a623"><svg viewBox="0 0 12 12"><rect x="1" y="6" width="2.6" height="4" rx="0.6" fill="#f5a623"/><rect x="4.7" y="4" width="2.6" height="6" rx="0.6" fill="#f5a623"/><rect x="8.4" y="2" width="2.6" height="8" rx="0.6" fill="#f5a623" opacity="0.35"/></svg>높음</span>
+          <span class="chip empty" title="마감일 설정"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 2v8M2 6h8"/></svg>마감일</span>
+        </div>
+      </div>
+
+      <div class="g2 collapsed">
+        <span class="chevbtn">▾</span>
+        <span class="dot" style="background:#9b6ce8"></span>
+        <span class="name">사내 도구</span>
+        <span class="ident">TOOL</span>
+        <span class="prog">
+          <svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/><circle cx="8" cy="8" r="6" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-dasharray="12.57 37.7" stroke-linecap="round" transform="rotate(-90 8 8)"/></svg>
+          <span class="txt">1/3</span>
+        </span>
+        <span class="addbtn" title="이 프로젝트에 작업 추가"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2v8M2 6h8" stroke-linecap="round"/></svg></span>
+      </div>
+
+      <div class="foot">동기화 완료</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="note">
+  <b>공통 변경 사항 (세 안 모두 포함)</b><br/>
+  · 헤더 이모지(📌⟳⚙) → 일관된 SVG 아이콘 + 28×28px 히트 영역, 호버 배경 표시<br/>
+  · 상태 변경 버튼 확대 (14px 아이콘 → 26~28px 버튼)<br/>
+  · 시작일을 사이드바에서 표시 + 수정 가능 ("7/1 → 7/4" 형식, 마감일만 있으면 "~ 7/8")<br/>
+  · 날짜 클릭 시 QuickAdd와 동일한 날짜 프리셋 팝오버(오늘/내일/다음 주 + 달력) 재사용<br/>
+  · 값이 비어 있는 필드도 진입점 노출 (A안: 점선 칩, B안: 회색 버튼, C안: "설정 안 됨")<br/><br/>
+  <table>
+    <tr><td>A안 · 칩</td><td>편집 가능성이 항상 보임 + QuickAdd와 UI 문법 통일. 행 높이 중간(~58px). <b>추천.</b></td></tr>
+    <tr><td>B안 · 인라인</td><td>밀도 최고(행 ~52px), 지금과 가장 비슷해 이질감 없음. 단, 호버 전에는 우선순위·날짜가 버튼인지 안 보임 — "구분 어렵다"는 문제를 절반만 해결.</td></tr>
+    <tr><td>C안 · 카드</td><td>가장 명확(라벨까지 표시)하지만 행이 커서 320px 폭·다작업 환경에서 스크롤 부담. 작업 수가 적은 사용자에게 적합.</td></tr>
+  </table>
+  <br/>
+  <b>프로젝트 헤더 개선 (A안 최종 패널)</b><br/>
+  · 헤더 행 전체가 호버 배경이 있는 버튼 — 접기/펼치기 가능함이 즉시 보임 (접힌 그룹은 ▾가 회전)<br/>
+  · 프로젝트 식별자 배지(WEB, MOB…) 표시 — 색 점만보다 구분이 빠름 (Plane API의 identifier 필드, 이미 받아오고 있음)<br/>
+  · 카운트 → 완료 진행률 링 + "완료/전체" (예: 1/2) — 오늘 얼마나 쳐냈는지 한눈에<br/>
+  · 헤더 호버 시 <b>+</b> 버튼 → 해당 프로젝트가 미리 선택된 QuickAdd 열기 (선택 사항)
+</div>
+
+</body>
+</html>
