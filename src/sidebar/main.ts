@@ -1,10 +1,11 @@
-import { currentMonitor, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
+import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
+import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { applyTheme } from "../shared/theme";
 import { resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
@@ -398,34 +399,54 @@ function queueSlide(fn: () => Promise<void>): Promise<void> {
   return slideQueue;
 }
 
+async function getTargetMonitor() {
+  const [s, monitors] = await Promise.all([getSettings(), availableMonitors()]);
+  if (monitors.length === 0) return null;
+  return pickMonitor(sortMonitorsByPosition(monitors), s.sidebar_display_index) ?? null;
+}
+
 function slideIn(): Promise<void> {
   return queueSlide(async () => {
-    const monitor = await currentMonitor();
+    const monitor = await getTargetMonitor();
     if (!monitor) {
       await win.show();
       await win.setFocus();
       return;
     }
-    const geo = computeSidebarGeometry(monitor.size.width, monitor.size.height, monitor.scaleFactor, PANEL_WIDTH);
+    const geo = computeSidebarGeometry(
+      monitor.size.width,
+      monitor.size.height,
+      monitor.scaleFactor,
+      PANEL_WIDTH,
+      monitor.position.x,
+      monitor.position.y,
+    );
     await win.setSize(new PhysicalSize(geo.width, geo.height));
-    await win.setPosition(new PhysicalPosition(geo.hiddenX, 0));
+    await win.setPosition(new PhysicalPosition(geo.hiddenX, geo.y));
     await win.setAlwaysOnTop(true);
     await win.show();
     await win.setFocus();
-    await animatePosition(geo.hiddenX, geo.visibleX, 0, SLIDE_MS);
+    await animatePosition(geo.hiddenX, geo.visibleX, geo.y, SLIDE_MS);
   });
 }
 
 function slideOut(): Promise<void> {
   return queueSlide(async () => {
     if (!(await win.isVisible())) return;
-    const monitor = await currentMonitor();
+    const monitor = await getTargetMonitor();
     if (!monitor) {
       await win.hide();
       return;
     }
-    const geo = computeSidebarGeometry(monitor.size.width, monitor.size.height, monitor.scaleFactor, PANEL_WIDTH);
-    await animatePosition(geo.visibleX, geo.hiddenX, 0, SLIDE_MS);
+    const geo = computeSidebarGeometry(
+      monitor.size.width,
+      monitor.size.height,
+      monitor.scaleFactor,
+      PANEL_WIDTH,
+      monitor.position.x,
+      monitor.position.y,
+    );
+    await animatePosition(geo.visibleX, geo.hiddenX, geo.y, SLIDE_MS);
     await win.hide();
   });
 }
