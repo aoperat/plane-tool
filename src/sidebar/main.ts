@@ -1,7 +1,7 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
@@ -488,6 +488,7 @@ function refreshIfStale() {
 }
 
 document.getElementById("refresh")!.onclick = refresh;
+document.getElementById("openSettings")!.onclick = () => openSettings();
 document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {

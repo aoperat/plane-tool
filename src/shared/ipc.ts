@@ -80,3 +80,5 @@ export const updateWorkItemFields = (project_id: string, item_id: string, fields
 
 export const openEditModal = (project_id: string, item_id: string) =>
   invoke<void>("open_edit_modal", { projectId: project_id, itemId: item_id });
+
+export const openSettings = () => invoke<void>("open_settings");

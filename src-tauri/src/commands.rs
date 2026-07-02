@@ -355,6 +355,14 @@ pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: Strin
     );
 }
 
+#[tauri::command]
+pub fn open_settings(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

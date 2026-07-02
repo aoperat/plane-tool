@@ -98,7 +98,8 @@ pub fn run() {
             commands::delete_work_item,
             commands::get_work_item,
             commands::update_work_item_fields,
-            commands::open_edit_modal
+            commands::open_edit_modal,
+            commands::open_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
