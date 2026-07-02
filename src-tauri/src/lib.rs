@@ -29,6 +29,31 @@ fn toggle_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
+fn toggle_quickadd(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("quickadd") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+            return;
+        }
+        if let (Ok(mons), Ok(size)) = (win.available_monitors(), win.outer_size()) {
+            let positions: Vec<(i32, i32)> = mons.iter().map(|m| (m.position().x, m.position().y)).collect();
+            let sorted = monitors::sorted_indices_by_position(&positions);
+            let display_index = config::load_settings(app).display_index;
+            if let Some(i) = monitors::pick_index(&sorted, display_index) {
+                let m = &mons[i];
+                let (x, y) = monitors::centered_position(
+                    (size.width as i32, size.height as i32),
+                    (m.position().x, m.position().y),
+                    (m.size().width as i32, m.size().height as i32),
+                );
+                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+            }
+        }
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -59,7 +84,7 @@ pub fn run() {
                     .with_handler(move |app, shortcut, event| {
                         if event.state() != ShortcutState::Pressed { return; }
                         if qa_sc.as_ref() == Some(shortcut) {
-                            toggle_window(app, "quickadd");
+                            toggle_quickadd(app);
                         } else if sb_sc.as_ref() == Some(shortcut) {
                             // The sidebar animates its own show/hide (slide in/out
                             // from the screen edge), so just ask it to toggle
