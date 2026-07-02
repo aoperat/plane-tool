@@ -223,7 +223,12 @@ function handleDropdownKeydown(container: HTMLElement, isOpen: () => boolean, on
       moveKeyboardFocus(container, e.key === "ArrowDown" ? 1 : -1);
     } else if (e.key === "Enter") {
       e.preventDefault();
+      const trigger = e.currentTarget as HTMLElement;
       selectKeyboardFocus(container);
+      // The selected item's own onclick moves focus to titleEl (matching mouse-click
+      // behavior) — pull it back to the trigger chip so ArrowLeft/ArrowRight chip
+      // navigation can continue right after a keyboard selection.
+      trigger.focus();
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
