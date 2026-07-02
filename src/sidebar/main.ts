@@ -1,14 +1,14 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme } from "../shared/theme";
-import { resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
+import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
 import "../shared/app.css";
 
@@ -52,8 +52,91 @@ const PRIORITY_LABELS: Record<string, string> = {
 const PLUS_ICON =
   `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
 
-// Placeholder — implemented in the date-popover task.
-function openSidebarDatePopover(_anchor: HTMLElement, _it: WorkItem, _allItems: WorkItem[], _projects: Project[]) {}
+/** Optimistically applies a single date-field change and syncs it to the server.
+ *  `value: null` clears the field (sent as "" — the backend maps it to JSON null). */
+function applyDateChange(
+  it: WorkItem,
+  allItems: WorkItem[],
+  projects: Project[],
+  field: "start_date" | "target_date",
+  value: string | null,
+) {
+  const prev = it[field];
+  it[field] = value;
+  renderTasks(allItems, projects);
+  const payload = field === "start_date" ? { start_date: value ?? "" } : { target_date: value ?? "" };
+  updateWorkItemFields(it.project_id, it.id, payload).catch((err) => {
+    it[field] = prev;
+    renderTasks(allItems, projects);
+    synced.textContent = "기간 변경 실패: " + err;
+    console.error("updateWorkItemFields failed:", err);
+  });
+}
+
+function dateInputRow(label: string, value: string | null, onPick: (v: string | null) => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "date-row";
+  const lab = document.createElement("span");
+  lab.className = "date-row-label";
+  lab.textContent = label;
+  row.appendChild(lab);
+  const input = document.createElement("input");
+  input.type = "date";
+  input.className = "popover-date-input";
+  input.value = value ?? "";
+  input.onclick = (e) => e.stopPropagation();
+  input.onchange = () => {
+    if (input.value) onPick(input.value);
+  };
+  row.appendChild(input);
+  const clear = document.createElement("span");
+  clear.className = "date-row-clear";
+  clear.textContent = "×";
+  clear.title = "지우기";
+  clear.onclick = (e) => {
+    e.stopPropagation();
+    onPick(null);
+  };
+  row.appendChild(clear);
+  return row;
+}
+
+function openSidebarDatePopover(anchor: HTMLElement, it: WorkItem, allItems: WorkItem[], projects: Project[]) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.position = "fixed";
+  pop.style.width = "200px";
+  pop.onclick = (e) => e.stopPropagation();
+
+  for (const preset of DATE_PRESETS) {
+    const opt = document.createElement("div");
+    opt.className = "pop-item";
+    opt.textContent = "마감일: " + preset.label;
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      applyDateChange(it, allItems, projects, "target_date", resolveDatePreset(preset.key));
+    };
+    pop.appendChild(opt);
+  }
+
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  pop.appendChild(divider);
+
+  pop.appendChild(dateInputRow("시작일", it.start_date, (v) => {
+    closePopover();
+    applyDateChange(it, allItems, projects, "start_date", v);
+  }));
+  pop.appendChild(dateInputRow("마감일", it.target_date, (v) => {
+    closePopover();
+    applyDateChange(it, allItems, projects, "target_date", v);
+  }));
+
+  const rect = anchor.getBoundingClientRect();
+  attachPopover(pop, rect.left, rect.bottom + 4);
+}
 
 function closePopover() {
   if (openPopover) {
