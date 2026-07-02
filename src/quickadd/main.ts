@@ -569,6 +569,19 @@ win.listen("tauri://focus", () => {
   resetFields();
   if (!isWithinCooldown(lastLoadAt, Date.now(), LOAD_COOLDOWN_MS)) load();
 });
+
+// Sidebar's per-project "+" button: pre-select that project. The focus event that
+// follows resets fields but not selectedId, and load() (if it runs) re-reads
+// last_project_id which the command already persisted to the same value.
+win.listen<string>("select-project", (e) => {
+  selectedId = e.payload;
+  members = [];
+  membersLoadedForProject = null;
+  assigneeIds = [];
+  renderSelected();
+  renderDropdown();
+  renderChips();
+});
 renderChips();
 autoResizeDescription();
 load();

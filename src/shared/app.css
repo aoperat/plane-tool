@@ -193,6 +193,12 @@ kbd {
 .grp .prog { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
 .grp .prog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .grp .prog .ring { width: 14px; height: 14px; display: block; }
+.grp .addbtn {
+  width: 20px; height: 20px; border-radius: 5px; flex: none;
+  display: grid; place-items: center; color: var(--muted-2); opacity: 0;
+}
+.grp:hover .addbtn { opacity: 1; }
+.grp .addbtn:hover { background: var(--bg); color: var(--accent); }
 
 .grp-body { display: flex; flex-direction: column; }
 .grp-body.collapsed { display: none; }

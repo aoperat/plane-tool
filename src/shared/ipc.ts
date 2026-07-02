@@ -82,3 +82,6 @@ export const openEditModal = (project_id: string, item_id: string) =>
   invoke<void>("open_edit_modal", { projectId: project_id, itemId: item_id });
 
 export const openSettings = () => invoke<void>("open_settings");
+
+export const showQuickaddForProject = (project_id: string) =>
+  invoke<void>("show_quickadd_for_project", { projectId: project_id });

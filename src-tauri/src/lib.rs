@@ -18,12 +18,8 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
-fn toggle_quickadd(app: &tauri::AppHandle) {
+pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("quickadd") {
-        if win.is_visible().unwrap_or(false) {
-            let _ = win.hide();
-            return;
-        }
         if let (Ok(mons), Ok(size)) = (win.available_monitors(), win.outer_size()) {
             let positions: Vec<(i32, i32)> = mons.iter().map(|m| (m.position().x, m.position().y)).collect();
             let sorted = monitors::sorted_indices_by_position(&positions);
@@ -41,6 +37,16 @@ fn toggle_quickadd(app: &tauri::AppHandle) {
         let _ = win.show();
         let _ = win.set_focus();
     }
+}
+
+fn toggle_quickadd(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("quickadd") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+            return;
+        }
+    }
+    show_quickadd(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -114,7 +120,8 @@ pub fn run() {
             commands::get_work_item,
             commands::update_work_item_fields,
             commands::open_edit_modal,
-            commands::open_settings
+            commands::open_settings,
+            commands::show_quickadd_for_project
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -367,6 +367,15 @@ pub fn open_settings(app: tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+pub fn show_quickadd_for_project(app: tauri::AppHandle, project_id: String) -> Result<(), String> {
+    // Persist first so QuickAdd's own load() (focus-triggered) resolves to the same project.
+    config::set_last_project(&app, &project_id)?;
+    let _ = app.emit_to("quickadd", "select-project", project_id);
+    crate::show_quickadd(&app);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

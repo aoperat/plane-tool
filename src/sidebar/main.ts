@@ -1,7 +1,7 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
@@ -478,6 +478,19 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     progEl.className = "prog";
     progEl.innerHTML = progressRingSvg(prog.done, prog.total) + `<span class="txt">${prog.done}/${prog.total}</span>`;
     grp.appendChild(progEl);
+
+    const addBtn = document.createElement("span");
+    addBtn.className = "addbtn";
+    addBtn.title = "이 프로젝트에 작업 추가";
+    addBtn.innerHTML = PLUS_ICON;
+    addBtn.onclick = (e) => {
+      e.stopPropagation();
+      showQuickaddForProject(project.id).catch((err) => {
+        synced.textContent = "QuickAdd 열기 실패: " + err;
+        console.error("showQuickaddForProject failed:", err);
+      });
+    };
+    grp.appendChild(addBtn);
 
     grp.onclick = () => {
       if (collapsedGroups.has(project.id)) collapsedGroups.delete(project.id);
