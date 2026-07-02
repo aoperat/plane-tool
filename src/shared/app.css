@@ -153,12 +153,13 @@ kbd {
 .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; font-size: 13px; font-weight: 800; }
 .sb-head .t { font-weight: 600; font-size: 14px; }
 .sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); }
-.refresh { color: var(--muted); cursor: pointer; font-size: 14px; }
-.settings-btn { color: var(--muted); cursor: pointer; font-size: 14px; padding: 3px 5px; border-radius: 6px; line-height: 1; }
-.settings-btn:hover { background: var(--panel-2); }
-.pin { color: var(--muted); cursor: pointer; font-size: 13px; padding: 3px 5px; border-radius: 6px; line-height: 1; }
-.pin:hover { background: var(--panel-2); }
-.pin.active { color: var(--accent); background: var(--accent-soft); }
+.hbtn {
+  width: 28px; height: 28px; border-radius: 7px; flex: none;
+  display: grid; place-items: center; color: var(--muted); cursor: pointer;
+}
+.hbtn:hover { background: var(--panel-2); color: var(--text); }
+.hbtn.active { color: var(--accent); background: var(--accent-soft); }
+.hbtn svg { width: 15px; height: 15px; display: block; }
 
 .sb-section { padding: 14px 14px 6px; }
 .sb-section .h {
