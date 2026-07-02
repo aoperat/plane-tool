@@ -4,7 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme } from "../shared/theme";
@@ -13,7 +13,6 @@ import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/typ
 import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
-const SLIDE_MS = 180;
 // Every window focus (including re-showing the sidebar on toggle) re-fetches the full sidebar
 // data set, which itself is an N+1 request per project — a cooldown keeps rapid re-focusing
 // (fast toggle spam, alt-tab cycling) from bursting past the Plane server's rate limit.
@@ -508,85 +507,42 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
   });
 }
 
-function animatePosition(fromX: number, toX: number, y: number, durationMs: number): Promise<void> {
-  const start = performance.now();
-  return new Promise((resolve) => {
-    function step(now: number) {
-      const t = (now - start) / durationMs;
-      const eased = easeOutCubic(t);
-      const x = Math.round(fromX + (toX - fromX) * eased);
-      win.setPosition(new PhysicalPosition(x, y));
-      if (t < 1) requestAnimationFrame(step);
-      else resolve();
-    }
-    requestAnimationFrame(step);
-  });
-}
-
-// Serializes slide-in/slide-out calls so a hide requested mid-slide-in (e.g. a
-// blur right after opening) runs after the in-flight animation instead of
-// racing it or being dropped.
-let slideQueue: Promise<void> = Promise.resolve();
-function queueSlide(fn: () => Promise<void>): Promise<void> {
-  slideQueue = slideQueue.then(fn, fn);
-  return slideQueue;
-}
-
 async function getTargetMonitor() {
   const [s, monitors] = await Promise.all([getSettings(), availableMonitors()]);
   if (monitors.length === 0) return null;
   return pickMonitor(sortMonitorsByPosition(monitors), s.display_index) ?? null;
 }
 
-function slideIn(): Promise<void> {
-  return queueSlide(async () => {
-    const monitor = await getTargetMonitor();
-    if (!monitor) {
-      await win.show();
-      await win.setFocus();
-      return;
-    }
-    const geo = computeSidebarGeometry(
-      monitor.size.width,
-      monitor.size.height,
-      monitor.scaleFactor,
-      PANEL_WIDTH,
-      monitor.position.x,
-      monitor.position.y,
-    );
-    await win.setSize(new PhysicalSize(geo.width, geo.height));
-    await win.setPosition(new PhysicalPosition(geo.hiddenX, geo.y));
-    await win.setAlwaysOnTop(true);
+async function showSidebar(): Promise<void> {
+  const monitor = await getTargetMonitor();
+  if (!monitor) {
     await win.show();
     await win.setFocus();
-    await animatePosition(geo.hiddenX, geo.visibleX, geo.y, SLIDE_MS);
-  });
+    return;
+  }
+  const geo = computeSidebarGeometry(
+    monitor.size.width,
+    monitor.size.height,
+    monitor.scaleFactor,
+    PANEL_WIDTH,
+    monitor.position.x,
+    monitor.position.y,
+  );
+  await win.setSize(new PhysicalSize(geo.width, geo.height));
+  await win.setPosition(new PhysicalPosition(geo.visibleX, geo.y));
+  await win.setAlwaysOnTop(true);
+  await win.show();
+  await win.setFocus();
 }
 
-function slideOut(): Promise<void> {
-  return queueSlide(async () => {
-    if (!(await win.isVisible())) return;
-    const monitor = await getTargetMonitor();
-    if (!monitor) {
-      await win.hide();
-      return;
-    }
-    const geo = computeSidebarGeometry(
-      monitor.size.width,
-      monitor.size.height,
-      monitor.scaleFactor,
-      PANEL_WIDTH,
-      monitor.position.x,
-      monitor.position.y,
-    );
-    await animatePosition(geo.visibleX, geo.hiddenX, geo.y, SLIDE_MS);
-    await win.hide();
-  });
+async function hideSidebar(): Promise<void> {
+  if (!(await win.isVisible())) return;
+  await win.hide();
 }
 
 async function toggleSidebar() {
-  if (await win.isVisible()) await slideOut();
-  else await slideIn();
+  if (await win.isVisible()) await hideSidebar();
+  else await showSidebar();
 }
 
 async function refresh() {
@@ -622,14 +578,14 @@ document.addEventListener("keydown", (e) => {
     if (openPopover) {
       closePopover();
     } else {
-      slideOut();
+      hideSidebar();
     }
   }
 });
 win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
 win.listen("tauri://blur", () => {
-  if (!pinned) slideOut();
+  if (!pinned) hideSidebar();
 });
 win.listen("toggle-sidebar", () => {
   toggleSidebar();

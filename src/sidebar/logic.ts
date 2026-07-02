@@ -71,15 +71,13 @@ export function buildIssueUrl(baseUrl: string, workspace: string, projectId: str
 export interface SidebarGeometry {
   width: number;
   height: number;
-  /** x position (physical px) when fully slid in, anchored to the right edge. */
+  /** x position (physical px), anchored to the right edge. */
   visibleX: number;
-  /** x position (physical px) when fully slid out, just past the right edge. */
-  hiddenX: number;
   /** y position (physical px), anchored to the target monitor's own top edge. */
   y: number;
 }
 
-/** Computes the sidebar's slide-in/out geometry for a monitor of the given physical size and scale
+/** Computes the sidebar's geometry for a monitor of the given physical size and scale
  *  factor. `originX`/`originY` are the monitor's absolute position in the virtual desktop (0 for a
  *  monitor at the origin) — without them the panel lands wherever that monitor's local width happens
  *  to fall in absolute screen coordinates, which is wrong for any non-primary monitor. */
@@ -96,15 +94,8 @@ export function computeSidebarGeometry(
     width,
     height: screenHeight,
     visibleX: originX + screenWidth - width,
-    hiddenX: originX + screenWidth,
     y: originY,
   };
-}
-
-/** Eases a slide animation's progress (0..1) so it decelerates into place. */
-export function easeOutCubic(t: number): number {
-  const clamped = Math.min(1, Math.max(0, t));
-  return 1 - Math.pow(1 - clamped, 3);
 }
 
 /** "2026-07-01" → "7/1". null/malformed → "". */

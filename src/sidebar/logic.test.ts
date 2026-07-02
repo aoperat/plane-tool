@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -63,20 +63,19 @@ describe("groupItemsByProject", () => {
 describe("computeSidebarGeometry", () => {
   it("anchors the panel to the right edge at 1x scale", () => {
     const geo = computeSidebarGeometry(1920, 1080, 1, 320);
-    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 1600, hiddenX: 1920, y: 0 });
+    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 1600, y: 0 });
   });
 
   it("scales the panel width by the monitor's scale factor", () => {
     const geo = computeSidebarGeometry(3840, 2160, 2, 320);
     expect(geo.width).toBe(640);
     expect(geo.visibleX).toBe(3200);
-    expect(geo.hiddenX).toBe(3840);
   });
 
   it("adds the monitor's absolute x position as an offset", () => {
     // A second monitor placed to the right of a 1920-wide primary monitor.
     const geo = computeSidebarGeometry(1920, 1080, 1, 320, 1920, 0);
-    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 3520, hiddenX: 3840, y: 0 });
+    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 3520, y: 0 });
   });
 
   it("defaults the offset to 0 when omitted", () => {
@@ -88,24 +87,6 @@ describe("computeSidebarGeometry", () => {
   it("carries the vertical offset through to y", () => {
     const geo = computeSidebarGeometry(1920, 1080, 1, 320, 0, 200);
     expect(geo.y).toBe(200);
-  });
-});
-
-describe("easeOutCubic", () => {
-  it("starts at 0 and ends at 1", () => {
-    expect(easeOutCubic(0)).toBe(0);
-    expect(easeOutCubic(1)).toBe(1);
-  });
-
-  it("clamps out-of-range progress", () => {
-    expect(easeOutCubic(-0.5)).toBe(0);
-    expect(easeOutCubic(1.5)).toBe(1);
-  });
-
-  it("decelerates: later progress advances less than earlier progress", () => {
-    const early = easeOutCubic(0.25) - easeOutCubic(0);
-    const late = easeOutCubic(1) - easeOutCubic(0.75);
-    expect(late).toBeLessThan(early);
   });
 });
 

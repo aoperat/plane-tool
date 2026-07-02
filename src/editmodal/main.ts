@@ -265,7 +265,7 @@ emChipDesc.onclick = () => {
 
 async function loadItem(pid: string, iid: string) {
   // Re-assert always-on-top every time an item is loaded, mirroring the
-  // sidebar's slideIn() — openInBrowser() drops it so the browser window can
+  // sidebar's showSidebar() — openInBrowser() drops it so the browser window can
   // surface above the modal, and nothing else restores it afterward.
   win.setAlwaysOnTop(true).catch((err) => {
     console.error("setAlwaysOnTop failed:", err);
