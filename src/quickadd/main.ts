@@ -8,7 +8,14 @@ import {
   CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
+import { isWithinCooldown } from "../shared/cooldown";
 import "../shared/app.css";
+
+// Every window focus reloads the project list from the Plane API; a cooldown keeps rapid
+// re-focusing (alt-tab cycling) from adding to the sidebar's own request bursts against the
+// same rate-limited server.
+const LOAD_COOLDOWN_MS = 3000;
+let lastLoadAt = 0;
 
 const win = getCurrentWindow();
 const titleEl = document.getElementById("title") as HTMLInputElement;
@@ -386,6 +393,7 @@ function resetFields() {
 }
 
 async function load() {
+  lastLoadAt = Date.now();
   const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
   applyTheme(settings.theme);
   projects = fetched;
@@ -437,7 +445,7 @@ win.listen("tauri://focus", () => {
   titleEl.focus();
   titleEl.value = "";
   resetFields();
-  load();
+  if (!isWithinCooldown(lastLoadAt, Date.now(), LOAD_COOLDOWN_MS)) load();
 });
 renderChips();
 autoResizeDescription();

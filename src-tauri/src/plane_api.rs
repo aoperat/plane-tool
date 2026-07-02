@@ -188,6 +188,16 @@ pub struct PlaneClient {
     http: reqwest::Client,
 }
 
+/// Seconds to wait before retrying a 429 response: honors the server's `Retry-After` header when
+/// present, otherwise falls back to exponential backoff (1s, 2s, 4s, ...) keyed on retry attempt.
+fn retry_after_seconds(headers: &reqwest::header::HeaderMap, attempt: u32) -> u64 {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(1u64 << attempt)
+}
+
 impl PlaneClient {
     pub fn new(base_url: String, workspace: String, api_key: String) -> Self {
         Self {
@@ -203,14 +213,24 @@ impl PlaneClient {
     }
 
     async fn get_json(&self, url: &str) -> Result<reqwest::Response, String> {
-        self.http
-            .get(url)
-            .header("X-Api-Key", &self.api_key)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())
+        const MAX_RETRIES: u32 = 2;
+        let mut attempt = 0;
+        loop {
+            let resp = self
+                .http
+                .get(url)
+                .header("X-Api-Key", &self.api_key)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < MAX_RETRIES {
+                let wait_secs = retry_after_seconds(resp.headers(), attempt);
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                attempt += 1;
+                continue;
+            }
+            return resp.error_for_status().map_err(|e| e.to_string());
+        }
     }
 
     pub async fn current_user(&self) -> Result<CurrentUser, String> {
@@ -417,6 +437,57 @@ mod tests {
 
     async fn client_for(server: &MockServer) -> PlaneClient {
         PlaneClient::new(server.uri(), "acme".into(), "secret-key".into())
+    }
+
+    #[test]
+    fn retry_after_seconds_uses_the_header_when_present() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
+        assert_eq!(retry_after_seconds(&headers, 0), 7);
+    }
+
+    #[test]
+    fn retry_after_seconds_falls_back_to_exponential_backoff_without_header() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert_eq!(retry_after_seconds(&headers, 0), 1);
+        assert_eq!(retry_after_seconds(&headers, 1), 2);
+    }
+
+    #[tokio::test]
+    async fn get_json_retries_once_after_429_then_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "p1", "name": "Web App", "identifier": "WEB" }]
+            })))
+            .mount(&server)
+            .await;
+
+        let projects = client_for(&server).await.list_projects().await.unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, "p1");
+    }
+
+    #[tokio::test]
+    async fn get_json_gives_up_after_max_retries_and_returns_the_429_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+            .expect(3) // initial attempt + 2 retries, then give up
+            .mount(&server)
+            .await;
+
+        let err = client_for(&server).await.list_projects().await.unwrap_err();
+        assert!(err.contains("429"), "expected error to mention 429, got: {err}");
     }
 
     #[tokio::test]

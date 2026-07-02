@@ -6,6 +6,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
+import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme } from "../shared/theme";
 import { resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
@@ -13,6 +14,10 @@ import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
 const SLIDE_MS = 180;
+// Every window focus (including re-showing the sidebar on toggle) re-fetches the full sidebar
+// data set, which itself is an N+1 request per project — a cooldown keeps rapid re-focusing
+// (fast toggle spam, alt-tab cycling) from bursting past the Plane server's rate limit.
+const REFRESH_COOLDOWN_MS = 3000;
 
 const win = getCurrentWindow();
 const tasksEl = document.getElementById("tasks")!;
@@ -24,6 +29,7 @@ let workspace = "";
 let states: ProjectState[] = [];
 let openPopover: HTMLElement | null = null;
 let pinned = false;
+let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
 
 pinEl.onclick = () => {
@@ -457,6 +463,7 @@ async function toggleSidebar() {
 }
 
 async function refresh() {
+  lastRefreshAt = Date.now();
   synced.textContent = "동기화 중…";
   try {
     const s = await getSettings();
@@ -476,6 +483,10 @@ async function refresh() {
   }
 }
 
+function refreshIfStale() {
+  if (!isWithinCooldown(lastRefreshAt, Date.now(), REFRESH_COOLDOWN_MS)) refresh();
+}
+
 document.getElementById("refresh")!.onclick = refresh;
 document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {
@@ -487,7 +498,7 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
-win.listen("tauri://focus", refresh);
+win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
 win.listen("tauri://blur", () => {
   if (!pinned) slideOut();
