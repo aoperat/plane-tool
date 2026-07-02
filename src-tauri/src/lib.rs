@@ -18,17 +18,6 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
-fn toggle_window(app: &tauri::AppHandle, label: &str) {
-    if let Some(win) = app.get_webview_window(label) {
-        if win.is_visible().unwrap_or(false) {
-            let _ = win.hide();
-        } else {
-            let _ = win.show();
-            let _ = win.set_focus();
-        }
-    }
-}
-
 fn toggle_quickadd(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("quickadd") {
         if win.is_visible().unwrap_or(false) {
