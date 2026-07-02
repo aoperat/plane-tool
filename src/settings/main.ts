@@ -12,7 +12,7 @@ const tokenLink = document.getElementById("tokenLink")!;
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
-const sidebarDisplay = document.getElementById("sidebarDisplay") as HTMLSelectElement;
+const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
 const status = document.getElementById("status")!;
 
 tokenLink.onclick = (e) => {
@@ -40,15 +40,15 @@ async function load() {
   applyTheme(s.theme);
 
   const monitors = sortMonitorsByPosition(await availableMonitors());
-  sidebarDisplay.innerHTML = "";
+  displaySelect.innerHTML = "";
   monitors.forEach((m, i) => {
     const opt = document.createElement("option");
     opt.value = String(i + 1);
     opt.textContent = `디스플레이 ${i + 1} (${Math.round(m.size.width / m.scaleFactor)}×${Math.round(m.size.height / m.scaleFactor)})`;
-    sidebarDisplay.appendChild(opt);
+    displaySelect.appendChild(opt);
   });
-  const wanted = String(s.sidebar_display_index);
-  sidebarDisplay.value = [...sidebarDisplay.options].some((o) => o.value === wanted) ? wanted : "1";
+  const wanted = String(s.display_index);
+  displaySelect.value = [...displaySelect.options].some((o) => o.value === wanted) ? wanted : "1";
 }
 
 theme.onchange = () => applyTheme(theme.value);
@@ -63,7 +63,7 @@ document.getElementById("save")!.onclick = async () => {
       qaShortcut.value.trim() || undefined,
       sbShortcut.value.trim() || undefined,
       theme.value,
-      Number(sidebarDisplay.value),
+      Number(displaySelect.value),
     );
     token.value = "";
     status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";

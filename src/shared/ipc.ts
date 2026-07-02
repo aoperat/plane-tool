@@ -9,7 +9,7 @@ export const saveSettings = (
   quickaddShortcut?: string,
   sidebarShortcut?: string,
   theme?: string,
-  sidebarDisplayIndex?: number,
+  displayIndex?: number,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -18,7 +18,7 @@ export const saveSettings = (
     quickaddShortcut,
     sidebarShortcut,
     theme,
-    sidebarDisplayIndex,
+    displayIndex,
   });
 export const createIssue = (
   project_id: string,

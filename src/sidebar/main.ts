@@ -408,7 +408,7 @@ function queueSlide(fn: () => Promise<void>): Promise<void> {
 async function getTargetMonitor() {
   const [s, monitors] = await Promise.all([getSettings(), availableMonitors()]);
   if (monitors.length === 0) return null;
-  return pickMonitor(sortMonitorsByPosition(monitors), s.sidebar_display_index) ?? null;
+  return pickMonitor(sortMonitorsByPosition(monitors), s.display_index) ?? null;
 }
 
 function slideIn(): Promise<void> {

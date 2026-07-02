@@ -17,5 +17,5 @@ export interface SettingsDto {
   base_url: string; workspace: string;
   last_project_id: string | null; has_token: boolean;
   quickadd_shortcut: string; sidebar_shortcut: string;
-  theme: string; sidebar_display_index: number;
+  theme: string; display_index: number;
 }
