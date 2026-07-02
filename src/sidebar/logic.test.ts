@@ -63,7 +63,7 @@ describe("groupItemsByProject", () => {
 describe("computeSidebarGeometry", () => {
   it("anchors the panel to the right edge at 1x scale", () => {
     const geo = computeSidebarGeometry(1920, 1080, 1, 320);
-    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 1600, hiddenX: 1920 });
+    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 1600, hiddenX: 1920, y: 0 });
   });
 
   it("scales the panel width by the monitor's scale factor", () => {
@@ -71,6 +71,23 @@ describe("computeSidebarGeometry", () => {
     expect(geo.width).toBe(640);
     expect(geo.visibleX).toBe(3200);
     expect(geo.hiddenX).toBe(3840);
+  });
+
+  it("adds the monitor's absolute x position as an offset", () => {
+    // A second monitor placed to the right of a 1920-wide primary monitor.
+    const geo = computeSidebarGeometry(1920, 1080, 1, 320, 1920, 0);
+    expect(geo).toEqual({ width: 320, height: 1080, visibleX: 3520, hiddenX: 3840, y: 0 });
+  });
+
+  it("defaults the offset to 0 when omitted", () => {
+    const geo = computeSidebarGeometry(1920, 1080, 1, 320);
+    expect(geo.visibleX).toBe(1600);
+    expect(geo.y).toBe(0);
+  });
+
+  it("carries the vertical offset through to y", () => {
+    const geo = computeSidebarGeometry(1920, 1080, 1, 320, 0, 200);
+    expect(geo.y).toBe(200);
   });
 });
 
