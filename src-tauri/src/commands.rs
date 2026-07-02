@@ -12,7 +12,7 @@ pub struct SettingsDto {
     pub quickadd_shortcut: String,
     pub sidebar_shortcut: String,
     pub theme: String,
-    pub sidebar_display_index: u32,
+    pub display_index: u32,
 }
 
 #[derive(Serialize)]
@@ -135,7 +135,7 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         quickadd_shortcut: s.quickadd_shortcut,
         sidebar_shortcut: s.sidebar_shortcut,
         theme: s.theme,
-        sidebar_display_index: s.sidebar_display_index,
+        display_index: s.display_index,
     }
 }
 
@@ -148,7 +148,7 @@ pub fn save_settings(
     quickadd_shortcut: Option<String>,
     sidebar_shortcut: Option<String>,
     theme: Option<String>,
-    sidebar_display_index: Option<u32>,
+    display_index: Option<u32>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -156,7 +156,7 @@ pub fn save_settings(
     if let Some(v) = quickadd_shortcut { if !v.is_empty() { s.quickadd_shortcut = v; } }
     if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
     if let Some(v) = theme { if v == "auto" || v == "light" || v == "dark" { s.theme = v; } }
-    if let Some(v) = sidebar_display_index { if v >= 1 { s.sidebar_display_index = v; } }
+    if let Some(v) = display_index { if v >= 1 { s.display_index = v; } }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {

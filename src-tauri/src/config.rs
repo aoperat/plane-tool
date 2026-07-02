@@ -18,29 +18,28 @@ pub struct Settings {
     /// "auto" | "light" | "dark"
     #[serde(default = "default_theme")]
     pub theme: String,
-    /// 1-based index into monitors sorted left-to-right by position.
-    #[serde(default = "default_sidebar_display_index")]
-    pub sidebar_display_index: u32,
+    /// 1-based index into monitors sorted left-to-right by position. Shared by the
+    /// sidebar and QuickAdd — both windows always show on the same display. The
+    /// `alias` lets settings saved before this field was renamed keep their value.
+    #[serde(alias = "sidebar_display_index", default = "default_display_index")]
+    pub display_index: u32,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
 fn default_sidebar_shortcut() -> String { "F2".into() }
 fn default_theme() -> String { "auto".into() }
-fn default_sidebar_display_index() -> u32 { 1 }
+fn default_display_index() -> u32 { 1 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            // This app is built for internal distribution to a fixed self-hosted
-            // Plane instance, so new installs start pre-pointed at it instead of
-            // making every user look up and type the same address.
-            base_url: "http://192.168.20.235:8282".into(),
+            base_url: String::new(),
             workspace: String::new(),
             last_project_id: None,
             quickadd_shortcut: default_quickadd_shortcut(),
             sidebar_shortcut: default_sidebar_shortcut(),
             theme: default_theme(),
-            sidebar_display_index: default_sidebar_display_index(),
+            display_index: default_display_index(),
         }
     }
 }
@@ -91,7 +90,7 @@ mod tests {
             quickadd_shortcut: "Alt+Space".into(),
             sidebar_shortcut: "Alt+S".into(),
             theme: "light".into(),
-            sidebar_display_index: 2,
+            display_index: 2,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -114,14 +113,31 @@ mod tests {
     }
 
     #[test]
-    fn settings_default_has_fixed_base_url_and_no_project() {
+    fn settings_default_has_empty_strings_and_no_project() {
         let s = Settings::default();
-        assert_eq!(s.base_url, "http://192.168.20.235:8282");
+        assert_eq!(s.base_url, "");
         assert_eq!(s.workspace, "");
         assert_eq!(s.last_project_id, None);
         assert_eq!(s.quickadd_shortcut, "F1");
         assert_eq!(s.sidebar_shortcut, "F2");
         assert_eq!(s.theme, "auto");
-        assert_eq!(s.sidebar_display_index, 1);
+        assert_eq!(s.display_index, 1);
+    }
+
+    #[test]
+    fn settings_deserializes_legacy_sidebar_display_index_key() {
+        // Settings saved before the sidebar_display_index -> display_index rename
+        // must keep the user's chosen display instead of silently resetting to 1.
+        let legacy_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null,
+            "quickadd_shortcut": "F1",
+            "sidebar_shortcut": "F2",
+            "theme": "auto",
+            "sidebar_display_index": 2
+        }"#;
+        let s: Settings = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(s.display_index, 2);
     }
 }
