@@ -1,5 +1,6 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { getSettings, saveSettings } from "../shared/ipc";
+import { sortMonitorsByPosition } from "../shared/monitors";
 import { applyTheme } from "../shared/theme";
 import "../shared/app.css";
 
@@ -9,6 +10,7 @@ const token = document.getElementById("token") as HTMLInputElement;
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
+const sidebarDisplay = document.getElementById("sidebarDisplay") as HTMLSelectElement;
 const status = document.getElementById("status")!;
 
 async function load() {
@@ -20,6 +22,17 @@ async function load() {
   sbShortcut.value = s.sidebar_shortcut;
   theme.value = s.theme;
   applyTheme(s.theme);
+
+  const monitors = sortMonitorsByPosition(await availableMonitors());
+  sidebarDisplay.innerHTML = "";
+  monitors.forEach((m, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i + 1);
+    opt.textContent = `디스플레이 ${i + 1} (${Math.round(m.size.width / m.scaleFactor)}×${Math.round(m.size.height / m.scaleFactor)})`;
+    sidebarDisplay.appendChild(opt);
+  });
+  const wanted = String(s.sidebar_display_index);
+  sidebarDisplay.value = [...sidebarDisplay.options].some((o) => o.value === wanted) ? wanted : "1";
 }
 
 theme.onchange = () => applyTheme(theme.value);
@@ -34,6 +47,7 @@ document.getElementById("save")!.onclick = async () => {
       qaShortcut.value.trim() || undefined,
       sbShortcut.value.trim() || undefined,
       theme.value,
+      Number(sidebarDisplay.value),
     );
     token.value = "";
     status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";
