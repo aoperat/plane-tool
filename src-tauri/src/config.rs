@@ -18,11 +18,15 @@ pub struct Settings {
     /// "auto" | "light" | "dark"
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// 1-based index into monitors sorted left-to-right by position.
+    #[serde(default = "default_sidebar_display_index")]
+    pub sidebar_display_index: u32,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
 fn default_sidebar_shortcut() -> String { "F2".into() }
 fn default_theme() -> String { "auto".into() }
+fn default_sidebar_display_index() -> u32 { 1 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -33,6 +37,7 @@ impl Default for Settings {
             quickadd_shortcut: default_quickadd_shortcut(),
             sidebar_shortcut: default_sidebar_shortcut(),
             theme: default_theme(),
+            sidebar_display_index: default_sidebar_display_index(),
         }
     }
 }
@@ -83,6 +88,7 @@ mod tests {
             quickadd_shortcut: "Alt+Space".into(),
             sidebar_shortcut: "Alt+S".into(),
             theme: "light".into(),
+            sidebar_display_index: 2,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -113,5 +119,6 @@ mod tests {
         assert_eq!(s.quickadd_shortcut, "F1");
         assert_eq!(s.sidebar_shortcut, "F2");
         assert_eq!(s.theme, "auto");
+        assert_eq!(s.sidebar_display_index, 1);
     }
 }
