@@ -3,8 +3,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
-import { priorityIcon, priorityColor, stateIcon, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
+import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
+import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme } from "../shared/theme";
@@ -49,6 +49,12 @@ const PRIORITY_LABELS: Record<string, string> = {
   urgent: "긴급", high: "높음", medium: "보통", low: "낮음", none: "없음",
 };
 
+const PLUS_ICON =
+  `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
+
+// Placeholder — implemented in the date-popover task.
+function openSidebarDatePopover(_anchor: HTMLElement, _it: WorkItem, _allItems: WorkItem[], _projects: Project[]) {}
+
 function closePopover() {
   if (openPopover) {
     openPopover.remove();
@@ -82,7 +88,7 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
-  pop.style.top = "20px";
+  pop.style.top = "26px";
   pop.style.left = "0px";
   for (const p of PRIORITIES) {
     const opt = document.createElement("div");
@@ -240,8 +246,11 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   const el = document.createElement("div");
   el.className = "task" + (it.state_group === "completed" ? " completed" : "");
 
+  const top = document.createElement("div");
+  top.className = "task-top";
+
   const stateBtn = document.createElement("span");
-  stateBtn.className = "icon-btn";
+  stateBtn.className = "task-state";
   stateBtn.title = "상태: " + STATE_LABELS[it.state_group];
   stateBtn.innerHTML = stateIcon(it.state_group as any);
   stateBtn.onclick = (e) => {
@@ -263,30 +272,40 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
       });
     });
   };
-  el.appendChild(stateBtn);
-
-  const body = document.createElement("div");
-  body.className = "body";
+  top.appendChild(stateBtn);
 
   const nameEl = document.createElement("div");
   nameEl.className = "name";
   nameEl.textContent = it.name;
-  body.appendChild(nameEl);
+  top.appendChild(nameEl);
 
-  const meta = document.createElement("div");
-  meta.className = "meta";
-
-  const prioEl = document.createElement("span");
-  prioEl.className = "prio";
-  prioEl.style.color = priorityColor(it.priority as any);
-  prioEl.innerHTML = priorityIcon(it.priority as any);
-  const prioLabel = PRIORITY_LABELS[it.priority];
-  if (it.priority !== "none" && prioLabel) {
-    prioEl.appendChild(document.createTextNode(prioLabel));
-  }
-  prioEl.onclick = (e) => {
+  const browserBtn = document.createElement("span");
+  browserBtn.className = "icon-btn row-browser-btn";
+  browserBtn.title = "브라우저에서 열기";
+  browserBtn.innerHTML = EXTERNAL_LINK_ICON;
+  browserBtn.onclick = (e) => {
     e.stopPropagation();
-    openPriorityPopover(prioEl, it, (priority) => {
+    openInBrowser(it);
+  };
+  top.appendChild(browserBtn);
+  el.appendChild(top);
+
+  const chips = document.createElement("div");
+  chips.className = "task-chips";
+
+  const prioChip = document.createElement("span");
+  const noPriority = it.priority === "none";
+  prioChip.className = "chip sm" + (noPriority ? " empty" : "");
+  prioChip.title = "우선순위 변경";
+  if (noPriority) {
+    prioChip.innerHTML = `${PLUS_ICON} 우선순위`;
+  } else {
+    prioChip.style.color = priorityColor(it.priority as any);
+    prioChip.innerHTML = `${priorityIcon(it.priority as any)} ${PRIORITY_LABELS[it.priority] ?? it.priority}`;
+  }
+  prioChip.onclick = (e) => {
+    e.stopPropagation();
+    openPriorityPopover(prioChip, it, (priority) => {
       const prev = it.priority;
       it.priority = priority;
       renderTasks(allItems, projects);
@@ -298,32 +317,26 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
       });
     });
   };
-  meta.appendChild(prioEl);
+  chips.appendChild(prioChip);
 
   if (it.state_group === "completed" && it.completed_at) {
-    const doneEl = document.createElement("span");
-    doneEl.className = "due";
-    doneEl.textContent = "· 완료 " + formatLocalTime(it.completed_at);
-    meta.appendChild(doneEl);
-  } else if (it.target_date) {
-    const dueEl = document.createElement("span");
-    dueEl.className = "due";
-    dueEl.textContent = "· " + it.target_date;
-    meta.appendChild(dueEl);
+    const doneChip = document.createElement("span");
+    doneChip.className = "chip sm info";
+    doneChip.innerHTML = `${CALENDAR_ICON} 완료 ${formatLocalTime(it.completed_at)}`;
+    chips.appendChild(doneChip);
+  } else {
+    const range = formatDateRange(it.start_date, it.target_date);
+    const dateChip = document.createElement("span");
+    dateChip.className = "chip sm" + (range ? "" : " empty");
+    dateChip.title = "기간 변경";
+    dateChip.innerHTML = range ? `${CALENDAR_ICON} ${range}` : `${PLUS_ICON} 마감일`;
+    dateChip.onclick = (e) => {
+      e.stopPropagation();
+      openSidebarDatePopover(dateChip, it, allItems, projects);
+    };
+    chips.appendChild(dateChip);
   }
-
-  body.appendChild(meta);
-  el.appendChild(body);
-
-  const browserBtn = document.createElement("span");
-  browserBtn.className = "icon-btn row-browser-btn";
-  browserBtn.title = "브라우저에서 열기";
-  browserBtn.innerHTML = EXTERNAL_LINK_ICON;
-  browserBtn.onclick = (e) => {
-    e.stopPropagation();
-    openInBrowser(it);
-  };
-  el.appendChild(browserBtn);
+  el.appendChild(chips);
 
   el.onclick = () => openEditModal(it.project_id, it.id);
   el.oncontextmenu = (e) => {
