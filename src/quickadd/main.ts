@@ -164,6 +164,14 @@ function renderChips() {
   chipState.innerHTML = `${stateIcon(stateGroup)} ${stateLabel(stateGroup)}`;
 }
 
+function autoResizeDescription() {
+  descriptionEl.style.height = "auto";
+  descriptionEl.style.height = `${descriptionEl.scrollHeight}px`;
+  resizeToFit();
+}
+
+descriptionEl.addEventListener("input", autoResizeDescription);
+
 function closePopover() {
   openPopover = null;
   fieldPopover.hidden = true;
@@ -372,7 +380,7 @@ function resetFields() {
   priority = "none";
   stateGroup = "unstarted";
   descriptionEl.value = "";
-  resizeToFit();
+  autoResizeDescription();
   closePopover();
   renderChips();
 }
@@ -432,5 +440,5 @@ win.listen("tauri://focus", () => {
   load();
 });
 renderChips();
-resizeToFit();
+autoResizeDescription();
 load();

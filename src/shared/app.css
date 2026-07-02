@@ -69,7 +69,7 @@ kbd {
 .description-input {
   display: block; width: 100%; box-sizing: border-box; resize: none; border: none; outline: none;
   background: transparent; color: var(--text); font-size: 13px; font-family: inherit;
-  padding: 0 18px 12px;
+  padding: 0 18px 12px; overflow: hidden;
 }
 .description-input::placeholder { color: var(--muted-2); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; position: relative; }
