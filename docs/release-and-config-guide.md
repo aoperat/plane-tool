@@ -44,11 +44,9 @@ git push origin master v0.1.1
 이미 설치된 앱은 다음 시작 때 새 버전을 감지해 "업데이트 / 나중에" 대화상자를
 띄우고, 확인하면 다운로드·설치 후 자동 재시작한다.
 
-> **주의:** 저장소가 private인 동안에는 자동 업데이트 다운로드가 실패한다
-> (앱은 조용히 넘어감). 자동 업데이트를 살리려면 저장소를 public으로 전환:
-> `gh repo edit aoperat/plane-tool --visibility public`
-> — 이때 `planeIcons.ts`의 Plane 포팅 아이콘(AGPL-3.0) 때문에 AGPL-3.0
-> LICENSE 파일 추가가 필요하다.
+> **주의:** 자동 업데이트는 저장소가 public이어야 동작한다 (설치된 앱이 인증
+> 없이 릴리스 파일을 내려받아야 하므로). 다시 private으로 돌리면 업데이트
+> 확인이 조용히 실패한다. 저장소는 AGPL-3.0-only로 공개되어 있다 (`/LICENSE`).
 
 ### 1-2. 로컬 빌드 (동작 확인용)
 

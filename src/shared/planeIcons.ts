@@ -54,8 +54,8 @@ const PRIORITY_LABELS: Record<Priority, string> = {
 // completed-group-icon,cancelled-group-icon}.tsx
 // Source: C:\WorkSpaces\plane\packages\propel\src\icons\state\
 // SPDX-License-Identifier: AGPL-3.0-only (Copyright Plane Software, Inc. and contributors).
-// Kept for personal, non-distributed use of plane-tool; revisit AGPL obligations if this
-// app is ever shared or distributed. See docs/superpowers/specs/2026-07-01-sidebar-inline-edit-design.md#31.
+// This project is licensed AGPL-3.0-only as a whole (see /LICENSE, added when the repo
+// went public in 2026-07), which satisfies the obligations for distributing these ports.
 const STATE_COLORS: Record<StateGroup, string> = {
   backlog: "#60646C", unstarted: "#60646C", started: "#F59E0B", completed: "#46A758", cancelled: "#9AA4BC",
 };

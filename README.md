@@ -3,6 +3,9 @@
 셀프호스팅 Plane용 Windows 데스크톱 도구. 전역 단축키로 뜨는 빠른 작업 추가 팝업(F1)과
 내 할 일 사이드바(F2)를 제공한다. Tauri 2 + TypeScript.
 
+라이선스: [AGPL-3.0-only](LICENSE) — 상태 아이콘 등 일부 요소를
+[Plane](https://github.com/makeplane/plane)(AGPL-3.0)에서 포팅했다.
+
 ---
 
 ## 개발 환경 실행
@@ -101,12 +104,6 @@ Base URL, 워크스페이스, API 토큰, 단축키, 테마, 표시 디스플레
 
 ## 자동 업데이트 관련 주의
 
-저장소가 **private인 동안에는 설치된 앱이 릴리스 파일을 내려받지 못해 자동
-업데이트가 동작하지 않는다** (앱은 조용히 넘어가며 정상 사용 가능). 활성화하려면:
-
-```powershell
-gh repo edit aoperat/plane-tool --visibility public
-```
-
-공개 전환 시 `src/shared/planeIcons.ts`의 상태 아이콘이 Plane(AGPL-3.0)에서
-포팅된 것이므로 저장소에 AGPL-3.0 LICENSE 추가가 필요하다.
+자동 업데이트는 이 저장소가 **public이어야 동작한다** — 설치된 앱이 인증 없이
+릴리스의 `latest.json`과 설치 파일을 내려받기 때문이다. 저장소를 다시 private으로
+돌리면 업데이트 확인이 조용히 실패한다 (앱 사용에는 지장 없음).
