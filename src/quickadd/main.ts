@@ -30,6 +30,7 @@ const chipPriority = document.getElementById("chipPriority")!;
 const chipState = document.getElementById("chipState")!;
 const fieldPopover = document.getElementById("fieldPopover")!;
 const descriptionEl = document.getElementById("description") as HTMLTextAreaElement;
+const errorEl = document.getElementById("qaError")!;
 
 let projects: Project[] = [];
 let selectedId: string | null = null;
@@ -87,9 +88,30 @@ function shiftDateField(kind: "start" | "due", delta: number) {
   renderChips();
 }
 
+function showError(message: string) {
+  errorEl.textContent = message;
+  errorEl.hidden = false;
+  resizeToFit();
+}
+
+function clearError() {
+  if (errorEl.hidden) return;
+  errorEl.hidden = true;
+  errorEl.textContent = "";
+  resizeToFit();
+}
+
 async function submitIssue() {
   const name = titleEl.value.trim();
-  if (!name || !selectedId) return;
+  if (!name) {
+    titleEl.classList.add("error");
+    showError("제목을 입력하세요");
+    return;
+  }
+  if (!selectedId) {
+    showError("프로젝트를 선택하세요");
+    return;
+  }
   try {
     await createIssue(
       selectedId,
@@ -106,6 +128,7 @@ async function submitIssue() {
     await win.hide();
   } catch (err) {
     titleEl.classList.add("error");
+    showError("등록 실패: " + err);
     console.error(err);
   }
 }
@@ -408,6 +431,7 @@ function resetFields() {
   priority = "none";
   stateGroup = "unstarted";
   descriptionEl.value = "";
+  clearError();
   autoResizeDescription();
   closePopover();
   renderChips();
@@ -437,6 +461,7 @@ projBtn.addEventListener(
 
 titleEl.addEventListener("keydown", async (e) => {
   titleEl.classList.remove("error");
+  if (e.key !== "Enter") clearError();
   if (e.key === "Escape") {
     if (openPopover) { closePopover(); return; }
     if (!dropdown.hidden) { dropdown.hidden = true; return; }
