@@ -33,7 +33,10 @@ fn default_display_index() -> u32 { 1 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            base_url: String::new(),
+            // This app is built for internal distribution to a fixed self-hosted
+            // Plane instance, so new installs start pre-pointed at it instead of
+            // making every user look up and type the same address.
+            base_url: "http://192.168.20.235:8282".into(),
             workspace: String::new(),
             last_project_id: None,
             quickadd_shortcut: default_quickadd_shortcut(),
@@ -113,9 +116,9 @@ mod tests {
     }
 
     #[test]
-    fn settings_default_has_empty_strings_and_no_project() {
+    fn settings_default_has_fixed_base_url_and_no_project() {
         let s = Settings::default();
-        assert_eq!(s.base_url, "");
+        assert_eq!(s.base_url, "http://192.168.20.235:8282");
         assert_eq!(s.workspace, "");
         assert_eq!(s.last_project_id, None);
         assert_eq!(s.quickadd_shortcut, "F1");
