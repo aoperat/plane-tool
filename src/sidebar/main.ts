@@ -4,7 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme } from "../shared/theme";
@@ -51,6 +51,16 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 const PLUS_ICON =
   `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
+
+const RING_CIRCUMFERENCE = 2 * Math.PI * 6; // viewBox 16, r=6
+
+function progressRingSvg(done: number, total: number): string {
+  const frac = total > 0 ? done / total : 0;
+  const arc = frac > 0
+    ? `<circle cx="8" cy="8" r="6" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-dasharray="${(frac * RING_CIRCUMFERENCE).toFixed(2)} ${RING_CIRCUMFERENCE.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>`
+    : "";
+  return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/>${arc}</svg>`;
+}
 
 /** Optimistically applies a single date-field change and syncs it to the server.
  *  `value: null` clears the field (sent as "" — the backend maps it to JSON null). */
@@ -456,10 +466,18 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     name.textContent = project.name;
     grp.appendChild(name);
 
-    const n = document.createElement("span");
-    n.className = "n";
-    n.textContent = String(groupItems.length);
-    grp.appendChild(n);
+    if (project.identifier) {
+      const ident = document.createElement("span");
+      ident.className = "ident";
+      ident.textContent = project.identifier;
+      grp.appendChild(ident);
+    }
+
+    const prog = groupProgress(groupItems);
+    const progEl = document.createElement("span");
+    progEl.className = "prog";
+    progEl.innerHTML = progressRingSvg(prog.done, prog.total) + `<span class="txt">${prog.done}/${prog.total}</span>`;
+    grp.appendChild(progEl);
 
     grp.onclick = () => {
       if (collapsedGroups.has(project.id)) collapsedGroups.delete(project.id);

@@ -176,16 +176,23 @@ kbd {
 .sb-section .h .count { color: var(--muted); }
 
 .grp {
-  display: flex; align-items: center; gap: 8px; padding: 7px 9px 7px 4px;
-  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 7px; margin: 2px 2px 0;
+  padding: 6px 8px; border-radius: 7px; cursor: pointer; user-select: none;
   position: sticky; top: 0; background: var(--panel); z-index: 1;
 }
-.grp.with-divider { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.grp:hover { background: var(--panel-2); }
+.grp.with-divider { margin-top: 8px; border-top: 1px solid var(--border); border-radius: 0 0 7px 7px; }
 .grp .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .grp .name { font-size: 12px; font-weight: 700; color: var(--text); }
-.grp .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.grp .ident {
+  font-size: 9.5px; font-weight: 700; color: var(--muted-2); letter-spacing: .05em;
+  padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; flex: none;
+}
 .grp .chev { color: var(--muted); font-size: 10px; transition: transform .15s; flex: none; width: 10px; text-align: center; }
 .grp.collapsed .chev { transform: rotate(-90deg); }
+.grp .prog { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
+.grp .prog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.grp .prog .ring { width: 14px; height: 14px; display: block; }
 
 .grp-body { display: flex; flex-direction: column; }
 .grp-body.collapsed { display: none; }
