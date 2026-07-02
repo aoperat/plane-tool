@@ -250,6 +250,20 @@ function selectKeyboardFocus(container: HTMLElement) {
   items.find((el) => el.classList.contains("kbd-focus"))?.click();
 }
 
+function keyboardFocusIndex(container: HTMLElement): number {
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
+  return items.findIndex((el) => el.classList.contains("kbd-focus"));
+}
+
+/** Puts the keyboard cursor on the `index`-th `.dd-item` (clamped to the last item), bypassing
+ *  `initKeyboardFocus`'s jump-to-selection default — keeps the cursor in place across a re-render. */
+function setKeyboardFocusIndex(container: HTMLElement, index: number) {
+  const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
+  if (items.length === 0 || index < 0) return;
+  items.forEach((el) => el.classList.remove("kbd-focus"));
+  items[Math.min(index, items.length - 1)].classList.add("kbd-focus");
+}
+
 /** Builds a keydown handler for a dropdown trigger button: arrow keys move, Enter selects, Escape closes.
  *  Does nothing (and doesn't call preventDefault) while `isOpen()` is false, so the trigger button's own
  *  native Enter-activates-click behavior still opens the dropdown as before. */
@@ -291,12 +305,14 @@ function renderAssigneePopoverItems() {
   const selfItem = document.createElement("div");
   selfItem.className = "dd-item" + (assigneeIds.length === 0 ? " sel" : "");
   selfItem.textContent = "나 (기본값)";
+  selfItem.dataset.id = "";
   selfItem.onclick = () => toggleAssignee(null);
   fieldPopover.appendChild(selfItem);
   for (const m of members) {
     const item = document.createElement("div");
     item.className = "dd-item" + (assigneeIds.includes(m.id) ? " sel" : "");
     item.textContent = m.display_name;
+    item.dataset.id = m.id;
     item.onclick = () => toggleAssignee(m.id);
     fieldPopover.appendChild(item);
   }
@@ -420,7 +436,37 @@ const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopove
   closePopover();
   titleEl.focus();
 });
-chipAssignee.addEventListener("keydown", fieldPopoverKeydown);
+// The assignee popover is multi-select, so it gets its own keyboard contract instead of
+// handleDropdownKeydown's single-select one: Space toggles the focused member in and out
+// (popover stays open), Enter replaces the whole selection with just the focused entry
+// and closes. dataset.id carries the member id ("" = the "나 (기본값)" self entry).
+chipAssignee.addEventListener("keydown", (e) => {
+  if (openPopover !== "assignee") return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    moveKeyboardFocus(fieldPopover, e.key === "ArrowDown" ? 1 : -1);
+  } else if (e.key === " ") {
+    e.preventDefault();
+    const index = keyboardFocusIndex(fieldPopover);
+    const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
+    if (!focused) return;
+    toggleAssignee(focused.dataset.id || null); // re-renders the list, so restore the cursor
+    setKeyboardFocusIndex(fieldPopover, index);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
+    if (focused) {
+      assigneeIds = focused.dataset.id ? [focused.dataset.id] : [];
+      renderChips();
+    }
+    closePopover();
+    chipAssignee.focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closePopover();
+    titleEl.focus();
+  }
+});
 chipStart.addEventListener("keydown", fieldPopoverKeydown);
 chipDue.addEventListener("keydown", fieldPopoverKeydown);
 chipPriority.addEventListener("keydown", fieldPopoverKeydown);
@@ -501,11 +547,20 @@ titleEl.addEventListener("keydown", async (e) => {
   }
 });
 
+// Enter submits from the description too — same contract as the title, so adding an
+// issue never depends on where the cursor is. Newlines move to Shift+Enter (textarea
+// native) and Ctrl+Enter (inserted manually; browsers do nothing with it natively).
 descriptionEl.addEventListener("keydown", async (e) => {
-  if (e.key === "Enter" && e.ctrlKey) {
-    e.preventDefault();
-    await submitIssue();
+  if (e.key !== "Enter") return;
+  if (e.shiftKey) return; // native newline
+  e.preventDefault();
+  if (e.ctrlKey) {
+    const { selectionStart, selectionEnd } = descriptionEl;
+    descriptionEl.setRangeText("\n", selectionStart, selectionEnd, "end");
+    autoResizeDescription();
+    return;
   }
+  await submitIssue();
 });
 
 win.listen("tauri://focus", () => {
