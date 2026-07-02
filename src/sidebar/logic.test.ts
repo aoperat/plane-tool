@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatLocalTime, groupItemsByProject, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -200,5 +200,33 @@ describe("buildIssueUrl", () => {
     expect(buildIssueUrl("https://plane.example.com", "acme", "p1", "i1")).toBe(
       "https://plane.example.com/acme/projects/p1/issues/i1",
     );
+  });
+});
+
+describe("formatDateRange", () => {
+  it("formats both dates as M/D → M/D", () => {
+    expect(formatDateRange("2026-07-01", "2026-07-04")).toBe("7/1 → 7/4");
+  });
+  it("formats target-only as ~ M/D", () => {
+    expect(formatDateRange(null, "2026-07-08")).toBe("~ 7/8");
+  });
+  it("formats start-only as M/D →", () => {
+    expect(formatDateRange("2026-07-01", null)).toBe("7/1 →");
+  });
+  it("returns empty string when both are missing", () => {
+    expect(formatDateRange(null, null)).toBe("");
+  });
+  it("strips leading zeros", () => {
+    expect(formatDateRange("2026-01-05", "2026-12-31")).toBe("1/5 → 12/31");
+  });
+});
+
+describe("groupProgress", () => {
+  it("counts completed items against the total", () => {
+    const items = [wi("a", "p1"), wiCompleted("b", "p1", "2026-07-02T05:00:00Z"), wi("c", "p1")];
+    expect(groupProgress(items)).toEqual({ done: 1, total: 3 });
+  });
+  it("returns zeros for an empty group", () => {
+    expect(groupProgress([])).toEqual({ done: 0, total: 0 });
   });
 });

@@ -106,3 +106,31 @@ export function easeOutCubic(t: number): number {
   const clamped = Math.min(1, Math.max(0, t));
   return 1 - Math.pow(1 - clamped, 3);
 }
+
+/** "2026-07-01" → "7/1". null/malformed → "". */
+function monthDay(iso: string | null): string {
+  if (!iso) return "";
+  const parts = iso.split("-");
+  if (parts.length !== 3) return "";
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!m || !d) return "";
+  return `${m}/${d}`;
+}
+
+/** Compact date-range label for a task chip: "7/1 → 7/4", "~ 7/8" (due only),
+ *  "7/1 →" (start only), or "" when neither date is set. */
+export function formatDateRange(start: string | null, target: string | null): string {
+  const s = monthDay(start);
+  const t = monthDay(target);
+  if (s && t) return `${s} → ${t}`;
+  if (t) return `~ ${t}`;
+  if (s) return `${s} →`;
+  return "";
+}
+
+/** Completed-vs-total counts for a project group's progress ring. */
+export function groupProgress(items: WorkItem[]): { done: number; total: number } {
+  const done = items.filter((i) => i.state_group === "completed").length;
+  return { done, total: items.length };
+}
