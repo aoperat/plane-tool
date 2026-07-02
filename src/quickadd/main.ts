@@ -371,7 +371,10 @@ chipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopov
 chipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
 chipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
 
-const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopover !== null, closePopover);
+const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopover !== null, () => {
+  closePopover();
+  titleEl.focus();
+});
 chipAssignee.addEventListener("keydown", fieldPopoverKeydown);
 chipStart.addEventListener("keydown", fieldPopoverKeydown);
 chipDue.addEventListener("keydown", fieldPopoverKeydown);
@@ -407,7 +410,10 @@ projBtn.onclick = () => {
 };
 projBtn.addEventListener(
   "keydown",
-  handleDropdownKeydown(dropdown, () => !dropdown.hidden, () => { dropdown.hidden = true; }),
+  handleDropdownKeydown(dropdown, () => !dropdown.hidden, () => {
+    dropdown.hidden = true;
+    titleEl.focus();
+  }),
 );
 
 titleEl.addEventListener("keydown", async (e) => {
