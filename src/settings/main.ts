@@ -1,4 +1,5 @@
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getSettings, saveSettings } from "../shared/ipc";
 import { sortMonitorsByPosition } from "../shared/monitors";
 import { applyTheme } from "../shared/theme";
@@ -7,6 +8,16 @@ import "../shared/app.css";
 const baseUrl = document.getElementById("baseUrl") as HTMLInputElement;
 const workspace = document.getElementById("workspace") as HTMLInputElement;
 const token = document.getElementById("token") as HTMLInputElement;
+const tokenLink = document.getElementById("tokenLink")!;
+
+tokenLink.onclick = (e) => {
+  e.preventDefault();
+  const url = baseUrl.value.trim();
+  if (!url) return;
+  openUrl(`${url}/settings/profile/api-tokens/`).catch((err) => {
+    console.error("openUrl failed:", err);
+  });
+};
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
