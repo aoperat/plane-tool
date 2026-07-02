@@ -35,7 +35,7 @@
       {
         "label": "editmodal",
         "url": "src/editmodal/index.html",
-        "width": 480, "height": 320,
+        "width": 540, "height": 320,
         "decorations": false, "transparent": true, "alwaysOnTop": true,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       }

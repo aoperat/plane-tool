@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>설명 토글 — 목업</title>
+<style>
+  /* 실제 앱(src/shared/app.css)의 변수·스타일을 그대로 복사 */
+  :root {
+    --bg: #0d0e12;
+    --panel: #16181d;
+    --panel-2: #1c1f26;
+    --border: #2a2e37;
+    --text: #e6e8ec;
+    --muted: #8a909c;
+    --muted-2: #5c626d;
+    --accent: #4f7cff;
+    --accent-soft: rgba(79,124,255,0.14);
+    --green: #2ecc71;
+    --amber: #f5a623;
+    --red: #ef4d56;
+    --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 18% -10%, #232a45 0%, transparent 55%),
+      radial-gradient(1000px 700px at 110% 120%, #2a2438 0%, transparent 50%),
+      #0a0b0f;
+    padding: 70px 40px 60px;
+  }
+  .hint-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; gap: 18px; align-items: center; justify-content: center;
+    padding: 10px; font-size: 12.5px; color: var(--muted);
+    background: rgba(8,9,12,0.6); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border); z-index: 50;
+  }
+  .hint-bar b { color: var(--text); font-weight: 600; }
+  kbd {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px;
+    font-size: 11.5px; color: var(--text); font-family: inherit;
+  }
+  .grid { display: flex; flex-wrap: wrap; gap: 56px 40px; justify-content: center; align-items: flex-start; }
+  .cell { display: flex; flex-direction: column; gap: 12px; }
+  .caption {
+    align-self: flex-start; font-size: 11px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid rgba(79,124,255,0.3);
+    padding: 3px 9px; border-radius: 20px;
+  }
+  .note { font-size: 11.5px; color: var(--muted); max-width: 540px; line-height: 1.5; }
+  .note b { color: var(--text); }
+
+  /* ===== QuickAdd popup (실제 스타일) ===== */
+  .popup {
+    width: 540px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: visible; position: relative;
+  }
+  .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
+  .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); }
+  .title-input { flex: 1; color: var(--text); font-size: 17px; font-weight: 500; }
+  .title-input .ph { color: var(--muted-2); }
+  .caret { display:inline-block; width: 1.5px; height: 20px; background: var(--accent); vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .description-input {
+    display: block; width: 100%; font-size: 13px; padding: 0 18px 12px; color: var(--text);
+  }
+  .description-input .ph { color: var(--muted-2); }
+  /* ▼ 변경: 줄바꿈 금지 — 어떤 환경에서도 칩 로우는 항상 한 줄 */
+  .chip-row { display: flex; flex-wrap: nowrap; gap: 8px; padding: 0 18px 14px; position: relative; align-items: center; }
+  .chip {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+    font-size: 12.5px; color: var(--text); cursor: pointer; font-family: inherit;
+    flex: 0 1 auto; min-width: 0; white-space: nowrap;
+  }
+  .chip > span:not(.avatar):not(.dot) { overflow: hidden; text-overflow: ellipsis; }
+  .chip:hover { border-color: var(--accent); }
+  .chip .muted { color: var(--muted-2); }
+  .chip .avatar {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 8px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .chip svg { display: block; }
+
+  /* ▼ 새로 추가되는 부분: 설명 토글 칩 (줄어들지 않음) */
+  .chip-desc-toggle { margin-left: auto; color: var(--muted); flex: none; }
+  .chip-desc-toggle:hover { color: var(--text); }
+  .chip-desc-toggle.active {
+    color: var(--accent); background: var(--accent-soft); border-color: rgba(79,124,255,0.45);
+  }
+
+  .popup-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .proj-select {
+    display: flex; align-items: center; gap: 8px; padding: 6px 11px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; cursor: pointer; color: var(--text);
+  }
+  .dot { display: inline-block; border-radius: 50%; }
+  .proj-select .dot { width: 9px; height: 9px; }
+  .proj-select .chev { color: var(--muted); margin-left: 2px; }
+  .keys { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); align-items: center; }
+
+  /* ===== Edit modal — 폭을 QuickAdd와 동일한 540px로 통일 (기존 480px) ===== */
+  .editmodal {
+    width: 540px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); color: var(--text); overflow: visible;
+  }
+  .em-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .em-title { font-size: 14px; font-weight: 600; }
+  .em-browser-btn {
+    margin-left: auto; background: transparent; border: 1px solid var(--border); border-radius: 7px;
+    color: var(--muted); font-size: 12px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+  }
+  .em-close { background: transparent; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px; line-height: 1; }
+  .em-form .title-input { width: 100%; font-size: 16px; }
+  .em-foot {
+    display: flex; align-items: center;
+    padding: 12px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .em-delete { background: transparent; border: none; color: var(--red); font-size: 12.5px; cursor: pointer; padding: 6px 4px; font-family: inherit; }
+  .em-foot-right { margin-left: auto; display: flex; gap: 8px; }
+  .em-btn { padding: 7px 16px; border-radius: 8px; font-size: 12.5px; cursor: pointer; font-family: inherit; border: none; }
+  .em-btn-primary { background: var(--accent); color: #fff; }
+  .em-btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+  <div class="hint-bar">
+    <span><b>설명 입력 토글</b> — 목업 · 칩 로우 맨 오른쪽 <b>설명 칩</b>으로 켜고 끔</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- ① QuickAdd 기본 상태: 설명 숨김 -->
+    <div class="cell">
+      <span class="caption">① QuickAdd 기본 — 설명 숨김 (토글 off)</span>
+      <div class="popup">
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input"><span class="ph">진행 중인 작업을 입력하고 Enter…</span><span class="caret"></span></div>
+        </div>
+        <!-- 설명 textarea 없음 -->
+        <div class="chip-row">
+          <button class="chip"><span class="avatar">나</span> 나</button>
+          <button class="chip">📅 오늘</button>
+          <button class="chip">🚩 오늘</button>
+          <button class="chip">◌ 시작 전</button>
+          <button class="chip"><span class="muted">우선순위 없음</span></button>
+          <button class="chip chip-desc-toggle" title="설명 추가">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>
+            설명
+          </button>
+        </div>
+        <div class="popup-bottom">
+          <div class="proj-select"><span class="dot" style="background:#2ecc71"></span><span>Mobile</span><span class="chev">▾</span></div>
+          <div class="keys"><span><kbd>Enter</kbd> 추가</span><span><kbd>Esc</kbd> 닫기</span></div>
+        </div>
+      </div>
+      <p class="note">설명 입력란이 사라져 팝업이 한 줄 더 낮아짐. 토글 칩은 <b>맨 오른쪽에 분리 배치</b>(margin-left:auto)라 필드 값 칩들과 구분됨. 아이콘+"설명" 라벨, 평소엔 muted 톤.</p>
+    </div>
+
+    <!-- ② QuickAdd 토글 on -->
+    <div class="cell">
+      <span class="caption">② QuickAdd — 토글 on: 설명 입력란 표시</span>
+      <div class="popup">
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input">로그인 화면 소셜 버튼 정렬 깨지는 버그</div>
+        </div>
+        <div class="description-input">재현: iOS Safari에서 가로 모드 전환 시 버튼이 겹침<span class="caret"></span></div>
+        <div class="chip-row">
+          <button class="chip"><span class="avatar">나</span> 나</button>
+          <button class="chip">📅 오늘</button>
+          <button class="chip">🚩 오늘</button>
+          <button class="chip">◌ 시작 전</button>
+          <button class="chip"><span class="muted">우선순위 없음</span></button>
+          <button class="chip chip-desc-toggle active" title="설명 숨기기">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>
+            설명
+          </button>
+        </div>
+        <div class="popup-bottom">
+          <div class="proj-select"><span class="dot" style="background:#2ecc71"></span><span>Mobile</span><span class="chev">▾</span></div>
+          <div class="keys"><span><kbd>Enter</kbd> 추가</span><span><kbd>Esc</kbd> 닫기</span></div>
+        </div>
+      </div>
+      <p class="note">토글 on → 칩이 <b>액센트 색 + 옅은 배경</b>으로 활성 표시, 설명 입력란이 제목 아래(기존 위치)에 나타나고 포커스 이동. 다시 누르면 숨김. 팝업이 닫혔다 열리면 항상 off로 초기화.</p>
+    </div>
+
+    <!-- ③ 수정모달: 설명 없는 아이템 -->
+    <div class="cell">
+      <span class="caption">③ 수정모달 — 설명 없는 아이템 (토글 off)</span>
+      <div class="editmodal">
+        <div class="em-head">
+          <strong class="em-title">할 일 수정</strong>
+          <button class="em-browser-btn">🌐 브라우저에서 열기</button>
+          <button class="em-close">✕</button>
+        </div>
+        <div class="em-form">
+          <div class="popup-top">
+            <div class="title-input">대시보드 차트 로딩 스피너 추가</div>
+          </div>
+          <!-- 설명 textarea 없음 -->
+          <div class="chip-row">
+            <button class="chip"><span class="avatar">이</span> 이</button>
+            <button class="chip">📅 2026-07-02</button>
+            <button class="chip">🚩 2026-07-04</button>
+            <button class="chip">◌ 시작 전</button>
+            <button class="chip">보통</button>
+            <button class="chip chip-desc-toggle" title="설명 추가">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>
+              설명
+            </button>
+          </div>
+        </div>
+        <div class="em-foot">
+          <button class="em-delete">삭제</button>
+          <div class="em-foot-right">
+            <button class="em-btn em-btn-ghost">취소</button>
+            <button class="em-btn em-btn-primary">저장</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">QuickAdd와 동일한 토글 칩을 칩 로우 맨 오른쪽에 배치. 설명이 <b>비어 있는</b> 아이템은 off로 시작. 모달 폭을 <b>540px로 통일</b>(기존 480px)하고 칩 로우는 <b>nowrap</b> — 내용이 길면 칩 라벨이 말줄임(…) 처리되어 어떤 환경에서도 한 줄 유지.</p>
+    </div>
+
+    <!-- ④ 수정모달: 설명 있는 아이템 → 자동 on -->
+    <div class="cell">
+      <span class="caption">④ 수정모달 — 설명 있는 아이템은 자동 on</span>
+      <div class="editmodal">
+        <div class="em-head">
+          <strong class="em-title">할 일 수정</strong>
+          <button class="em-browser-btn">🌐 브라우저에서 열기</button>
+          <button class="em-close">✕</button>
+        </div>
+        <div class="em-form">
+          <div class="popup-top">
+            <div class="title-input">소셜 로그인 버튼 정렬 깨짐 수정</div>
+          </div>
+          <div class="description-input">재현: iOS Safari에서 가로 모드 전환 시 버튼이 겹침.<br/>PR #123에서 flex-wrap 수정 필요.</div>
+          <div class="chip-row">
+            <button class="chip"><span class="avatar">이</span> 이</button>
+            <button class="chip">📅 2026-07-01</button>
+            <button class="chip">🚩 2026-07-03</button>
+            <button class="chip">◔ 진행 중</button>
+            <button class="chip" style="color:var(--red)">높음</button>
+            <button class="chip chip-desc-toggle active" title="설명 숨기기">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>
+              설명
+            </button>
+          </div>
+        </div>
+        <div class="em-foot">
+          <button class="em-delete">삭제</button>
+          <div class="em-foot-right">
+            <button class="em-btn em-btn-ghost">취소</button>
+            <button class="em-btn em-btn-primary">저장</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">이미 설명이 <b>있는</b> 아이템을 열면 토글이 <b>자동으로 on</b> — 기존 내용이 안 보이면 지워진 걸로 오해할 수 있으므로. 이 상태에서 토글을 끄면 입력란만 숨기고 <b>내용은 유지</b>(저장 시 그대로 보존).</p>
+    </div>
+
+  </div>
+</body>
+</html>

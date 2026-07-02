@@ -17,13 +17,14 @@
         <div class="popup-top">
           <input id="emTitleInput" class="title-input" placeholder="제목" />
         </div>
-        <textarea id="emDescription" class="description-input" placeholder="설명을 입력하세요…" rows="4"></textarea>
+        <textarea id="emDescription" class="description-input" placeholder="설명을 입력하세요…" rows="4" hidden></textarea>
         <div class="chip-row">
           <button type="button" class="chip" id="emChipAssignee"></button>
           <button type="button" class="chip" id="emChipStart"></button>
           <button type="button" class="chip" id="emChipDue"></button>
           <button type="button" class="chip" id="emChipState"></button>
           <button type="button" class="chip" id="emChipPriority"></button>
+          <button type="button" class="chip chip-desc-toggle" id="emChipDesc" title="설명 추가"></button>
           <div id="emFieldPopover" class="field-popover" hidden></div>
         </div>
         <p class="em-error" id="emError" hidden></p>

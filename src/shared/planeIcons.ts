@@ -10,6 +10,11 @@ export const CALENDAR_ICON =
 export const FLAG_ICON =
   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a909c" stroke-width="2"><path d="M5 21V4h13l-3 4 3 4H5"/></svg>`;
 
+// currentColor (not the fixed #8a909c of the icons above) so the description
+// toggle chip can tint it muted/accent along with its own state.
+export const DESCRIPTION_ICON =
+  `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>`;
+
 export const EXTERNAL_LINK_ICON =
   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a909c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`;
 

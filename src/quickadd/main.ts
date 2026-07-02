@@ -5,7 +5,7 @@ import type { Project, Member } from "../shared/types";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
-  CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
+  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
@@ -28,6 +28,7 @@ const chipStart = document.getElementById("chipStart")!;
 const chipDue = document.getElementById("chipDue")!;
 const chipPriority = document.getElementById("chipPriority")!;
 const chipState = document.getElementById("chipState")!;
+const chipDesc = document.getElementById("chipDesc")!;
 const fieldPopover = document.getElementById("fieldPopover")!;
 const descriptionEl = document.getElementById("description") as HTMLTextAreaElement;
 const errorEl = document.getElementById("qaError")!;
@@ -195,12 +196,26 @@ function renderChips() {
 }
 
 function autoResizeDescription() {
-  descriptionEl.style.height = "auto";
-  descriptionEl.style.height = `${descriptionEl.scrollHeight}px`;
+  if (!descriptionEl.hidden) {
+    descriptionEl.style.height = "auto";
+    descriptionEl.style.height = `${descriptionEl.scrollHeight}px`;
+  }
   resizeToFit();
 }
 
 descriptionEl.addEventListener("input", autoResizeDescription);
+
+// Hiding only hides — typed text stays in the textarea and is still submitted,
+// so toggling off and back on never loses a draft.
+let descVisible = false;
+function setDescVisible(visible: boolean) {
+  descVisible = visible;
+  descriptionEl.hidden = !visible;
+  chipDesc.classList.toggle("active", visible);
+  chipDesc.title = visible ? "설명 숨기기" : "설명 추가";
+  autoResizeDescription();
+  if (visible) descriptionEl.focus();
+}
 
 function closePopover() {
   openPopover = null;
@@ -395,6 +410,11 @@ chipStart.onclick = () => { openPopover === "start" ? closePopover() : openDateP
 chipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopover("due"); };
 chipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
 chipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
+chipDesc.innerHTML = `${DESCRIPTION_ICON} 설명`;
+chipDesc.onclick = () => {
+  if (openPopover) closePopover();
+  setDescVisible(!descVisible);
+};
 
 const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopover !== null, () => {
   closePopover();
@@ -407,7 +427,7 @@ chipPriority.addEventListener("keydown", fieldPopoverKeydown);
 chipState.addEventListener("keydown", fieldPopoverKeydown);
 
 // DOM order of the field chips, used for ArrowLeft/ArrowRight navigation between them.
-const chips = [chipAssignee, chipStart, chipDue, chipState, chipPriority];
+const chips = [chipAssignee, chipStart, chipDue, chipState, chipPriority, chipDesc];
 
 /** Moves focus to the previous/next chip in `chips` (no wrap). No-op while a dropdown is open,
  *  since ArrowUp/ArrowDown already own navigation there (see `handleDropdownKeydown`). */
@@ -431,8 +451,8 @@ function resetFields() {
   priority = "none";
   stateGroup = "unstarted";
   descriptionEl.value = "";
+  setDescVisible(false);
   clearError();
-  autoResizeDescription();
   closePopover();
   renderChips();
 }

@@ -5,7 +5,7 @@ import { buildIssueUrl } from "../sidebar/logic";
 import { DATE_PRESETS, resolveDatePreset, type DatePresetKey } from "../shared/datePresets";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
-  CALENDAR_ICON, FLAG_ICON, type Priority, type StateGroup,
+  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import type { Member, WorkItemDetail } from "../shared/types";
@@ -24,6 +24,7 @@ const emChipStart = document.getElementById("emChipStart")!;
 const emChipDue = document.getElementById("emChipDue")!;
 const emChipState = document.getElementById("emChipState")!;
 const emChipPriority = document.getElementById("emChipPriority")!;
+const emChipDesc = document.getElementById("emChipDesc")!;
 const emFieldPopover = document.getElementById("emFieldPopover")!;
 const emError = document.getElementById("emError")!;
 const emDelete = document.getElementById("emDelete")!;
@@ -63,9 +64,21 @@ function resizeToFit() {
     height = Math.max(height, Math.ceil(emFieldPopover.getBoundingClientRect().bottom));
   }
   height += 4;
-  win.setSize(new LogicalSize(480, height)).catch((err) => {
+  win.setSize(new LogicalSize(540, height)).catch((err) => {
     console.error("resizeToFit failed:", err);
   });
+}
+
+// Same hide-only semantics as QuickAdd's setDescVisible — the textarea's value
+// survives toggling, so save() still sees (and diffs) the existing description.
+let descVisible = false;
+function setDescVisible(visible: boolean, focus = true) {
+  descVisible = visible;
+  emDescription.hidden = !visible;
+  emChipDesc.classList.toggle("active", visible);
+  emChipDesc.title = visible ? "설명 숨기기" : "설명 추가";
+  resizeToFit();
+  if (visible && focus) emDescription.focus();
 }
 
 function dateChoiceLabel(choice: DateChoice, custom: string): string {
@@ -244,6 +257,11 @@ emChipStart.onclick = () => { openPopover === "start" ? closePopover() : openDat
 emChipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopover("due"); };
 emChipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
 emChipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
+emChipDesc.innerHTML = `${DESCRIPTION_ICON} 설명`;
+emChipDesc.onclick = () => {
+  if (openPopover) closePopover();
+  setDescVisible(!descVisible);
+};
 
 async function loadItem(pid: string, iid: string) {
   // Re-assert always-on-top every time an item is loaded, mirroring the
@@ -272,6 +290,8 @@ async function loadItem(pid: string, iid: string) {
     original = detail;
     emTitleInput.value = detail.name;
     emDescription.value = detail.description;
+    // Auto-show an existing description — hiding it would read as "deleted".
+    setDescVisible(detail.description !== "", false);
     assigneeIds = [...detail.assignee_ids];
     // Always initialize as "custom" showing the loaded date literally — the
     // preset chips (오늘/내일/다음 주) remain clickable if the user wants to
