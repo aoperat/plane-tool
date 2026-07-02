@@ -9,20 +9,25 @@ const baseUrl = document.getElementById("baseUrl") as HTMLInputElement;
 const workspace = document.getElementById("workspace") as HTMLInputElement;
 const token = document.getElementById("token") as HTMLInputElement;
 const tokenLink = document.getElementById("tokenLink")!;
-
-tokenLink.onclick = (e) => {
-  e.preventDefault();
-  const url = baseUrl.value.trim();
-  if (!url) return;
-  openUrl(`${url}/settings/profile/api-tokens/`).catch((err) => {
-    console.error("openUrl failed:", err);
-  });
-};
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
 const sidebarDisplay = document.getElementById("sidebarDisplay") as HTMLSelectElement;
 const status = document.getElementById("status")!;
+
+tokenLink.onclick = (e) => {
+  e.preventDefault();
+  const url = baseUrl.value.trim();
+  if (!url) {
+    status.textContent = "Base URL을 먼저 입력하세요";
+    baseUrl.focus();
+    return;
+  }
+  openUrl(`${url}/settings/profile/api-tokens/`).catch((err) => {
+    status.textContent = "링크 열기 실패: " + err;
+    console.error("openUrl failed:", err);
+  });
+};
 
 async function load() {
   const s = await getSettings();
