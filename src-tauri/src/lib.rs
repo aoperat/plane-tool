@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod monitors;
 pub mod plane_api;
 
 use tauri::{
