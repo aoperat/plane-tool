@@ -145,7 +145,12 @@ fn completed_within(item: &WorkItem, after: &str, before: &str) -> bool {
 struct Paginated<T> { results: Vec<T> }
 
 #[derive(Deserialize)]
-struct RawProject { id: String, name: String, #[serde(default)] identifier: String }
+struct RawProject {
+    id: String,
+    name: String,
+    #[serde(default)] identifier: String,
+    #[serde(default)] is_member: bool,
+}
 
 #[derive(Deserialize)]
 struct RawState { #[serde(default)] group: String }
@@ -186,6 +191,26 @@ pub struct PlaneClient {
     workspace: String,
     api_key: String,
     http: reqwest::Client,
+}
+
+/// Passes successful responses through; turns error statuses into an `Err` that
+/// includes the response body, where Plane puts the actual reason (e.g. per-field
+/// validation messages on a 400). `error_for_status()` alone would discard it.
+async fn error_with_body(resp: reqwest::Response) -> Result<reqwest::Response, String> {
+    let status = resp.status();
+    if !status.is_client_error() && !status.is_server_error() {
+        return Ok(resp);
+    }
+    let url = resp.url().clone();
+    let body = resp.text().await.unwrap_or_default();
+    let mut msg = format!("HTTP {status} ({url})");
+    if !body.is_empty() {
+        // Cap pathological bodies (e.g. an HTML error page) so the UI stays readable.
+        let snippet: String = body.chars().take(300).collect();
+        msg.push_str(": ");
+        msg.push_str(&snippet);
+    }
+    Err(msg)
 }
 
 /// Seconds to wait before retrying a 429 response: honors the server's `Retry-After` header when
@@ -229,7 +254,7 @@ impl PlaneClient {
                 attempt += 1;
                 continue;
             }
-            return resp.error_for_status().map_err(|e| e.to_string());
+            return error_with_body(resp).await;
         }
     }
 
@@ -239,6 +264,9 @@ impl PlaneClient {
         Ok(CurrentUser { id: raw.id, display_name: raw.display_name })
     }
 
+    /// Returns only the projects the authenticated user is a member of. Plane's
+    /// `/projects/` endpoint lists every project in the workspace regardless of
+    /// project-level membership, flagging each with `is_member`, so we filter here.
     pub async fn list_projects(&self) -> Result<Vec<Project>, String> {
         let url = format!("{}/projects/", self.ws_base());
         let page: Paginated<RawProject> =
@@ -246,6 +274,7 @@ impl PlaneClient {
         Ok(page
             .results
             .into_iter()
+            .filter(|p| p.is_member)
             .map(|p| Project { id: p.id, name: p.name, identifier: p.identifier })
             .collect())
     }
@@ -308,23 +337,31 @@ impl PlaneClient {
         // shape only applies to the `expand=assignees,state` list endpoint).
         // Nothing consumes the created item, so skip parsing the body.
         let url = format!("{}/projects/{}/work-items/", self.ws_base(), project_id);
-        self.http
+        // Absent optional fields are omitted rather than sent as `null` —
+        // Plane 0.27+ rejects `"description_html": null` with a 400.
+        let mut body = serde_json::Map::new();
+        body.insert("name".into(), serde_json::json!(item.name));
+        body.insert("assignees".into(), serde_json::json!(item.assignee_ids));
+        body.insert("priority".into(), serde_json::json!(item.priority));
+        body.insert("state".into(), serde_json::json!(item.state_id));
+        if let Some(sd) = item.start_date {
+            body.insert("start_date".into(), serde_json::json!(sd));
+        }
+        if let Some(td) = item.target_date {
+            body.insert("target_date".into(), serde_json::json!(td));
+        }
+        if let Some(dh) = item.description_html {
+            body.insert("description_html".into(), serde_json::json!(dh));
+        }
+        let resp = self
+            .http
             .post(&url)
             .header("X-Api-Key", &self.api_key)
-            .json(&serde_json::json!({
-                "name": item.name,
-                "assignees": item.assignee_ids,
-                "start_date": item.start_date,
-                "target_date": item.target_date,
-                "priority": item.priority,
-                "state": item.state_id,
-                "description_html": item.description_html,
-            }))
+            .json(&serde_json::Value::Object(body))
             .send()
             .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
             .map_err(|e| e.to_string())?;
+        error_with_body(resp).await?;
         Ok(())
     }
 
@@ -335,28 +372,28 @@ impl PlaneClient {
         body: serde_json::Value,
     ) -> Result<(), String> {
         let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
-        self.http
+        let resp = self
+            .http
             .patch(&url)
             .header("X-Api-Key", &self.api_key)
             .json(&body)
             .send()
             .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
             .map_err(|e| e.to_string())?;
+        error_with_body(resp).await?;
         Ok(())
     }
 
     pub async fn delete_work_item(&self, project_id: &str, item_id: &str) -> Result<(), String> {
         let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
-        self.http
+        let resp = self
+            .http
             .delete(&url)
             .header("X-Api-Key", &self.api_key)
             .send()
             .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
             .map_err(|e| e.to_string())?;
+        error_with_body(resp).await?;
         Ok(())
     }
 }
@@ -466,7 +503,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "results": [{ "id": "p1", "name": "Web App", "identifier": "WEB" }]
+                "results": [{ "id": "p1", "name": "Web App", "identifier": "WEB", "is_member": true }]
             })))
             .mount(&server)
             .await;
@@ -498,8 +535,8 @@ mod tests {
             .and(header("X-Api-Key", "secret-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "results": [
-                    { "id": "p1", "name": "Web App", "identifier": "WEB" },
-                    { "id": "p2", "name": "Mobile", "identifier": "MOB" }
+                    { "id": "p1", "name": "Web App", "identifier": "WEB", "is_member": true },
+                    { "id": "p2", "name": "Mobile", "identifier": "MOB", "is_member": true }
                 ]
             })))
             .mount(&server)
@@ -509,6 +546,25 @@ mod tests {
         assert_eq!(projects.len(), 2);
         assert_eq!(projects[0].id, "p1");
         assert_eq!(projects[1].name, "Mobile");
+    }
+
+    #[tokio::test]
+    async fn list_projects_drops_projects_the_user_is_not_a_member_of() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "p1", "name": "Web App", "identifier": "WEB", "is_member": true },
+                    { "id": "p2", "name": "Not Invited", "identifier": "NOPE", "is_member": false }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let projects = client_for(&server).await.list_projects().await.unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, "p1");
     }
 
     #[tokio::test]
@@ -617,8 +673,11 @@ mod tests {
         client_for(&server).await.create_work_item("p1", &item).await.unwrap();
     }
 
+    // Plane 0.27+ rejects explicit `null` for description_html ("This field may
+    // not be null.") — absent optional fields must be omitted from the body
+    // entirely, not sent as null.
     #[tokio::test]
-    async fn create_work_item_sends_null_description_when_absent() {
+    async fn create_work_item_omits_absent_optional_fields() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
@@ -626,11 +685,8 @@ mod tests {
             .and(wiremock::matchers::body_json(serde_json::json!({
                 "name": "Hello",
                 "assignees": ["me"],
-                "start_date": null,
-                "target_date": null,
                 "priority": "none",
-                "state": "state-1",
-                "description_html": null
+                "state": "state-1"
             })))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
             .mount(&server)
@@ -646,6 +702,33 @@ mod tests {
             description_html: None,
         };
         client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+    }
+
+    // The server's validation errors arrive in the response body — surfacing
+    // only "400 Bad Request" gives the user nothing to act on.
+    #[tokio::test]
+    async fn create_work_item_error_includes_response_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "description_html": ["This field may not be null."]
+            })))
+            .mount(&server)
+            .await;
+
+        let item = NewWorkItem {
+            name: "Hello",
+            assignee_ids: &["me".to_string()],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "state-1",
+            description_html: None,
+        };
+        let err = client_for(&server).await.create_work_item("p1", &item).await.unwrap_err();
+        assert!(err.contains("400"), "error should include status: {err}");
+        assert!(err.contains("This field may not be null."), "error should include body: {err}");
     }
 
     #[tokio::test]
