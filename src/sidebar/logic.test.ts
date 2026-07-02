@@ -3,10 +3,10 @@ import { buildIssueUrl, computeSidebarGeometry, easeOutCubic, filterVisibleToday
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, state_group, project_id, completed_at: null };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, completed_at: null };
 }
 function wiCompleted(id: string, project_id: string, completed_at: string | null): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, state_group: "completed", project_id, completed_at };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group: "completed", project_id, completed_at };
 }
 function st(id: string, group: string, project_id: string, isDefault = false): ProjectState {
   return { id, group, project_id, default: isDefault };

@@ -3,7 +3,8 @@ export interface Member { id: string; display_name: string; }
 export interface ProjectState { id: string; group: string; project_id: string; default: boolean; }
 export interface WorkItem {
   id: string; name: string; priority: string;
-  target_date: string | null; state_group: string; project_id: string;
+  target_date: string | null; start_date: string | null;
+  state_group: string; project_id: string;
   completed_at: string | null;
 }
 export interface WorkItemDetail {

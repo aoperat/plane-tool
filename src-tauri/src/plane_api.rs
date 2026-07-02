@@ -9,6 +9,7 @@ pub struct WorkItem {
     pub name: String,
     pub priority: String,
     pub target_date: Option<String>,
+    pub start_date: Option<String>,
     pub state_group: String,
     pub project_id: String,
     pub assignee_ids: Vec<String>,
@@ -404,6 +405,7 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         name: w.name,
         priority: w.priority,
         target_date: w.target_date,
+        start_date: w.start_date,
         state_group: w.state.map(|s| s.group).unwrap_or_default(),
         project_id: project_id.to_string(),
         assignee_ids: w.assignees.into_iter().map(|a| a.id).collect(),
@@ -436,7 +438,7 @@ mod tests {
     fn wi_completed(id: &str, group: &str, assignees: &[&str], completed_at: Option<&str>) -> WorkItem {
         WorkItem {
             id: id.into(), name: format!("item {id}"), priority: "none".into(),
-            target_date: None, state_group: group.into(), project_id: "p1".into(),
+            target_date: None, start_date: None, state_group: group.into(), project_id: "p1".into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
         }
@@ -577,6 +579,7 @@ mod tests {
                 "results": [{
                     "id": "i1", "name": "Fix bug", "priority": "high",
                     "target_date": "2026-06-30",
+                    "start_date": "2026-07-01",
                     "state": { "group": "started" },
                     "assignees": [{ "id": "me" }],
                     "completed_at": "2026-07-01T09:00:00Z"
@@ -591,6 +594,7 @@ mod tests {
         assert_eq!(items[0].assignee_ids, vec!["me".to_string()]);
         assert_eq!(items[0].project_id, "p1");
         assert_eq!(items[0].completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
+        assert_eq!(items[0].start_date.as_deref(), Some("2026-07-01"));
     }
 
     #[tokio::test]

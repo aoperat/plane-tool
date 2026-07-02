@@ -27,6 +27,7 @@ pub struct WorkItemDto {
     pub name: String,
     pub priority: String,
     pub target_date: Option<String>,
+    pub start_date: Option<String>,
     pub state_group: String,
     pub project_id: String,
     pub completed_at: Option<String>,
@@ -67,6 +68,7 @@ pub fn assemble_sidebar(
         .into_iter()
         .map(|w| WorkItemDto {
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
+            start_date: w.start_date,
             state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
         })
         .collect();
@@ -375,7 +377,7 @@ mod tests {
     fn wi_completed(id: &str, group: &str, assignees: &[&str], project: &str, completed_at: Option<&str>) -> WorkItem {
         WorkItem {
             id: id.into(), name: format!("n{id}"), priority: "none".into(),
-            target_date: None, state_group: group.into(), project_id: project.into(),
+            target_date: None, start_date: None, state_group: group.into(), project_id: project.into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
         }
