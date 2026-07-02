@@ -10,6 +10,54 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, Shortcut, ShortcutState};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_updater::UpdaterExt;
+
+/// Checks the release feed once, in the background. If a newer version exists,
+/// asks the user first; on confirmation downloads, installs, and relaunches.
+/// Every failure path only logs — an unreachable update server must never
+/// get in the way of actually using the app.
+fn check_for_updates(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let updater = match app.updater() {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("updater init failed: {e}");
+                return;
+            }
+        };
+        let update = match updater.check().await {
+            Ok(Some(u)) => u,
+            Ok(None) => return,
+            Err(e) => {
+                eprintln!("update check failed: {e}");
+                return;
+            }
+        };
+        let version = update.version.clone();
+        let handle = app.clone();
+        app.dialog()
+            .message(format!(
+                "새 버전 {version}이(가) 있습니다.\n지금 업데이트할까요? 설치 후 자동으로 재시작됩니다."
+            ))
+            .title("Plane Quick Dock 업데이트")
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "업데이트".to_string(),
+                "나중에".to_string(),
+            ))
+            .show(move |confirmed| {
+                if !confirmed {
+                    return;
+                }
+                tauri::async_runtime::spawn(async move {
+                    match update.download_and_install(|_, _| {}, || {}).await {
+                        Ok(()) => handle.restart(),
+                        Err(e) => eprintln!("update install failed: {e}"),
+                    }
+                });
+            });
+    });
+}
 
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
@@ -55,6 +103,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -100,6 +150,8 @@ pub fn run() {
             if cfg.base_url.is_empty() {
                 show_window(app.handle(), "settings");
             }
+
+            check_for_updates(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
             // dismissed with Esc or its shortcut. The Sidebar auto-hides on
             // focus loss instead (see sidebar/main.ts's tauri://blur listener),
