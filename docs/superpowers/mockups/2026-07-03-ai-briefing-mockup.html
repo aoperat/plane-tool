@@ -1,0 +1,304 @@
+<title>AI 브리핑 창 목업 — Plane Quick Dock</title>
+<style>
+  :root {
+    --bg: #0d0e12; --panel: #16181d; --panel-2: #1c1f26; --border: #2a2e37;
+    --text: #e6e8ec; --muted: #8a909c; --muted-2: #5c626d;
+    --accent: #4f7cff; --accent-soft: rgba(79,124,255,0.14);
+    --green: #2ecc71; --amber: #f5a623; --red: #ef4d56;
+    --radius: 12px;
+  }
+  body {
+    margin: 0; background: #08090c; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+    padding: 40px 24px 80px;
+  }
+  .page { max-width: 1280px; margin: 0 auto; }
+  .page-head { margin-bottom: 8px; }
+  .page-head h1 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  .page-head p { color: var(--muted); font-size: 13.5px; margin: 0; max-width: 68ch; line-height: 1.6; }
+  .variants { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 28px; align-items: flex-start; }
+  .variant { display: flex; flex-direction: column; gap: 14px; }
+  .variant-label { display: flex; align-items: baseline; gap: 10px; }
+  .variant-label .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--accent);
+    border: 1px solid rgba(79,124,255,0.4); border-radius: 5px; padding: 2px 7px;
+  }
+  .variant-label strong { font-size: 15px; }
+  .variant-label span.sub { color: var(--muted-2); font-size: 12.5px; }
+
+  /* ===== 창 프레임 (QuickAdd와 동일한 카드 문법) ===== */
+  .win {
+    width: 560px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .win-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px 8px 14px;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+    cursor: grab; user-select: none;
+  }
+  .grip { color: var(--muted-2); font-size: 11px; letter-spacing: 1px; }
+  .win-title { font-size: 12.5px; font-weight: 600; color: var(--muted); flex: 1; }
+  .win-title b { color: var(--text); font-weight: 600; }
+  .icon-btn {
+    width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center;
+    background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 12px;
+  }
+  .icon-btn:hover { background: var(--panel); color: var(--text); }
+
+  .win-body { padding: 14px 16px 6px; }
+
+  /* AI 요약 문단 */
+  .summary {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--accent-soft); border: 1px solid rgba(79,124,255,0.28);
+    border-radius: 10px; padding: 11px 13px; margin-bottom: 14px;
+  }
+  .summary .spark { flex: none; margin-top: 1px; }
+  .summary p { margin: 0; font-size: 13px; line-height: 1.65; color: var(--text); }
+
+  /* 섹션 */
+  .sec { margin-bottom: 12px; }
+  .sec-head {
+    display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted);
+  }
+  .sec-head .cnt { color: var(--muted-2); font-weight: 600; }
+  .sec-head .stripe { width: 3px; height: 12px; border-radius: 2px; }
+  .stripe.red { background: var(--red); } .stripe.amber { background: var(--amber); }
+  .stripe.blue { background: var(--accent); } .stripe.grey { background: var(--muted-2); }
+
+  .row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 9px; border-radius: 8px;
+  }
+  .row:hover { background: var(--panel-2); }
+  .row .pri { flex: none; width: 15px; text-align: center; font-size: 12px; }
+  .row .name { flex: 1; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .proj { flex: none; font-size: 10.5px; color: var(--muted-2); font-weight: 600; }
+  .chip {
+    flex: none; font-size: 10.5px; padding: 1px 7px; border-radius: 5px;
+    border: 1px solid var(--border); color: var(--muted);
+  }
+  .chip.red { color: var(--red); border-color: rgba(239,77,86,0.45); background: rgba(239,77,86,0.1); }
+  .chip.amber { color: var(--amber); border-color: rgba(245,166,35,0.45); background: rgba(245,166,35,0.08); }
+
+  .win-foot {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
+  }
+  .foot-meta { flex: 1; font-size: 11px; color: var(--muted-2); }
+  .btn {
+    font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 7px;
+    border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .btn:hover { color: var(--text); border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border: none; color: #fff; }
+
+  /* ===== B안: 플랜 리스트 ===== */
+  .plan { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .plan-row {
+    display: flex; gap: 11px; align-items: flex-start;
+    padding: 8px 9px; border-radius: 9px;
+  }
+  .plan-row:hover { background: var(--panel-2); }
+  .plan-row .num {
+    flex: none; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 11.5px; font-weight: 700;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .plan-row.hot .num { background: rgba(239,77,86,0.12); border-color: rgba(239,77,86,0.5); color: var(--red); }
+  .plan-row .body { flex: 1; min-width: 0; }
+  .plan-row .t { font-size: 13px; margin-bottom: 3px; display: flex; gap: 8px; align-items: center; }
+  .plan-row .t .proj { font-size: 10.5px; color: var(--muted-2); font-weight: 600; }
+  .plan-row .why { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .plan-row .why em { color: var(--red); font-style: normal; }
+  .plan-rest { border-top: 1px dashed var(--border); padding-top: 9px; }
+  .plan-rest .sec-head { margin-bottom: 2px; }
+
+  /* 주석 카드 */
+  .notes {
+    width: 560px; background: transparent; border: 1px dashed var(--border);
+    border-radius: 10px; padding: 13px 16px; color: var(--muted); font-size: 12.5px; line-height: 1.7;
+  }
+  .notes b { color: var(--text); font-weight: 600; }
+  .notes ul { margin: 0; padding-left: 18px; }
+
+  .shared-notes { margin-top: 44px; max-width: 720px; }
+  .shared-notes h2 { font-size: 15px; margin: 0 0 10px; }
+  .shared-notes ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+  .shared-notes b { color: var(--text); font-weight: 600; }
+</style>
+
+<div class="page">
+  <div class="page-head">
+    <h1>AI 브리핑 창 — 레이아웃 2안</h1>
+    <p>사이드바 헤더의 브리핑 버튼(또는 아침 자동 실행)으로 열리는 독립 창입니다. QuickAdd와 같은
+    카드 문법(다크 패널·헤더 바·하단 푸터)을 그대로 씁니다. 완료된 작업은 어디에도 나타나지 않습니다.
+    내용은 실제 데이터 예시입니다 — 오늘이 7월 3일(목)이라고 가정.</p>
+  </div>
+
+  <div class="variants">
+
+    <!-- ============ A안 ============ -->
+    <div class="variant">
+      <div class="variant-label"><span class="tag">A안</span><strong>요약 + 마감 그룹</strong>
+        <span class="sub">현황 파악 중심 — 훑어보기 좋음</span></div>
+
+      <div class="win">
+        <div class="win-head">
+          <span class="grip">⠿</span>
+          <span class="win-title"><b>AI 브리핑</b> · 7월 3일 (목)</span>
+          <button class="icon-btn" title="다시 생성">↻</button>
+          <button class="icon-btn" title="닫기">✕</button>
+        </div>
+        <div class="win-body">
+          <div class="summary">
+            <span class="spark">✦</span>
+            <p>오늘 처리할 작업이 <b>6건</b> 있어요. <b>‘서버 인증서 갱신’</b>이 마감을 2일 넘겨
+            가장 급하고, 오늘 마감인 배포 스크립트 정리와 QA 시나리오 작성이 뒤를 잇습니다.
+            여유가 생기면 토요일 마감인 디자인 리뷰를 미리 봐두는 걸 추천해요.</p>
+          </div>
+
+          <div class="sec">
+            <div class="sec-head"><span class="stripe red"></span>지연됨 <span class="cnt">1</span></div>
+            <div class="row"><span class="pri" style="color:var(--red)">◆</span>
+              <span class="name">서버 인증서 갱신</span><span class="proj">INFRA</span>
+              <span class="chip red">D+2</span></div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-head"><span class="stripe amber"></span>오늘 마감 <span class="cnt">2</span></div>
+            <div class="row"><span class="pri" style="color:var(--amber)">▲</span>
+              <span class="name">배포 스크립트 정리</span><span class="proj">INFRA</span>
+              <span class="chip amber">오늘</span></div>
+            <div class="row"><span class="pri" style="color:var(--accent)">●</span>
+              <span class="name">QA 시나리오 작성</span><span class="proj">QA</span>
+              <span class="chip amber">오늘</span></div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-head"><span class="stripe blue"></span>진행 중 <span class="cnt">1</span></div>
+            <div class="row"><span class="pri" style="color:var(--amber)">▲</span>
+              <span class="name">사이드바 리팩터링</span><span class="proj">TOOL</span>
+              <span class="chip">~7/4</span></div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-head"><span class="stripe grey"></span>다가오는 마감 <span class="cnt">2</span></div>
+            <div class="row"><span class="pri" style="color:var(--accent)">●</span>
+              <span class="name">디자인 리뷰 준비</span><span class="proj">WEB</span>
+              <span class="chip">7/5 (토)</span></div>
+            <div class="row"><span class="pri" style="color:var(--muted-2)">▽</span>
+              <span class="name">월간 보고 초안</span><span class="proj">OPS</span>
+              <span class="chip">7/8 (화)</span></div>
+          </div>
+        </div>
+        <div class="win-foot">
+          <span class="foot-meta">오전 9:00 생성 · gpt-4o-mini</span>
+          <button class="btn">복사</button>
+          <button class="btn primary">다시 생성</button>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>A안 특징</b>
+        <ul>
+          <li>위쪽 요약 문단만 OpenAI가 생성 — 아래 그룹·정렬은 앱이 데이터로 직접 계산</li>
+          <li>항목을 클릭하면 해당 작업의 수정 모달(또는 Plane 웹)으로 이동</li>
+          <li>API 실패/키 미설정 시에도 그룹 리스트는 항상 표시(요약 자리만 안내문)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ============ B안 ============ -->
+    <div class="variant">
+      <div class="variant-label"><span class="tag">B안</span><strong>오늘의 플랜 (추천 순서)</strong>
+        <span class="sub">실행 중심 — “뭐부터 하지?”에 답함</span></div>
+
+      <div class="win">
+        <div class="win-head">
+          <span class="grip">⠿</span>
+          <span class="win-title"><b>AI 브리핑</b> · 7월 3일 (목)</span>
+          <button class="icon-btn" title="다시 생성">↻</button>
+          <button class="icon-btn" title="닫기">✕</button>
+        </div>
+        <div class="win-body">
+          <div class="summary">
+            <span class="spark">✦</span>
+            <p>마감 초과 1건을 포함해 오늘 집중할 작업 4건을 순서대로 정리했어요.
+            1번을 오전 중에 끝내는 게 좋겠습니다.</p>
+          </div>
+
+          <div class="plan">
+            <div class="plan-row hot">
+              <span class="num">1</span>
+              <div class="body">
+                <div class="t">서버 인증서 갱신 <span class="proj">INFRA</span></div>
+                <div class="why"><em>마감 2일 초과</em> · 우선순위 긴급 — 만료 시 사내 서비스 접속 장애로 이어질 수 있음</div>
+              </div>
+            </div>
+            <div class="plan-row">
+              <span class="num">2</span>
+              <div class="body">
+                <div class="t">배포 스크립트 정리 <span class="proj">INFRA</span></div>
+                <div class="why">오늘 마감 · 우선순위 높음 — 1번과 같은 프로젝트라 이어서 처리하기 좋음</div>
+              </div>
+            </div>
+            <div class="plan-row">
+              <span class="num">3</span>
+              <div class="body">
+                <div class="t">QA 시나리오 작성 <span class="proj">QA</span></div>
+                <div class="why">오늘 마감 · 우선순위 보통</div>
+              </div>
+            </div>
+            <div class="plan-row">
+              <span class="num">4</span>
+              <div class="body">
+                <div class="t">사이드바 리팩터링 <span class="proj">TOOL</span></div>
+                <div class="why">진행 중 · 내일(7/4) 마감 — 오늘 못 끝내면 내일 오전으로</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="plan-rest sec">
+            <div class="sec-head"><span class="stripe grey"></span>이번 주 나머지 <span class="cnt">2</span></div>
+            <div class="row"><span class="pri" style="color:var(--accent)">●</span>
+              <span class="name">디자인 리뷰 준비</span><span class="proj">WEB</span>
+              <span class="chip">7/5 (토)</span></div>
+            <div class="row"><span class="pri" style="color:var(--muted-2)">▽</span>
+              <span class="name">월간 보고 초안</span><span class="proj">OPS</span>
+              <span class="chip">7/8 (화)</span></div>
+          </div>
+        </div>
+        <div class="win-foot">
+          <span class="foot-meta">오전 9:00 생성 · gpt-4o-mini</span>
+          <button class="btn">복사</button>
+          <button class="btn primary">다시 생성</button>
+        </div>
+      </div>
+
+      <div class="notes">
+        <b>B안 특징</b>
+        <ul>
+          <li>순서·이유까지 OpenAI가 생성 (구조화된 JSON 응답으로 받아 앱이 렌더링)</li>
+          <li>이유 문구가 있어 브리핑답게 읽히지만, LLM 의존도가 A안보다 높음</li>
+          <li>키 미설정/실패 시 폴백: 앱이 규칙(지연&gt;오늘&gt;우선순위)으로 같은 순서 리스트 생성, 이유는 짧은 정형 문구</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="shared-notes">
+    <h2>두 안 공통 동작 (제안)</h2>
+    <ul>
+      <li><b>열기</b>: 사이드바 헤더의 ✦ 브리핑 버튼 → QuickAdd처럼 독립 창으로 표시 (드래그 이동 가능, Esc로 닫기)</li>
+      <li><b>아침 브리핑</b>: 설정에서 켜면 지정 시각(기본 09:00)에 창이 자동으로 열림 — 하루 1회</li>
+      <li><b>데이터 범위</b>: 내게 할당된 작업 중 완료·취소 제외 전부 (사이드바와 동일 소스), 프로젝트 전체</li>
+      <li><b>캐시</b>: 생성 결과를 보관해 창을 다시 열면 즉시 표시, “다시 생성”을 눌러야 API 재호출 (비용 절약)</li>
+      <li><b>설정 추가</b>: OpenAI API 키(키링 저장) · 모델 선택 · 아침 브리핑 on/off + 시각</li>
+      <li><b>복사 버튼</b>: 브리핑을 텍스트로 클립보드에 복사 (일일 스크럼 공유용)</li>
+    </ul>
+  </div>
+</div>
