@@ -792,4 +792,10 @@ win.listen("tauri://blur", () => {
 win.listen("toggle-sidebar", () => {
   toggleSidebar();
 });
+// 백엔드 유휴 워처(spawn_idle_watcher)가 보내는 열기 전용 이벤트.
+// toggle과 달리 이미 열려 있으면 아무것도 하지 않는다 — 폴링이 토글로
+// 이어지면 열려 있던 사이드바를 닫아 버릴 수 있어서 이벤트를 분리했다.
+win.listen("open-sidebar", async () => {
+  if (!(await win.isVisible())) await showSidebar();
+});
 refresh();
