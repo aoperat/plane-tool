@@ -3,10 +3,13 @@ import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVis
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, completed_at: null };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, completed_at: null, created_at: null };
 }
 function wiCompleted(id: string, project_id: string, completed_at: string | null): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group: "completed", project_id, completed_at };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group: "completed", project_id, completed_at, created_at: null };
+}
+function wiSort(id: string, over: Partial<WorkItem>): WorkItem {
+  return { ...wi(id, "p1"), ...over };
 }
 function st(id: string, group: string, project_id: string, isDefault = false): ProjectState {
   return { id, group, project_id, default: isDefault };
@@ -57,6 +60,60 @@ describe("groupItemsByProject", () => {
 
   it("returns an empty array for no items", () => {
     expect(groupItemsByProject([], [pr("p1")])).toEqual([]);
+  });
+
+  it("orders items by state group: started, unstarted, backlog, cancelled, completed", () => {
+    const items = [
+      wiSort("done", { state_group: "completed" }),
+      wiSort("todo", { state_group: "unstarted" }),
+      wiSort("cancel", { state_group: "cancelled" }),
+      wiSort("doing", { state_group: "started" }),
+      wiSort("back", { state_group: "backlog" }),
+    ];
+    const groups = groupItemsByProject(items, [pr("p1")]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["doing", "todo", "back", "cancel", "done"]);
+  });
+
+  it("orders same-state items by priority: urgent, high, medium, low, none", () => {
+    const items = [
+      wiSort("n", { priority: "none" }),
+      wiSort("m", { priority: "medium" }),
+      wiSort("u", { priority: "urgent" }),
+      wiSort("l", { priority: "low" }),
+      wiSort("h", { priority: "high" }),
+    ];
+    const groups = groupItemsByProject(items, [pr("p1")]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["u", "h", "m", "l", "n"]);
+  });
+
+  it("orders same-state same-priority items by due date, missing dates last", () => {
+    const items = [
+      wiSort("none", { target_date: null }),
+      wiSort("late", { target_date: "2026-07-20" }),
+      wiSort("soon", { target_date: "2026-07-05" }),
+    ];
+    const groups = groupItemsByProject(items, [pr("p1")]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["soon", "late", "none"]);
+  });
+
+  it("breaks remaining ties by creation time, oldest first, missing last", () => {
+    const items = [
+      wiSort("unknown", { created_at: null }),
+      wiSort("newer", { created_at: "2026-07-02T09:00:00Z" }),
+      wiSort("older", { created_at: "2026-06-28T09:00:00Z" }),
+    ];
+    const groups = groupItemsByProject(items, [pr("p1")]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["older", "newer", "unknown"]);
+  });
+
+  it("applies state before priority and priority before dates", () => {
+    const items = [
+      wiSort("backlog-urgent", { state_group: "backlog", priority: "urgent" }),
+      wiSort("started-none-due", { priority: "none", target_date: "2026-07-04" }),
+      wiSort("started-high", { priority: "high" }),
+    ];
+    const groups = groupItemsByProject(items, [pr("p1")]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(["started-high", "started-none-due", "backlog-urgent"]);
   });
 });
 

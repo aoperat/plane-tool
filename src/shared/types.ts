@@ -6,6 +6,7 @@ export interface WorkItem {
   target_date: string | null; start_date: string | null;
   state_group: string; project_id: string;
   completed_at: string | null;
+  created_at: string | null;
 }
 export interface WorkItemDetail {
   id: string; name: string; description: string;

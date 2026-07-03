@@ -5,8 +5,31 @@ export interface ProjectGroup {
   items: WorkItem[];
 }
 
+const STATE_ORDER: Record<string, number> = { started: 0, unstarted: 1, backlog: 2, cancelled: 3, completed: 4 };
+const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+/** Compares `null` last, otherwise lexicographically — correct for ISO date/timestamp strings. */
+function compareNullableIso(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a < b ? -1 : 1;
+}
+
+/** Sort order within a project group: state (started → unstarted → backlog → cancelled →
+ *  completed), then priority (urgent → none), then due date (missing last), then creation
+ *  time (oldest first). Unknown state/priority values sort last within their tier. */
+export function compareWorkItems(a: WorkItem, b: WorkItem): number {
+  return (
+    (STATE_ORDER[a.state_group] ?? 9) - (STATE_ORDER[b.state_group] ?? 9) ||
+    (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9) ||
+    compareNullableIso(a.target_date, b.target_date) ||
+    compareNullableIso(a.created_at, b.created_at)
+  );
+}
+
 /** Groups assigned items by project, ordered to match `projects`. Projects with no items are omitted.
- *  Within a group, completed items sink to the bottom (stable — otherwise preserving input order). */
+ *  Within a group, items are ordered by `compareWorkItems` (stable — ties keep input order). */
 export function groupItemsByProject(items: WorkItem[], projects: Project[]): ProjectGroup[] {
   const byProject = new Map<string, WorkItem[]>();
   for (const it of items) {
@@ -18,9 +41,7 @@ export function groupItemsByProject(items: WorkItem[], projects: Project[]): Pro
   for (const project of projects) {
     const groupItems = byProject.get(project.id);
     if (groupItems && groupItems.length > 0) {
-      const sorted = [...groupItems].sort(
-        (a, b) => Number(a.state_group === "completed") - Number(b.state_group === "completed"),
-      );
+      const sorted = [...groupItems].sort(compareWorkItems);
       groups.push({ project, items: sorted });
     }
   }

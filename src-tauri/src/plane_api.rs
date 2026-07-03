@@ -14,6 +14,7 @@ pub struct WorkItem {
     pub project_id: String,
     pub assignee_ids: Vec<String>,
     pub completed_at: Option<String>,
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +170,7 @@ struct RawWorkItem {
     #[serde(default)] state: Option<RawState>,
     #[serde(default)] assignees: Vec<RawAssignee>,
     #[serde(default)] completed_at: Option<String>,
+    #[serde(default)] created_at: Option<String>,
     #[serde(default)] description_html: Option<String>,
 }
 
@@ -441,6 +443,7 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         project_id: project_id.to_string(),
         assignee_ids: w.assignees.into_iter().map(|a| a.id).collect(),
         completed_at: w.completed_at,
+        created_at: w.created_at,
     }
 }
 
@@ -472,6 +475,7 @@ mod tests {
             target_date: None, start_date: None, state_group: group.into(), project_id: "p1".into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
+            created_at: None,
         }
     }
 

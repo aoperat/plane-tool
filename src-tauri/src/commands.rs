@@ -33,6 +33,7 @@ pub struct WorkItemDto {
     pub state_group: String,
     pub project_id: String,
     pub completed_at: Option<String>,
+    pub created_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -72,6 +73,7 @@ pub fn assemble_sidebar(
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
             start_date: w.start_date,
             state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
+            created_at: w.created_at,
         })
         .collect();
     let projects = projects
@@ -447,6 +449,7 @@ mod tests {
             target_date: None, start_date: None, state_group: group.into(), project_id: project.into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
+            created_at: None,
         }
     }
 
