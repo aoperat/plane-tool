@@ -169,6 +169,91 @@ pub fn parse_hhmm(s: &str) -> Option<u32> {
     Some(h * 60 + m)
 }
 
+/// LLM에 보낼 메시지. user 메시지는 open_assigned_items가 만든 항목의 직렬화라
+/// 설명(description) 필드 자체가 존재하지 않는다.
+pub fn build_prompt(items: &[BriefingItem], today: &str) -> (String, String) {
+    let system = format!(
+        "당신은 개인 업무 브리핑 어시스턴트다. 오늘 해야 할 일을 정하는 것이 목표다.\n\
+         반드시 아래 형태의 JSON만 응답한다 (다른 텍스트 금지):\n\
+         {{\"summary\": \"2~3문장 한국어 요약\", \"plan\": [{{\"id\": \"작업 id\", \"reason\": \"이유 한 줄\"}}], \"rest\": [\"작업 id\"]}}\n\
+         규칙:\n\
+         - plan은 오늘 집중할 작업을 처리 순서대로 최대 {MAX_PLAN}개.\n\
+         - 우선 기준: 마감 지남 > 오늘 마감 > 진행 중 > 우선순위(urgent>high>medium>low) > 마감 임박.\n\
+         - 같은 프로젝트 작업은 묶어서 처리하도록 순서를 잡아도 좋다.\n\
+         - reason은 사용자가 바로 이해할 짧은 한국어 한 줄 (예: \"마감 2일 초과 · 긴급\").\n\
+         - plan에 넣지 않은 작업 id는 전부 rest에 넣는다.\n\
+         - 입력에 존재하는 id만 사용한다."
+    );
+    let payload = serde_json::json!({
+        "today": today,
+        "items": items.iter().map(|i| serde_json::json!({
+            "id": i.id,
+            "name": i.name,
+            "project": i.project_identifier,
+            "priority": i.priority,
+            "start_date": i.start_date,
+            "target_date": i.target_date,
+            "state": i.state_group,
+        })).collect::<Vec<_>>(),
+    });
+    (system, payload.to_string())
+}
+
+#[derive(Deserialize)]
+struct RawPlanEntry {
+    id: String,
+    #[serde(default)]
+    reason: String,
+}
+
+#[derive(Deserialize)]
+struct RawBriefingResponse {
+    #[serde(default)]
+    summary: String,
+    #[serde(default)]
+    plan: Vec<RawPlanEntry>,
+    #[serde(default)]
+    rest: Vec<String>,
+}
+
+/// JSON 모드여도 모델이 가끔 ```json 펜스로 감싼다 — 방어적으로 벗긴다.
+fn strip_code_fences(s: &str) -> &str {
+    let t = s.trim();
+    let Some(inner) = t.strip_prefix("```") else { return t };
+    let inner = inner.strip_prefix("json").unwrap_or(inner);
+    let inner = inner.strip_suffix("```").unwrap_or(inner);
+    inner.trim()
+}
+
+/// AI 응답을 실제 작업 목록에 대조해 (summary, plan, rest)로 바꾼다.
+/// 존재하지 않는 id는 버리고, 응답이 빠뜨린 작업은 rest로 편입한다 —
+/// 어떤 작업도 사라지거나 날조되지 않는다.
+pub fn apply_ai_response(
+    content: &str,
+    items: Vec<BriefingItem>,
+    today: &str,
+) -> Result<(String, Vec<PlanEntry>, Vec<BriefingItem>), String> {
+    let raw: RawBriefingResponse =
+        serde_json::from_str(strip_code_fences(content)).map_err(|e| format!("응답 JSON 파싱 실패: {e}"))?;
+    let mut by_id: std::collections::HashMap<String, BriefingItem> =
+        items.into_iter().map(|i| (i.id.clone(), i)).collect();
+    let mut plan = Vec::new();
+    for e in raw.plan {
+        if plan.len() >= MAX_PLAN { break; }
+        if let Some(item) = by_id.remove(&e.id) {
+            let reason = if e.reason.trim().is_empty() { reason_for(&item, today) } else { e.reason };
+            plan.push(PlanEntry { item, reason });
+        }
+    }
+    let mut rest: Vec<BriefingItem> = Vec::new();
+    for id in raw.rest {
+        if let Some(item) = by_id.remove(&id) { rest.push(item); }
+    }
+    rest.extend(by_id.into_values());
+    sort_rest(&mut rest);
+    Ok((raw.summary.trim().to_string(), plan, rest))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +353,59 @@ mod tests {
         assert_eq!(parse_hhmm("24:00"), None);
         assert_eq!(parse_hhmm("9:00"), None);
         assert_eq!(parse_hhmm("abcde"), None);
+    }
+
+    #[test]
+    fn build_prompt_includes_items_but_never_description_key() {
+        let items = vec![bi("a", "high", Some("2026-07-04"), "started")];
+        let (system, user) = build_prompt(&items, TODAY);
+        assert!(system.contains("JSON"));
+        assert!(user.contains("\"a\""));
+        assert!(user.contains("2026-07-03")); // 오늘 날짜
+        assert!(!user.contains("description"));
+    }
+
+    #[test]
+    fn apply_ai_response_maps_known_ids_and_drops_fakes() {
+        let items = vec![
+            bi("a", "urgent", Some("2026-07-01"), "unstarted"),
+            bi("b", "none", Some("2026-07-05"), "unstarted"),
+            bi("c", "none", None, "backlog"),
+        ];
+        let content = r#"{
+            "summary": "요약입니다.",
+            "plan": [
+                { "id": "a", "reason": "가장 급함" },
+                { "id": "ghost", "reason": "존재하지 않는 작업" },
+                { "id": "b", "reason": "" }
+            ],
+            "rest": ["nope"]
+        }"#;
+        let (summary, plan, rest) = apply_ai_response(content, items, TODAY).unwrap();
+        assert_eq!(summary, "요약입니다.");
+        let ids: Vec<_> = plan.iter().map(|e| e.item.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b"]); // ghost 제거
+        assert_eq!(plan[0].reason, "가장 급함");
+        // 빈 reason은 규칙 기반 문구로 대체
+        assert_eq!(plan[1].reason, "마감 7/5");
+        // 응답에서 빠진 c는 rest로 자동 편입, 가짜 id "nope"는 무시
+        let rest_ids: Vec<_> = rest.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(rest_ids, vec!["c"]);
+    }
+
+    #[test]
+    fn apply_ai_response_caps_plan_at_max_and_strips_code_fences() {
+        let items: Vec<_> = (0..7).map(|i| bi(&format!("i{i}"), "none", None, "backlog")).collect();
+        let plan_json: Vec<String> = (0..7).map(|i| format!(r#"{{"id":"i{i}","reason":"r"}}"#)).collect();
+        let content = format!("```json\n{{\"summary\":\"s\",\"plan\":[{}],\"rest\":[]}}\n```", plan_json.join(","));
+        let (_, plan, rest) = apply_ai_response(&content, items, TODAY).unwrap();
+        assert_eq!(plan.len(), MAX_PLAN);
+        assert_eq!(rest.len(), 2);
+    }
+
+    #[test]
+    fn apply_ai_response_rejects_non_json() {
+        let items = vec![bi("a", "none", None, "backlog")];
+        assert!(apply_ai_response("이건 JSON이 아님", items, TODAY).is_err());
     }
 }
