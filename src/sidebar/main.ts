@@ -188,8 +188,10 @@ function openStatePopover(anchor: HTMLElement, item: WorkItem, onPicked: (group:
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
-  pop.style.top = "26px";
-  pop.style.left = "0px";
+  // Body-level fixed positioning (see attachPopover) — nesting inside the
+  // row breaks on completed rows: their opacity creates a stacking context,
+  // so the popover renders semi-transparent and rows below it win hover/click.
+  pop.style.position = "fixed";
   for (const group of STATE_GROUPS) {
     const opt = document.createElement("div");
     opt.className = "pop-item" + (group === item.state_group ? " sel" : "");
@@ -202,8 +204,8 @@ function openStatePopover(anchor: HTMLElement, item: WorkItem, onPicked: (group:
     };
     pop.appendChild(opt);
   }
-  anchor.appendChild(pop);
-  openPopover = pop;
+  const rect = anchor.getBoundingClientRect();
+  attachPopover(pop, rect.left, rect.bottom + 4);
 }
 
 function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (priority: string) => void) {
@@ -285,11 +287,11 @@ const CONTEXT_MENU_WIDTH = 180;
 /**
  * Attaches `pop` to `document.body` (not the row it was triggered from) with
  * fixed positioning at viewport coordinates (x, y), clamped to stay on
- * screen. The context menu and delete-confirm popovers are taller than a
- * single row, so nesting them inside a row (like the state popover
- * does) let them visually spill into sibling rows below — since
- * those siblings are later in the DOM, they'd win hover/click there instead
- * of the menu. Body-level fixed positioning sidesteps that entirely.
+ * screen. Popovers are taller than a single row, so nesting them inside a
+ * row let them visually spill into sibling rows below — since those siblings
+ * are later in the DOM, they'd win hover/click there instead of the menu
+ * (and a completed row's opacity makes the nested popover translucent too).
+ * Body-level fixed positioning sidesteps that entirely.
  */
 function attachPopover(pop: HTMLElement, x: number, y: number) {
   document.body.appendChild(pop);
