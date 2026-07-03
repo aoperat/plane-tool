@@ -20,4 +20,5 @@ export interface SettingsDto {
   last_project_id: string | null; has_token: boolean;
   quickadd_shortcut: string; sidebar_shortcut: string;
   theme: string; display_index: number;
+  idle_open_enabled: boolean; idle_open_minutes: number;
 }

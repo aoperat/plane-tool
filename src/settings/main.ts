@@ -33,6 +33,8 @@ const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
 const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
+const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputElement;
+const idleOpenMinutes = document.getElementById("idleOpenMinutes") as HTMLInputElement;
 const status = document.getElementById("status")!;
 
 tokenLink.onclick = (e) => {
@@ -59,6 +61,8 @@ async function load() {
   sbShortcut.value = s.sidebar_shortcut;
   theme.value = s.theme;
   applyTheme(s.theme);
+  idleOpenEnabled.checked = s.idle_open_enabled;
+  idleOpenMinutes.value = String(s.idle_open_minutes);
 
   const monitors = sortMonitorsByPosition(await availableMonitors());
   displaySelect.innerHTML = "";
@@ -85,6 +89,8 @@ document.getElementById("save")!.onclick = async () => {
       sbShortcut.value.trim() || undefined,
       theme.value,
       Number(displaySelect.value),
+      idleOpenEnabled.checked,
+      Math.max(1, Math.floor(Number(idleOpenMinutes.value) || 3)),
     );
     if (token.value) hasToken = true;
     token.value = "";

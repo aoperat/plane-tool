@@ -10,6 +10,8 @@ export const saveSettings = (
   sidebarShortcut?: string,
   theme?: string,
   displayIndex?: number,
+  idleOpenEnabled?: boolean,
+  idleOpenMinutes?: number,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -19,6 +21,8 @@ export const saveSettings = (
     sidebarShortcut,
     theme,
     displayIndex,
+    idleOpenEnabled,
+    idleOpenMinutes,
   });
 export const createIssue = (
   project_id: string,

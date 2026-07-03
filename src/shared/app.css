@@ -378,6 +378,13 @@ kbd {
 }
 .settings input:focus { border-color: var(--accent); }
 .settings input::placeholder { color: var(--muted-2); }
+.settings label.check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.settings label.check-row input { width: auto; margin: 0; }
 .settings select {
   background: var(--bg);
   border: 1px solid var(--border);
