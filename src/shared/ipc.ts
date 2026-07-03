@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote, Briefing } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -104,3 +104,7 @@ export const checkUpdatesManual = () => invoke<string | null>("check_updates_man
 
 /** This app's own GitHub releases (newest first), for the sidebar's release notes panel. */
 export const fetchReleaseNotes = () => invoke<ReleaseNote[]>("fetch_release_notes");
+
+export const generateBriefing = (force: boolean) =>
+  invoke<Briefing>("generate_briefing", { force });
+export const openBriefing = () => invoke<void>("open_briefing");

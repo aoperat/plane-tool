@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI 브리핑</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <div class="bf-card">
+      <div class="bf-head" data-tauri-drag-region>
+        <svg class="bf-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+        <span class="bf-head-title">AI 브리핑 · <span id="bfDate"></span></span>
+        <button type="button" id="bfRegen" class="bf-icon-btn" title="다시 생성">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" id="bfClose" class="bf-icon-btn" aria-label="닫기 (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="bfBody" class="bf-body"></div>
+      <div class="bf-foot">
+        <span id="bfMeta" class="bf-meta"></span>
+        <button type="button" id="bfCopy" class="bf-btn">복사</button>
+        <button type="button" id="bfRegenFoot" class="bf-btn bf-btn-primary">다시 생성</button>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -11,6 +11,7 @@ export default defineConfig({
         sidebar: resolve(__dirname, "src/sidebar/index.html"),
         settings: resolve(__dirname, "src/settings/index.html"),
         editmodal: resolve(__dirname, "src/editmodal/index.html"),
+        briefing: resolve(__dirname, "src/briefing/index.html"),
       },
     },
   },

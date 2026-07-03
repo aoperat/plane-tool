@@ -38,6 +38,13 @@
         "width": 540, "height": 320,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
+      },
+      {
+        "label": "briefing",
+        "url": "src/briefing/index.html",
+        "width": 560, "height": 340,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": false
       }
     ],
     "security": { "csp": null }

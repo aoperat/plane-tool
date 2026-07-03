@@ -25,3 +25,14 @@ export interface SettingsDto {
   has_openai_key: boolean; briefing_model: string;
   morning_briefing_enabled: boolean; morning_briefing_time: string;
 }
+export interface BriefingItem {
+  id: string; name: string; project_id: string; project_identifier: string;
+  priority: string; start_date: string | null; target_date: string | null;
+  state_group: string;
+}
+export interface BriefingPlanEntry { item: BriefingItem; reason: string; }
+export interface Briefing {
+  date: string; generated_at: string; model: string;
+  source: string; error: string | null; summary: string;
+  plan: BriefingPlanEntry[]; rest: BriefingItem[];
+}
