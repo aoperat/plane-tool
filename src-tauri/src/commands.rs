@@ -560,6 +560,7 @@ mod tests {
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
             created_at: None,
+            created_by: None,
         }
     }
 

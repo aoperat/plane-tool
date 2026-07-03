@@ -1,5 +1,8 @@
 use serde::Deserialize;
 
+/// Part B(맡긴 작업 창)가 이 문자열로 확인 여부를 판정한다 — 절대 바꾸지 말 것.
+pub const ACK_COMMENT_TEXT: &str = "🔔 할당을 확인했습니다 (Quick Dock)";
+
 #[derive(Debug, Clone)]
 pub struct Project { pub id: String, pub name: String, pub identifier: String }
 
@@ -15,6 +18,7 @@ pub struct WorkItem {
     pub assignee_ids: Vec<String>,
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
+    pub created_by: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +29,12 @@ pub struct ProjectState { pub id: String, pub group: String, pub project_id: Str
 
 #[derive(Debug, Clone)]
 pub struct Member { pub id: String, pub display_name: String }
+
+#[derive(Debug, Clone)]
+pub struct Comment { pub id: String, pub comment_html: String, pub actor: String }
+
+#[derive(Debug, Clone)]
+pub struct Activity { pub field: Option<String>, pub actor: Option<String> }
 
 #[derive(Debug, Clone)]
 pub struct WorkItemDetail {
@@ -51,6 +61,17 @@ pub struct NewWorkItem<'a> {
 
 pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
     states.iter().find(|s| s.group == group).map(|s| s.id.clone())
+}
+
+/// 이 작업을 나에게 할당한 사람의 user id. assignees 필드를 바꾼 활동 중
+/// 내가 아닌 actor의 마지막 것 → 없으면 created_by(내가 아닐 때만) → None.
+pub fn find_assigner(activities: &[Activity], created_by: Option<&str>, me: &str) -> Option<String> {
+    activities
+        .iter()
+        .rev()
+        .find(|a| a.field.as_deref() == Some("assignees") && a.actor.as_deref().is_some_and(|x| x != me))
+        .and_then(|a| a.actor.clone())
+        .or_else(|| created_by.filter(|c| *c != me).map(str::to_string))
 }
 
 /// Converts plain text (as typed into QuickAdd's description textarea) into the
@@ -172,6 +193,21 @@ struct RawWorkItem {
     #[serde(default)] completed_at: Option<String>,
     #[serde(default)] created_at: Option<String>,
     #[serde(default)] description_html: Option<String>,
+    #[serde(default)] created_by: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawComment {
+    id: String,
+    #[serde(default)] comment_html: String,
+    #[serde(default)] actor: Option<String>,
+    #[serde(default)] created_by: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawActivity {
+    #[serde(default)] field: Option<String>,
+    #[serde(default)] actor: Option<String>,
 }
 
 fn priority_none() -> String { "none".into() }
@@ -430,6 +466,42 @@ impl PlaneClient {
         error_with_body(resp).await?;
         Ok(())
     }
+
+    pub async fn list_comments(&self, project_id: &str, item_id: &str) -> Result<Vec<Comment>, String> {
+        let url = format!("{}/projects/{}/work-items/{}/comments/", self.ws_base(), project_id, item_id);
+        let page: Paginated<RawComment> =
+            self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(page
+            .results
+            .into_iter()
+            .map(|c| Comment {
+                id: c.id,
+                comment_html: c.comment_html,
+                actor: c.actor.or(c.created_by).unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    pub async fn create_comment(&self, project_id: &str, item_id: &str, comment_html: &str) -> Result<(), String> {
+        let url = format!("{}/projects/{}/work-items/{}/comments/", self.ws_base(), project_id, item_id);
+        let resp = self
+            .http
+            .post(&url)
+            .header("X-Api-Key", &self.api_key)
+            .json(&serde_json::json!({ "comment_html": comment_html }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        error_with_body(resp).await?;
+        Ok(())
+    }
+
+    pub async fn list_activities(&self, project_id: &str, item_id: &str) -> Result<Vec<Activity>, String> {
+        let url = format!("{}/projects/{}/work-items/{}/activities/", self.ws_base(), project_id, item_id);
+        let page: Paginated<RawActivity> =
+            self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(page.results.into_iter().map(|a| Activity { field: a.field, actor: a.actor }).collect())
+    }
 }
 
 fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
@@ -444,6 +516,7 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         assignee_ids: w.assignees.into_iter().map(|a| a.id).collect(),
         completed_at: w.completed_at,
         created_at: w.created_at,
+        created_by: w.created_by,
     }
 }
 
@@ -476,6 +549,7 @@ mod tests {
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: completed_at.map(|s| s.to_string()),
             created_at: None,
+            created_by: None,
         }
     }
 
@@ -928,5 +1002,107 @@ mod tests {
         assert_eq!(members.len(), 2);
         assert_eq!(members[0].id, "u1");
         assert_eq!(members[1].display_name, "Bob");
+    }
+
+    #[tokio::test]
+    async fn list_comments_parses_results_with_actor_fallback() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/comments/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "c1", "comment_html": "<p>hello</p>", "actor": "u1" },
+                    { "id": "c2", "comment_html": "<p>hi</p>", "created_by": "u2" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let comments = client_for(&server).await.list_comments("p1", "i1").await.unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].actor, "u1");
+        assert_eq!(comments[1].actor, "u2"); // actor 없으면 created_by로 폴백
+        assert_eq!(comments[0].comment_html, "<p>hello</p>");
+    }
+
+    #[tokio::test]
+    async fn create_comment_posts_comment_html() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/comments/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "comment_html": "<p>🔔 할당을 확인했습니다 (Quick Dock)</p>"
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        client_for(&server)
+            .await
+            .create_comment("p1", "i1", "<p>🔔 할당을 확인했습니다 (Quick Dock)</p>")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_activities_parses_field_and_actor() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/activities/"))
+            .and(header("X-Api-Key", "secret-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "field": null, "actor": "creator-id" },
+                    { "field": "assignees", "actor": "pm-id" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let acts = client_for(&server).await.list_activities("p1", "i1").await.unwrap();
+        assert_eq!(acts.len(), 2);
+        assert_eq!(acts[1].field.as_deref(), Some("assignees"));
+        assert_eq!(acts[1].actor.as_deref(), Some("pm-id"));
+    }
+
+    #[test]
+    fn find_assigner_prefers_latest_assignee_activity_by_someone_else() {
+        let acts = vec![
+            Activity { field: Some("assignees".into()), actor: Some("me".into()) },
+            Activity { field: Some("assignees".into()), actor: Some("pm".into()) },
+            Activity { field: Some("priority".into()), actor: Some("other".into()) },
+        ];
+        assert_eq!(find_assigner(&acts, Some("creator"), "me"), Some("pm".to_string()));
+    }
+
+    #[test]
+    fn find_assigner_falls_back_to_created_by() {
+        // assignee 활동이 없거나 전부 내 것이면 created_by (내가 아닐 때만)
+        let acts = vec![Activity { field: Some("assignees".into()), actor: Some("me".into()) }];
+        assert_eq!(find_assigner(&acts, Some("creator"), "me"), Some("creator".to_string()));
+        assert_eq!(find_assigner(&[], Some("me"), "me"), None);
+        assert_eq!(find_assigner(&[], None, "me"), None);
+    }
+
+    #[tokio::test]
+    async fn list_work_items_parses_created_by() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{
+                    "id": "i1", "name": "Fix bug", "priority": "none",
+                    "state": { "group": "started" },
+                    "assignees": [{ "id": "me" }],
+                    "created_by": "pm-id"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let items = client_for(&server).await.list_work_items("p1").await.unwrap();
+        assert_eq!(items[0].created_by.as_deref(), Some("pm-id"));
     }
 }
