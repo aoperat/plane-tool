@@ -1,7 +1,7 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { checkUpdatesManual, createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
@@ -573,6 +573,24 @@ function refreshIfStale() {
 }
 
 document.getElementById("refresh")!.onclick = refresh;
+
+// Manual update check: the result lands in the footer. When an update exists
+// the backend opens its own confirm dialog instead of returning a message.
+let updateCheckInFlight = false;
+document.getElementById("checkUpdate")!.addEventListener("click", async () => {
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  synced.textContent = "업데이트 확인 중…";
+  try {
+    const msg = await checkUpdatesManual();
+    synced.textContent = msg ?? "새 버전 안내를 확인하세요";
+  } catch (err) {
+    synced.textContent = "업데이트 확인 실패: " + err;
+  } finally {
+    updateCheckInFlight = false;
+  }
+});
+
 document.getElementById("openSettings")!.onclick = () => openSettings();
 document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {

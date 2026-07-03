@@ -158,7 +158,10 @@ kbd {
 }
 .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; font-size: 13px; font-weight: 800; }
 .sb-head .t { font-weight: 600; font-size: 14px; }
-.sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+/* min-width:0 + ellipsis: the username is the only flexible item in the fixed
+   320px header — without this a long name pushes the header buttons past the
+   window edge instead of truncating. */
+.sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbtn {
   width: 28px; height: 28px; border-radius: 7px; flex: none;
   display: grid; place-items: center; color: var(--muted); cursor: pointer;
