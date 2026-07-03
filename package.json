@@ -1,6 +1,6 @@
 {
   "name": "plane-quick-dock",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Windows tray-resident tool for Plane",
   "scripts": {
     "dev": "vite",
