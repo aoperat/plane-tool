@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>할당 인지 시스템 + 맡긴 작업 창 — 목업</title>
+<style>
+  :root {
+    --bg: #0d0e12; --panel: #16181d; --panel-2: #1c1f26; --border: #2a2e37;
+    --text: #e6e8ec; --muted: #8a909c; --muted-2: #5c626d;
+    --accent: #4f7cff; --accent-soft: rgba(79,124,255,0.14); --accent-ring: rgba(79,124,255,0.4);
+    --green: #2ecc71; --amber: #f5a623; --red: #ef4d56; --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #08090c; color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+    padding: 36px 40px 80px;
+  }
+  h1 { font-size: 21px; margin: 0 0 6px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 36px; max-width: 760px; line-height: 1.6; }
+  .scenes { display: flex; gap: 44px; align-items: flex-start; flex-wrap: wrap; }
+  .scene { flex: none; }
+  .scene-label { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  .scene-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+  .notes { margin-top: 16px; max-width: 360px; }
+  .note { display: flex; gap: 9px; font-size: 12px; color: var(--muted); line-height: 1.55; margin-bottom: 9px; }
+  .note b { color: var(--text); font-weight: 600; }
+  .nnum {
+    flex: none; width: 17px; height: 17px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; margin-top: 1px;
+  }
+  .callout {
+    position: absolute; z-index: 5; width: 17px; height: 17px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+    display: grid; place-items: center; box-shadow: 0 0 0 3px rgba(79,124,255,.25);
+  }
+
+  /* ---------- 공통: 도크 패널 ---------- */
+  .dock {
+    width: 320px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; position: relative;
+  }
+  .sb-head { display: flex; align-items: center; gap: 9px; padding: 13px 14px 11px; border-bottom: 1px solid var(--border); }
+  .logo { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; flex: none; }
+  .logo svg { width: 14px; height: 14px; display: block; }
+  .sb-head .t { font-weight: 600; font-size: 13.5px; }
+  .hbtn { width: 26px; height: 26px; border-radius: 7px; flex: none; display: grid; place-items: center; color: var(--muted); }
+  .hbtn svg { width: 14px; height: 14px; }
+  .spacer { margin-left: auto; }
+  .sb-section { padding: 12px 12px 6px; }
+  .sec-h { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .count { color: var(--muted); }
+  .sb-foot { padding: 9px 13px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
+
+  /* ---------- 작업 행 ---------- */
+  .task { display: flex; flex-direction: column; gap: 6px; padding: 8px 9px; border-radius: 8px; position: relative; }
+  .task:hover { background: var(--panel-2); }
+  .task-top { display: flex; align-items: flex-start; gap: 8px; }
+  .st { width: 24px; height: 24px; border-radius: 7px; flex: none; display: grid; place-items: center; }
+  .st svg { width: 14px; height: 14px; }
+  .tname { font-size: 13px; line-height: 1.4; padding-top: 3px; flex: 1; }
+  .tchips { display: flex; flex-wrap: wrap; gap: 5px; margin-left: 32px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 7px; font-size: 10px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+  .chip svg { width: 10px; height: 10px; }
+  .chip.warn { color: var(--amber); border-color: rgba(245,166,35,.35); }
+  .chip.late { color: var(--red); border-color: rgba(239,77,86,.35); }
+  .chip.mut { color: var(--muted); }
+
+  /* ---------- Scene 1: 토스트 + 트레이 ---------- */
+  .desktop {
+    width: 400px; height: 300px; border-radius: 12px; position: relative; overflow: hidden;
+    background: linear-gradient(135deg, #1a2035 0%, #10131c 60%, #0c0e14 100%);
+    border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  .toast {
+    position: absolute; right: 14px; bottom: 58px; width: 300px;
+    background: #1f232c; border: 1px solid #343a46; border-radius: 9px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.6); padding: 12px 13px;
+  }
+  .toast-app { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  .toast-app .mini { width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, var(--accent), #8a5cff); }
+  .toast-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+  .toast-body { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+  .toast-body b { color: var(--text); font-weight: 600; }
+  .toast-actions { display: flex; gap: 7px; }
+  .tbtn { flex: 1; text-align: center; font-size: 11.5px; padding: 6px 0; border-radius: 6px; background: #2a2f3a; color: var(--text); }
+  .tbtn.primary { background: var(--accent); color: #fff; font-weight: 600; }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: rgba(18,20,26,.92); border-top: 1px solid #262b35; display: flex; align-items: center; padding: 0 12px; }
+  .tray { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; }
+  .tray-ico { position: relative; width: 20px; height: 20px; border-radius: 5px; background: linear-gradient(135deg, var(--accent), #8a5cff); }
+  .badge {
+    position: absolute; top: -6px; right: -7px; min-width: 15px; height: 15px; border-radius: 999px;
+    background: var(--red); color: #fff; font-size: 9px; font-weight: 700;
+    display: grid; place-items: center; padding: 0 4px; border: 2px solid #12141a;
+  }
+
+  /* ---------- Scene 2: 수신함 ---------- */
+  .inbox-sec { background: var(--accent-soft); border: 1px solid rgba(79,124,255,.35); border-radius: 9px; padding: 9px 8px 4px; margin-bottom: 12px; }
+  .inbox-sec .sec-h { color: var(--accent); margin-bottom: 5px; padding: 0 2px; }
+  .new-task { background: var(--panel); border: 1px solid rgba(79,124,255,.3); border-radius: 8px; margin-bottom: 6px; padding: 8px 9px; }
+  .assigner { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); margin-bottom: 6px; }
+  .avatar { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 8px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .avatar.g { background: #2ea083; }
+  .avatar.p { background: #9a5cff; }
+  .assigner b { color: var(--text); font-weight: 600; }
+  .assigner .when { margin-left: auto; color: var(--muted-2); }
+  .ack-row { display: flex; gap: 6px; margin-top: 8px; }
+  .ack-btn { flex: 1; text-align: center; font-size: 11px; font-weight: 600; padding: 5px 0; border-radius: 6px; background: var(--accent); color: #fff; }
+  .ack-ghost { flex: none; font-size: 11px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--muted); }
+  .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); flex: none; }
+
+  /* ---------- Scene 3: 맡긴 작업 ---------- */
+  .dock.wide { width: 360px; }
+  .summary { display: flex; gap: 6px; padding: 11px 13px 0; }
+  .sum-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); }
+  .sum-chip .d { width: 7px; height: 7px; border-radius: 50%; }
+  .sum-chip.on { border-color: rgba(239,77,86,.4); color: var(--text); }
+  .grp { display: flex; align-items: center; gap: 7px; padding: 7px 8px 5px; font-size: 12px; font-weight: 700; }
+  .grp .cnt { margin-left: auto; font-size: 10.5px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ackst { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; height: 19px; padding: 0 7px; border-radius: 5px; }
+  .ackst.ok { color: var(--green); background: rgba(46,204,113,.1); border: 1px solid rgba(46,204,113,.3); }
+  .ackst.no { color: var(--red); background: rgba(239,77,86,.1); border: 1px solid rgba(239,77,86,.35); }
+  .rowact { position: absolute; right: 8px; top: 7px; display: flex; gap: 4px; }
+  .ract { font-size: 10px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); }
+  .ract.hi { color: var(--accent); border-color: rgba(79,124,255,.45); }
+
+  /* ---------- 흐름도 ---------- */
+  .flow { margin-top: 56px; max-width: 900px; }
+  .flow h2 { font-size: 15px; margin: 0 0 14px; }
+  .flow-row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .fbox { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 10px 14px; font-size: 12px; line-height: 1.5; min-width: 150px; }
+  .fbox b { display: block; font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+  .farrow { display: grid; place-items: center; color: var(--muted-2); padding: 0 10px; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<h1>할당 인지 시스템 &amp; 맡긴 작업 창</h1>
+<p class="sub">
+  다른 사람에게 작업을 할당하면 <b>받는 사람은 반드시 인지</b>하고, <b>맡긴 사람은 확인 여부와 진행을 추적</b>할 수 있게 하는
+  두 기능의 목업입니다. 확인(✓)은 Plane에 자동 댓글로 기록되어 양쪽 모두에게 보입니다.
+</p>
+
+<div class="scenes">
+
+  <!-- ═══════ SCENE 1 ═══════ -->
+  <div class="scene">
+    <div class="scene-label">Scene 1 · 받는 사람</div>
+    <div class="scene-title">할당 즉시 — 토스트 + 트레이 뱃지</div>
+    <div class="desktop">
+      <span class="callout" style="right:320px; bottom:120px;">1</span>
+      <div class="toast">
+        <div class="toast-app"><span class="mini"></span> Plane Quick Dock · 지금</div>
+        <div class="toast-title">새 작업이 할당되었습니다</div>
+        <div class="toast-body"><b>김PM</b>님이 <b>"결제 모듈 오류 수정"</b>을 할당했습니다<br/>마감 7/5 · 우선순위 긴급</div>
+        <div class="toast-actions">
+          <span class="tbtn primary">확인</span>
+          <span class="tbtn">열어보기</span>
+          <span class="tbtn">나중에</span>
+        </div>
+      </div>
+      <div class="taskbar">
+        <div class="tray">
+          <span class="callout" style="position:static; margin-right:2px;">2</span>
+          <span class="tray-ico"><span class="badge">2</span></span>
+          <span>오후 2:14</span>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="nnum">1</span><span><b>Windows 토스트</b> — 백그라운드 동기화가 새 할당을 감지하면 즉시 표시. 누가·무엇·마감·우선순위를 담고, <b>확인</b>을 누르면 그 자리에서 인지 처리됩니다.</span></div>
+      <div class="note"><span class="nnum">2</span><span><b>트레이 뱃지</b> — 미확인 할당 수. 토스트를 놓쳐도 뱃지는 확인 전까지 사라지지 않습니다. 미확인 상태가 지속되면 일정 주기(기본 2시간, 설정 가능)로 토스트를 다시 띄웁니다.</span></div>
+    </div>
+  </div>
+
+  <!-- ═══════ SCENE 2 ═══════ -->
+  <div class="scene">
+    <div class="scene-label">Scene 2 · 받는 사람</div>
+    <div class="scene-title">사이드바 — "새로 할당됨" 수신함</div>
+    <div class="dock">
+      <div class="sb-head">
+        <div class="logo"><svg viewBox="0 0 460 460" fill="#fff" fill-rule="evenodd"><path d="M73 136 L71 240 L87 266 L212 328 L226 320 L227 295 L293 328 L306 323 L308 295 L374 328 L387 323 L388 215 L375 195 L246 131 L234 138 L232 164 L165 131 L153 138 L152 164 L84 131 Z"/></svg></div>
+        <div class="t">Quick Dock</div>
+        <span class="spacer"></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg></span>
+      </div>
+      <div class="sb-section" style="position:relative;">
+        <span class="callout" style="left:-9px; top:8px;">3</span>
+        <div class="inbox-sec">
+          <div class="sec-h"><span style="display:inline-flex;align-items:center;gap:6px;"><span class="pulse-dot"></span> 새로 할당됨</span><span class="count">2</span></div>
+          <div class="new-task">
+            <div class="assigner"><span class="avatar">김</span> <b>김PM</b>님이 할당 <span class="when">10분 전</span></div>
+            <div class="task-top" style="margin-left:2px;">
+              <span class="tname" style="padding-top:0;">결제 모듈 오류 수정</span>
+            </div>
+            <div class="tchips" style="margin-left:2px; margin-top:5px;">
+              <span class="chip late">긴급</span>
+              <span class="chip">~ 7/5</span>
+              <span class="chip mut">PAY-142</span>
+            </div>
+            <div class="ack-row">
+              <span class="ack-btn">✓ 확인했습니다</span>
+              <span class="ack-ghost">열기</span>
+            </div>
+          </div>
+          <div class="new-task">
+            <div class="assigner"><span class="avatar p">박</span> <b>박팀장</b>님이 할당 <span class="when">1시간 전</span></div>
+            <div class="task-top" style="margin-left:2px;">
+              <span class="tname" style="padding-top:0;">2분기 회고 자료 정리</span>
+            </div>
+            <div class="tchips" style="margin-left:2px; margin-top:5px;">
+              <span class="chip warn">높음</span>
+              <span class="chip">7/4 → 7/8</span>
+            </div>
+            <div class="ack-row">
+              <span class="ack-btn">✓ 확인했습니다</span>
+              <span class="ack-ghost">열기</span>
+            </div>
+          </div>
+        </div>
+        <div class="sec-h"><span>나에게 할당된 작업</span><span class="count">4</span></div>
+        <div class="task">
+          <div class="task-top">
+            <span class="st" style="color:var(--amber);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2" stroke-linecap="round"/></svg></span>
+            <span class="tname">배포 스크립트 개선</span>
+          </div>
+          <div class="tchips"><span class="chip mut">보통</span><span class="chip">~ 7/4</span></div>
+        </div>
+        <div class="task">
+          <div class="task-top">
+            <span class="st" style="color:var(--muted);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.5"/></svg></span>
+            <span class="tname">테스트 커버리지 리포트</span>
+          </div>
+          <div class="tchips"><span class="chip mut">낮음</span></div>
+        </div>
+      </div>
+      <div class="sb-foot">동기화 완료 · 미확인 2건</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="nnum">3</span><span><b>수신함 섹션</b> — 미확인 할당은 일반 목록과 분리되어 최상단에 강조 고정. <b>누가, 언제</b> 할당했는지 표시하고, <b>✓ 확인했습니다</b>를 누르면 Plane에 자동 댓글(예: "🔔 할당을 확인했습니다")이 남고 일반 목록으로 합류합니다. 이 댓글이 곧 할당자에게 보이는 <b>읽음 확인</b>입니다.</span></div>
+    </div>
+  </div>
+
+  <!-- ═══════ SCENE 3 ═══════ -->
+  <div class="scene">
+    <div class="scene-label">Scene 3 · 맡긴 사람</div>
+    <div class="scene-title">새 창 — "맡긴 작업" (위임 추적)</div>
+    <div class="dock wide">
+      <div class="sb-head">
+        <div class="logo" style="background:linear-gradient(135deg,#8a5cff,var(--accent));"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.6"><path d="M5.5 8.5L7 10l3.5-4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="6"/></svg></div>
+        <div class="t">맡긴 작업</div>
+        <span class="spacer"></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round"/></svg></span>
+        <span class="hbtn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg></span>
+      </div>
+      <div class="summary">
+        <span class="callout" style="position:static;">4</span>
+        <span class="sum-chip on"><span class="d" style="background:var(--red);"></span> 미확인 2</span>
+        <span class="sum-chip"><span class="d" style="background:var(--amber);"></span> 지연 1</span>
+        <span class="sum-chip"><span class="d" style="background:var(--muted-2);"></span> 정체 1</span>
+      </div>
+      <div class="sb-section" style="position:relative;">
+        <div class="grp"><span class="avatar g">이</span> 이개발 <span class="cnt">3건</span></div>
+        <div class="task" style="position:relative;">
+          <span class="callout" style="left:-9px; top:10px;">5</span>
+          <div class="task-top">
+            <span class="st" style="color:var(--red);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2" stroke-linecap="round"/></svg></span>
+            <span class="tname">결제 모듈 오류 수정</span>
+          </div>
+          <div class="tchips">
+            <span class="ackst no">● 미확인 · 10분</span>
+            <span class="chip late">긴급 · ~ 7/5</span>
+          </div>
+        </div>
+        <div class="task" style="position:relative;">
+          <span class="callout" style="left:-9px; top:10px;">6</span>
+          <div class="task-top">
+            <span class="st" style="color:var(--amber);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M5.5 8h5" stroke-linecap="round"/></svg></span>
+            <span class="tname">로그인 세션 만료 개선</span>
+          </div>
+          <div class="tchips">
+            <span class="ackst ok">✓ 확인함</span>
+            <span class="chip warn">3일째 변화 없음</span>
+            <span class="chip">~ 7/9</span>
+          </div>
+          <div class="rowact">
+            <span class="ract hi">리마인드</span>
+            <span class="ract">마감 조정</span>
+          </div>
+        </div>
+        <div class="task">
+          <div class="task-top">
+            <span class="st" style="color:var(--green);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M5.5 8.2L7.2 10l3.3-4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="tname" style="color:var(--muted); text-decoration:line-through;">API 문서 오탈자 수정</span>
+          </div>
+          <div class="tchips"><span class="chip mut">오늘 완료</span></div>
+        </div>
+        <div class="grp" style="border-top:1px solid var(--border); margin-top:6px; padding-top:10px;"><span class="avatar p">최</span> 최디자인 <span class="cnt">2건</span></div>
+        <div class="task">
+          <div class="task-top">
+            <span class="st" style="color:var(--red);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.5"/></svg></span>
+            <span class="tname">온보딩 화면 시안 v2</span>
+          </div>
+          <div class="tchips">
+            <span class="ackst no">● 미확인 · 1일</span>
+            <span class="chip late">지연 · ~ 7/2</span>
+          </div>
+          <div class="rowact">
+            <span class="ract hi">리마인드</span>
+          </div>
+        </div>
+        <div class="task">
+          <div class="task-top">
+            <span class="st" style="color:var(--amber);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M5.5 8h5" stroke-linecap="round"/></svg></span>
+            <span class="tname">아이콘 세트 정리</span>
+          </div>
+          <div class="tchips">
+            <span class="ackst ok">✓ 확인함</span>
+            <span class="chip">7/3 → 7/10</span>
+          </div>
+        </div>
+      </div>
+      <div class="sb-foot">동기화 완료 · 오후 2:14</div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="nnum">4</span><span><b>요약 헤더</b> — 지금 개입해야 할 것만 집계: <b>미확인</b>(아직 인지 안 함), <b>지연</b>(마감 초과), <b>정체</b>(N일간 상태 변화 없음). 칩 클릭 시 해당 항목만 필터.</span></div>
+      <div class="note"><span class="nnum">5</span><span><b>확인 여부가 1급 정보</b> — 담당자가 아직 확인하지 않은 작업은 빨간 <b>● 미확인</b> 뱃지와 경과 시간 표시. 확인 댓글이 감지되면 <b>✓ 확인함</b>으로 전환.</span></div>
+      <div class="note"><span class="nnum">6</span><span><b>가벼운 개입 액션</b> — 행 호버 시 <b>리마인드</b>(담당자 멘션 댓글 작성)와 <b>마감 조정</b>. 무거운 편집은 클릭해서 기존 수정 모달/브라우저로.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ 흐름도 ═══════ -->
+<div class="flow">
+  <h2>인지 보장 루프 — 확인이 양방향으로 보이는 구조</h2>
+  <div class="flow-row">
+    <div class="fbox"><b>① 할당</b>김PM이 QuickAdd/Plane에서<br/>이개발에게 작업 할당</div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>② 감지</b>이개발의 앱이 백그라운드<br/>폴링으로 새 할당 감지</div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>③ 알림</b>토스트 + 트레이 뱃지 +<br/>사이드바 수신함 (확인 전까지 반복)</div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>④ 확인</b>이개발이 "확인" 클릭 →<br/>Plane에 자동 댓글 기록</div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>⑤ 추적</b>김PM의 "맡긴 작업" 창에<br/>✓ 확인함으로 표시</div>
+  </div>
+  <p class="sub" style="margin-top:14px;">
+    확인 기록을 Plane 댓글로 남기는 이유: 별도 서버 없이 Plane 자체가 진실의 원천이 되고,
+    앱을 안 쓰는 팀원도 Plane 웹에서 같은 기록을 볼 수 있습니다. 단, 받는 쪽 알림은 상대도
+    Quick Dock을 실행 중일 때만 동작합니다 (Plane 자체 이메일/웹 알림은 그대로 보완재).
+  </p>
+</div>
+
+</body>
+</html>
