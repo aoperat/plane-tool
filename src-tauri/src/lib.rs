@@ -164,8 +164,9 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
-pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
-    if let Some(win) = app.get_webview_window("quickadd") {
+/// `label` 창을 설정된 디스플레이 중앙에 배치하고 표시한다.
+pub(crate) fn show_centered(app: &tauri::AppHandle, label: &str) {
+    if let Some(win) = app.get_webview_window(label) {
         if let (Ok(mons), Ok(size)) = (win.available_monitors(), win.outer_size()) {
             let positions: Vec<(i32, i32)> = mons.iter().map(|m| (m.position().x, m.position().y)).collect();
             let sorted = monitors::sorted_indices_by_position(&positions);
@@ -183,6 +184,10 @@ pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
         let _ = win.show();
         let _ = win.set_focus();
     }
+}
+
+pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
+    show_centered(app, "quickadd");
 }
 
 fn toggle_quickadd(app: &tauri::AppHandle) {
@@ -274,6 +279,8 @@ pub fn run() {
             commands::open_settings,
             commands::show_quickadd_for_project,
             commands::fetch_release_notes,
+            commands::generate_briefing,
+            commands::open_briefing,
             check_updates_manual
         ])
         .run(tauri::generate_context!())

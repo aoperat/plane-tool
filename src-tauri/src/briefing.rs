@@ -408,4 +408,21 @@ mod tests {
         let items = vec![bi("a", "none", None, "backlog")];
         assert!(apply_ai_response("이건 JSON이 아님", items, TODAY).is_err());
     }
+
+    #[test]
+    fn briefing_serde_round_trips_for_cache() {
+        let b = Briefing {
+            date: "2026-07-03".into(), generated_at: "09:00".into(),
+            model: "gpt-4o-mini".into(), source: "openai".into(), error: None,
+            summary: "요약".into(),
+            plan: vec![PlanEntry { item: bi("a", "urgent", Some("2026-07-01"), "unstarted"), reason: "이유".into() }],
+            rest: vec![bi("b", "none", None, "backlog")],
+        };
+        let json = serde_json::to_value(&b).unwrap();
+        let back: Briefing = serde_json::from_value(json).unwrap();
+        assert_eq!(back.date, "2026-07-03");
+        assert_eq!(back.plan.len(), 1);
+        assert_eq!(back.plan[0].item.id, "a");
+        assert_eq!(back.rest[0].id, "b");
+    }
 }

@@ -116,6 +116,23 @@ pub fn set_openai_key(key: &str) -> Result<(), String> {
     entry.set_password(key).map_err(|e| e.to_string())
 }
 
+const BRIEFING_CACHE_KEY: &str = "briefing_cache";
+
+/// 마지막 브리핑 캐시. 같은 날 다시 열면 API를 다시 부르지 않기 위한 것 —
+/// 파싱 실패(구버전 포맷 등)는 캐시 없음으로 취급한다.
+pub fn load_cached_briefing(app: &tauri::AppHandle) -> Option<crate::briefing::Briefing> {
+    app.store(STORE_FILE)
+        .ok()?
+        .get(BRIEFING_CACHE_KEY)
+        .and_then(|v| serde_json::from_value(v).ok())
+}
+
+pub fn save_cached_briefing(app: &tauri::AppHandle, b: &crate::briefing::Briefing) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(BRIEFING_CACHE_KEY, serde_json::to_value(b).map_err(|e| e.to_string())?);
+    store.save().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

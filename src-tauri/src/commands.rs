@@ -460,6 +460,81 @@ pub async fn fetch_release_notes() -> Result<Vec<ReleaseNoteDto>, String> {
     Ok(map_release_notes(&json))
 }
 
+/// AI 브리핑 생성. 같은 날짜의 캐시가 있으면 (force가 아닌 한) 그대로 반환.
+/// OpenAI 실패는 규칙 기반 폴백으로 흡수 — 이 커맨드는 Plane 연결 문제
+/// (not_configured, API 오류)에서만 Err을 낸다.
+#[tauri::command]
+pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<crate::briefing::Briefing, String> {
+    use crate::briefing;
+    let now = chrono::Local::now();
+    let today = now.format("%Y-%m-%d").to_string();
+    if !force {
+        if let Some(cached) = config::load_cached_briefing(&app) {
+            if cached.date == today {
+                return Ok(cached);
+            }
+        }
+    }
+    let (client, s) = client(&app)?;
+    let user = client.current_user().await?;
+    let projects = client.list_projects().await?;
+    let mut all_items: Vec<WorkItem> = Vec::new();
+    for p in &projects {
+        match client.list_work_items(&p.id).await {
+            Ok(mut items) => all_items.append(&mut items),
+            Err(_) => continue, // 프로젝트 하나가 실패해도 나머지로 브리핑한다
+        }
+    }
+    let items = briefing::open_assigned_items(&user.id, &projects, all_items);
+    let fb_summary = briefing::fallback_summary(&items, &today);
+    let model = s.briefing_model.clone();
+    let (source, summary, plan, rest, error) = match config::get_openai_key() {
+        None => {
+            let (plan, rest) = briefing::fallback_plan(items, &today);
+            ("fallback".into(), fb_summary, plan, rest, Some("no_key".to_string()))
+        }
+        Some(key) => {
+            let (system, user_msg) = briefing::build_prompt(&items, &today);
+            let ai = crate::openai::OpenAiClient::new(key);
+            match ai.chat_json(&model, &system, &user_msg).await {
+                Ok(content) => match briefing::apply_ai_response(&content, items.clone(), &today) {
+                    Ok((summary, plan, rest)) => {
+                        let summary = if summary.is_empty() { fb_summary } else { summary };
+                        ("openai".into(), summary, plan, rest, None)
+                    }
+                    Err(e) => {
+                        let (plan, rest) = briefing::fallback_plan(items, &today);
+                        ("fallback".into(), fb_summary, plan, rest, Some(e))
+                    }
+                },
+                Err(e) => {
+                    let (plan, rest) = briefing::fallback_plan(items, &today);
+                    ("fallback".into(), fb_summary, plan, rest, Some(e))
+                }
+            }
+        }
+    };
+    let b = briefing::Briefing {
+        date: today,
+        generated_at: now.format("%H:%M").to_string(),
+        model,
+        source,
+        error,
+        summary,
+        plan,
+        rest,
+    };
+    let _ = config::save_cached_briefing(&app, &b);
+    Ok(b)
+}
+
+/// 브리핑 창을 설정된 디스플레이 중앙에 표시하고, 창에게 로드 신호를 보낸다.
+#[tauri::command]
+pub fn open_briefing(app: tauri::AppHandle) {
+    crate::show_centered(&app, "briefing");
+    let _ = app.emit_to("briefing", "briefing-open", ());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
