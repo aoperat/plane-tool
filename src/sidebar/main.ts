@@ -2,16 +2,16 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getPendingAssignments, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
-import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState } from "../shared/types";
+import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment } from "../shared/types";
 import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
@@ -25,6 +25,7 @@ const tasksEl = document.getElementById("tasks")!;
 const taskCount = document.getElementById("taskCount")!;
 const synced = document.getElementById("synced")!;
 const pinEl = document.getElementById("pin")!;
+const inboxEl = document.getElementById("inbox")!;
 let baseUrl = "";
 let workspace = "";
 let states: ProjectState[] = [];
@@ -613,6 +614,84 @@ async function toggleSidebar() {
   else await showSidebar();
 }
 
+function renderInbox(pending: PendingAssignment[]) {
+  inboxEl.hidden = pending.length === 0;
+  inboxEl.innerHTML = "";
+  if (pending.length === 0) return;
+
+  const head = document.createElement("div");
+  head.className = "inbox-h";
+  head.innerHTML = `<span><span class="inbox-dot"></span>새로 할당됨</span><span>${pending.length}</span>`;
+  inboxEl.appendChild(head);
+
+  for (const p of pending) {
+    const card = document.createElement("div");
+    card.className = "new-task";
+
+    const who = document.createElement("div");
+    who.className = "assigner";
+    who.innerHTML = `<b></b>님이 할당 <span class="when">${formatRelativeTime(p.detected_at_ms, Date.now())}</span>`;
+    who.querySelector("b")!.textContent = p.assigner_name;
+    card.appendChild(who);
+
+    const name = document.createElement("div");
+    name.className = "nt-name";
+    name.textContent = p.name;
+    card.appendChild(name);
+
+    const chips = document.createElement("div");
+    chips.className = "nt-chips";
+    if (p.priority !== "none") {
+      const prio = document.createElement("span");
+      prio.className = "chip sm";
+      prio.style.color = priorityColor(p.priority as any);
+      prio.innerHTML = `${priorityIcon(p.priority as any)} ${PRIORITY_LABELS[p.priority] ?? p.priority}`;
+      chips.appendChild(prio);
+    }
+    if (p.target_date) {
+      const due = document.createElement("span");
+      due.className = "chip sm";
+      due.innerHTML = `${CALENDAR_ICON} ~ ${p.target_date}`;
+      chips.appendChild(due);
+    }
+    if (chips.childElementCount > 0) card.appendChild(chips);
+
+    const row = document.createElement("div");
+    row.className = "ack-row";
+    const ack = document.createElement("button");
+    ack.className = "ack-btn";
+    ack.textContent = "✓ 확인했습니다";
+    ack.onclick = async () => {
+      ack.disabled = true;
+      try {
+        await acknowledgeAssignment(p.project_id, p.item_id);
+        // 목록 갱신은 백엔드가 emit하는 assignments-updated가 처리한다.
+      } catch (err) {
+        ack.disabled = false;
+        synced.textContent = "확인 처리 실패: " + err;
+        console.error("acknowledgeAssignment failed:", err);
+      }
+    };
+    row.appendChild(ack);
+    const open = document.createElement("button");
+    open.className = "ack-ghost";
+    open.textContent = "열기";
+    open.onclick = () => openEditModal(p.project_id, p.item_id);
+    row.appendChild(open);
+    card.appendChild(row);
+
+    inboxEl.appendChild(card);
+  }
+}
+
+async function refreshInbox() {
+  try {
+    renderInbox(await getPendingAssignments());
+  } catch (err) {
+    console.error("getPendingAssignments failed:", err);
+  }
+}
+
 async function refresh() {
   lastRefreshAt = Date.now();
   synced.textContent = "동기화 중…";
@@ -627,6 +706,7 @@ async function refresh() {
     states = data.states;
     renderTasks(filterVisibleToday(data.assigned), data.projects);
     synced.textContent = "동기화 완료";
+    refreshInbox();
   } catch (e) {
     const msg = typeof e === "string" ? e : ((e as any)?.message ?? JSON.stringify(e));
     synced.textContent = "동기화 실패: " + msg;
@@ -815,6 +895,7 @@ document.addEventListener("keydown", (e) => {
 });
 win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
+win.listen("assignments-updated", refreshInbox);
 win.listen("tauri://blur", () => {
   if (!pinned && !autoOpened) hideSidebar();
 });
@@ -840,3 +921,4 @@ document.addEventListener("pointerdown", () => {
   autoOpened = false;
 }, true);
 refresh();
+refreshInbox();

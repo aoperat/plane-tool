@@ -37,3 +37,8 @@ export interface Briefing {
   source: string; error: string | null; summary: string;
   plan: BriefingPlanEntry[]; rest: BriefingItem[];
 }
+export interface PendingAssignment {
+  item_id: string; project_id: string; name: string;
+  priority: string; target_date: string | null;
+  assigner_name: string; detected_at_ms: number;
+}

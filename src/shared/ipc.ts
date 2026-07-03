@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote, Briefing } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -112,3 +112,8 @@ export const fetchReleaseNotes = () => invoke<ReleaseNote[]>("fetch_release_note
 export const generateBriefing = (force: boolean) =>
   invoke<Briefing>("generate_briefing", { force });
 export const openBriefing = () => invoke<void>("open_briefing");
+
+export const getPendingAssignments = () =>
+  invoke<PendingAssignment[]>("get_pending_assignments");
+export const acknowledgeAssignment = (project_id: string, item_id: string) =>
+  invoke<void>("acknowledge_assignment", { projectId: project_id, itemId: item_id });

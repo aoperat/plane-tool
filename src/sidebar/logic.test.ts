@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -278,5 +278,24 @@ describe("groupProgress", () => {
   });
   it("returns zeros for an empty group", () => {
     expect(groupProgress([])).toEqual({ done: 0, total: 0 });
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = 1_000_000_000_000;
+  it("1분 미만은 '방금 전'", () => {
+    expect(formatRelativeTime(now - 30_000, now)).toBe("방금 전");
+  });
+  it("분 단위", () => {
+    expect(formatRelativeTime(now - 10 * 60_000, now)).toBe("10분 전");
+  });
+  it("시간 단위", () => {
+    expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe("3시간 전");
+  });
+  it("일 단위", () => {
+    expect(formatRelativeTime(now - 2 * 86_400_000, now)).toBe("2일 전");
+  });
+  it("미래 타임스탬프(시계 오차)는 '방금 전'으로 처리", () => {
+    expect(formatRelativeTime(now + 60_000, now)).toBe("방금 전");
   });
 });

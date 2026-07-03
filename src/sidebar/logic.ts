@@ -153,3 +153,12 @@ export function groupProgress(items: WorkItem[]): { done: number; total: number 
   const done = items.filter((i) => i.state_group === "completed").length;
   return { done, total: items.length };
 }
+
+/** unix ms 타임스탬프를 "방금 전"/"N분 전"/"N시간 전"/"N일 전"으로. */
+export function formatRelativeTime(thenMs: number, nowMs: number): string {
+  const diff = nowMs - thenMs;
+  if (diff < 60_000) return "방금 전";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}시간 전`;
+  return `${Math.floor(diff / 86_400_000)}일 전`;
+}

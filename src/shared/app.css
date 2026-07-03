@@ -459,6 +459,42 @@ kbd {
 .row-browser-btn { margin-left: auto; opacity: 0; transition: opacity .1s; }
 .task:hover .row-browser-btn { opacity: 1; }
 
+/* ---- sidebar assignment inbox ---- */
+.inbox-sec {
+  background: var(--accent-soft); border: 1px solid rgba(79,124,255,.35);
+  border-radius: 9px; padding: 9px 8px 4px; margin-bottom: 12px;
+}
+.inbox-sec[hidden] { display: none; }
+.inbox-sec .inbox-h {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 5px; padding: 0 2px;
+}
+.inbox-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); display: inline-block; margin-right: 6px; }
+.new-task {
+  background: var(--panel); border: 1px solid rgba(79,124,255,.3);
+  border-radius: 8px; margin-bottom: 6px; padding: 8px 9px;
+}
+.new-task .assigner { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); margin-bottom: 6px; }
+.new-task .assigner b { color: var(--text); font-weight: 600; }
+.new-task .assigner .when { margin-left: auto; color: var(--muted-2); }
+.new-task .nt-name { font-size: 13px; line-height: 1.4; }
+.new-task .nt-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.ack-row { display: flex; gap: 6px; margin-top: 8px; }
+.ack-btn {
+  flex: 1; text-align: center; font-size: 11px; font-weight: 600; padding: 5px 0;
+  border-radius: 6px; background: var(--accent); color: #fff; border: none;
+  cursor: pointer; font-family: inherit;
+}
+.ack-btn:hover { filter: brightness(1.08); }
+.ack-btn:disabled { opacity: .6; cursor: default; }
+.ack-ghost {
+  flex: none; font-size: 11px; padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  cursor: pointer; font-family: inherit;
+}
+.ack-ghost:hover { color: var(--text); border-color: var(--accent); }
+
 /* ---- sidebar release notes panel ---- */
 .notes-panel {
   position: fixed; inset: 0; z-index: 30; /* above sidebar content (20), below popovers (40) */
