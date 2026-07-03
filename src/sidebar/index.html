@@ -8,7 +8,7 @@
   <body>
     <aside class="sidebar" style="position:static;width:100%;height:100vh;">
       <div class="sb-head">
-        <div class="logo">P</div>
+        <div class="logo"><svg viewBox="0 0 460 460" fill="#fff" fill-rule="evenodd"><path d="M73 136 L71 240 L87 266 L212 328 L226 320 L227 295 L293 328 L306 323 L308 295 L374 328 L387 323 L388 215 L375 195 L246 131 L234 138 L232 164 L165 131 L153 138 L152 164 L84 131 Z M234 164 L294 194 L305 206 L308 216 L307 295 L246 265 L236 254 L233 247 Z M153 164 L211 193 L222 203 L227 215 L226 295 L165 265 L155 254 L152 247 Z"/></svg></div>
         <div class="t">Quick Dock</div>
         <span id="user" class="u"></span>
         <span id="openPlane" class="hbtn" title="Plane 웹 열기"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 3H3v10h10V9.5M9.5 2.5h4v4M13 3L7.5 8.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -30,6 +30,13 @@
       </div>
       <div class="sb-foot"><span id="synced">동기화 대기</span></div>
     </aside>
+    <div id="notesPanel" class="notes-panel" hidden>
+      <div class="notes-head">
+        <div class="t">릴리즈 노트</div>
+        <span id="notesClose" class="hbtn" title="닫기 (Esc)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+      </div>
+      <div id="notesBody" class="notes-body"></div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

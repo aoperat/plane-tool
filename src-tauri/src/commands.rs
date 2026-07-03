@@ -376,6 +376,54 @@ pub fn show_quickadd_for_project(app: tauri::AppHandle, project_id: String) -> R
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct ReleaseNoteDto {
+    pub version: String,
+    pub date: String,
+    pub notes: String,
+}
+
+/// The releases of this app itself, not the user's Plane server — the repo is
+/// public, so no auth. Kept in sync with the updater endpoint in tauri.conf.json.
+const RELEASES_URL: &str = "https://api.github.com/repos/aoperat/plane-tool/releases?per_page=10";
+
+/// Maps the GitHub releases JSON array into display DTOs. Drafts and
+/// prereleases are skipped; the `v` tag prefix is dropped and `published_at`
+/// is cut down to its date part.
+pub fn map_release_notes(releases: &serde_json::Value) -> Vec<ReleaseNoteDto> {
+    let Some(arr) = releases.as_array() else { return Vec::new() };
+    arr.iter()
+        .filter(|r| {
+            !r["draft"].as_bool().unwrap_or(false) && !r["prerelease"].as_bool().unwrap_or(false)
+        })
+        .map(|r| {
+            let tag = r["tag_name"].as_str().unwrap_or("");
+            ReleaseNoteDto {
+                version: tag.strip_prefix('v').unwrap_or(tag).to_string(),
+                date: r["published_at"].as_str().unwrap_or("").chars().take(10).collect(),
+                notes: r["body"].as_str().unwrap_or("").trim().to_string(),
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn fetch_release_notes() -> Result<Vec<ReleaseNoteDto>, String> {
+    let resp = reqwest::Client::new()
+        .get(RELEASES_URL)
+        // GitHub rejects requests without a User-Agent with 403.
+        .header("User-Agent", "plane-quick-dock")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API HTTP {}", resp.status().as_u16()));
+    }
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(map_release_notes(&json))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,5 +535,44 @@ mod tests {
         // The sidebar's date popover sends "" to clear a date; Plane expects null.
         let body = build_update_body(None, None, None, Some(""), Some(""), None, None);
         assert_eq!(body, serde_json::json!({ "start_date": null, "target_date": null }));
+    }
+
+    #[test]
+    fn map_release_notes_maps_tag_date_and_body() {
+        let json = serde_json::json!([{
+            "tag_name": "v0.1.3",
+            "published_at": "2026-07-03T05:12:00Z",
+            "body": "### 수정\n- 버그 수정\n",
+            "draft": false,
+            "prerelease": false
+        }]);
+        let notes = map_release_notes(&json);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].version, "0.1.3");
+        assert_eq!(notes[0].date, "2026-07-03");
+        assert_eq!(notes[0].notes, "### 수정\n- 버그 수정");
+    }
+
+    #[test]
+    fn map_release_notes_skips_drafts_and_prereleases() {
+        let json = serde_json::json!([
+            { "tag_name": "v0.2.0-rc1", "published_at": "2026-07-04T00:00:00Z", "body": "", "draft": false, "prerelease": true },
+            { "tag_name": "v0.2.0", "published_at": null, "body": "x", "draft": true, "prerelease": false },
+            { "tag_name": "v0.1.0", "published_at": "2026-07-02T00:00:00Z", "body": "y", "draft": false, "prerelease": false }
+        ]);
+        let notes = map_release_notes(&json);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].version, "0.1.0");
+    }
+
+    #[test]
+    fn map_release_notes_tolerates_missing_fields_and_non_array() {
+        // Early releases (or a surprising API response) must not panic the command.
+        let notes = map_release_notes(&serde_json::json!([{}]));
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].version, "");
+        assert_eq!(notes[0].date, "");
+        assert_eq!(notes[0].notes, "");
+        assert!(map_release_notes(&serde_json::json!({"message": "rate limited"})).is_empty());
     }
 }

@@ -2,7 +2,8 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkUpdatesManual, createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getSettings, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
@@ -10,7 +11,7 @@ import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
-import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
+import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState } from "../shared/types";
 import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
@@ -655,6 +656,84 @@ async function toggleTheme() {
   }
 }
 
+// Release notes panel: an overlay covering the whole sidebar, fed from this
+// app's GitHub releases. Cached for the session — the list only changes when
+// a release ships, and unauthenticated GitHub API calls are rate limited.
+const notesPanel = document.getElementById("notesPanel")!;
+const notesBody = document.getElementById("notesBody")!;
+let cachedReleaseNotes: ReleaseNote[] | null = null;
+
+function closeReleaseNotes() {
+  notesPanel.hidden = true;
+}
+
+function notesStatus(text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "notes-status";
+  el.textContent = text;
+  return el;
+}
+
+async function renderReleaseNotes(notes: ReleaseNote[]) {
+  notesBody.innerHTML = "";
+  if (notes.length === 0) {
+    notesBody.appendChild(notesStatus("표시할 릴리즈가 없습니다"));
+    return;
+  }
+  const current = await getVersion();
+  for (const n of notes) {
+    const item = document.createElement("div");
+    item.className = "rn-item";
+
+    const head = document.createElement("div");
+    head.className = "rn-head";
+    const ver = document.createElement("span");
+    ver.className = "rn-ver";
+    ver.textContent = "v" + n.version;
+    head.appendChild(ver);
+    const date = document.createElement("span");
+    date.className = "rn-date";
+    date.textContent = n.date;
+    head.appendChild(date);
+    if (n.version === current) {
+      const badge = document.createElement("span");
+      badge.className = "rn-badge";
+      badge.textContent = "현재 버전";
+      head.appendChild(badge);
+    }
+    item.appendChild(head);
+
+    const body = document.createElement("div");
+    body.innerHTML = n.notes ? notesToHtml(n.notes) : `<p class="rn-empty">(변경 내역 없음)</p>`;
+    item.appendChild(body);
+
+    notesBody.appendChild(item);
+  }
+}
+
+async function openReleaseNotes() {
+  notesPanel.hidden = false;
+  if (cachedReleaseNotes) return;
+  notesBody.innerHTML = "";
+  notesBody.appendChild(notesStatus("릴리즈 노트 불러오는 중…"));
+  try {
+    const notes = await fetchReleaseNotes();
+    cachedReleaseNotes = notes;
+    await renderReleaseNotes(notes);
+  } catch (err) {
+    notesBody.innerHTML = "";
+    notesBody.appendChild(notesStatus("릴리즈 노트를 불러오지 못했습니다: " + err));
+    const retry = document.createElement("button");
+    retry.className = "rn-retry";
+    retry.textContent = "다시 시도";
+    retry.onclick = () => openReleaseNotes();
+    notesBody.appendChild(retry);
+    console.error("fetchReleaseNotes failed:", err);
+  }
+}
+
+document.getElementById("notesClose")!.onclick = closeReleaseNotes;
+
 const MORE_MENU_WIDTH = 170;
 const moreBtn = document.getElementById("moreMenu")!;
 
@@ -666,6 +745,7 @@ function openMoreMenu() {
   pop.style.width = MORE_MENU_WIDTH + "px";
 
   appendPopItem(pop, "업데이트 확인", () => runUpdateCheck());
+  appendPopItem(pop, "릴리즈 노트", () => openReleaseNotes());
   appendPopItem(pop, "설정", () => openSettings());
   appendPopItem(pop, "다크/라이트 전환", () => toggleTheme());
 
@@ -697,6 +777,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (openPopover) {
       closePopover();
+    } else if (!notesPanel.hidden) {
+      closeReleaseNotes();
     } else {
       hideSidebar();
     }

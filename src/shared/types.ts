@@ -14,6 +14,7 @@ export interface WorkItemDetail {
   priority: string; state_group: string; project_id: string;
 }
 export interface SidebarData { projects: Project[]; assigned: WorkItem[]; states: ProjectState[]; }
+export interface ReleaseNote { version: string; date: string; notes: string; }
 export interface SettingsDto {
   base_url: string; workspace: string;
   last_project_id: string | null; has_token: boolean;

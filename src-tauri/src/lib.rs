@@ -247,6 +247,7 @@ pub fn run() {
             commands::open_edit_modal,
             commands::open_settings,
             commands::show_quickadd_for_project,
+            commands::fetch_release_notes,
             check_updates_manual
         ])
         .run(tauri::generate_context!())

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -89,3 +89,6 @@ export const showQuickaddForProject = (project_id: string) =>
 /** Resolves to a display message when already up to date; null when an
  *  update dialog was opened instead. */
 export const checkUpdatesManual = () => invoke<string | null>("check_updates_manual");
+
+/** This app's own GitHub releases (newest first), for the sidebar's release notes panel. */
+export const fetchReleaseNotes = () => invoke<ReleaseNote[]>("fetch_release_notes");

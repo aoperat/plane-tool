@@ -207,7 +207,8 @@ kbd {
   display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px;
   border-bottom: 1px solid var(--border);
 }
-.logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; font-size: 13px; font-weight: 800; }
+.logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; }
+.logo svg { width: 15px; height: 15px; display: block; }
 .sb-head .t { font-weight: 600; font-size: 14px; }
 /* min-width:0 + ellipsis: the username is the only flexible item in the fixed
    320px header — without this a long name pushes the header buttons past the
@@ -434,3 +435,42 @@ kbd {
 /* sidebar row hover "open in browser" icon */
 .row-browser-btn { margin-left: auto; opacity: 0; transition: opacity .1s; }
 .task:hover .row-browser-btn { opacity: 1; }
+
+/* ---- sidebar release notes panel ---- */
+.notes-panel {
+  position: fixed; inset: 0; z-index: 30; /* above sidebar content (20), below popovers (40) */
+  display: flex; flex-direction: column;
+  background: var(--panel); color: var(--text);
+}
+.notes-panel[hidden] { display: none; }
+.notes-head {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.notes-head .t { font-weight: 600; font-size: 13px; flex: 1; }
+.notes-body { flex: 1; overflow-y: auto; padding: 6px 16px 14px; }
+.notes-status { color: var(--muted); font-size: 12px; padding: 10px 0; }
+.rn-retry {
+  display: block; margin-top: 4px; padding: 6px 14px; border-radius: 7px; cursor: pointer;
+  font-family: inherit; font-size: 12px; background: transparent; color: var(--text);
+  border: 1px solid var(--border);
+}
+.rn-retry:hover { background: var(--panel-2); }
+.rn-item { padding: 12px 0 10px; }
+.rn-item + .rn-item { border-top: 1px solid var(--border); }
+.rn-head { display: flex; align-items: baseline; gap: 7px; }
+.rn-ver { font-size: 13px; font-weight: 700; }
+.rn-date { font-size: 11px; color: var(--muted-2); }
+.rn-badge {
+  font-size: 10px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 1px 7px; align-self: center;
+}
+.rn-cat { font-size: 11px; font-weight: 700; color: var(--muted); margin: 8px 0 2px; }
+.rn-list { margin: 2px 0; padding-left: 17px; }
+.rn-list li { font-size: 12px; line-height: 1.55; margin: 2px 0; }
+.notes-body p { font-size: 12px; line-height: 1.55; margin: 4px 0; }
+.notes-body code {
+  font-family: inherit; font-size: 11px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 3px;
+}
+.rn-empty { color: var(--muted-2); }
