@@ -1,3 +1,4 @@
+pub mod assign_watch;
 pub mod briefing;
 pub mod commands;
 pub mod config;
