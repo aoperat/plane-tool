@@ -563,16 +563,19 @@ descriptionEl.addEventListener("keydown", async (e) => {
   await submitIssue();
 });
 
+// Focus fires both when the window is summoned and when the user merely clicks
+// back into the still-open window, so it must never touch the draft — a draft
+// is cleared only by a successful submit (see submitIssue). Focus just parks
+// the cursor and refreshes the project list (cooldown-gated).
 win.listen("tauri://focus", () => {
   titleEl.focus();
-  titleEl.value = "";
-  resetFields();
   if (!isWithinCooldown(lastLoadAt, Date.now(), LOAD_COOLDOWN_MS)) load();
 });
 
-// Sidebar's per-project "+" button: pre-select that project. The focus event that
-// follows resets fields but not selectedId, and load() (if it runs) re-reads
-// last_project_id which the command already persisted to the same value.
+// Sidebar's per-project "+" button: pre-select that project. Any in-progress
+// draft text survives the switch; only the project-scoped selections (assignees)
+// reset. load() (if the focus event triggers it) re-reads last_project_id which
+// the command already persisted to the same value.
 win.listen<string>("select-project", (e) => {
   selectedId = e.payload;
   members = [];
