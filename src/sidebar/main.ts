@@ -180,8 +180,10 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
-  pop.style.top = "26px";
-  pop.style.left = "0px";
+  // Body-level fixed positioning (see attachPopover) — nesting inside the
+  // anchor chip doesn't work here because .chip has overflow:hidden, which
+  // clips the popover entirely.
+  pop.style.position = "fixed";
   for (const p of PRIORITIES) {
     const opt = document.createElement("div");
     opt.className = "pop-item" + (p === item.priority ? " sel" : "");
@@ -195,8 +197,8 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
     };
     pop.appendChild(opt);
   }
-  anchor.appendChild(pop);
-  openPopover = pop;
+  const rect = anchor.getBoundingClientRect();
+  attachPopover(pop, rect.left, rect.bottom + 4);
 }
 
 async function openInBrowser(it: WorkItem) {
@@ -251,8 +253,8 @@ const CONTEXT_MENU_WIDTH = 180;
  * Attaches `pop` to `document.body` (not the row it was triggered from) with
  * fixed positioning at viewport coordinates (x, y), clamped to stay on
  * screen. The context menu and delete-confirm popovers are taller than a
- * single row, so nesting them inside a row (like the state/priority
- * popovers do) let them visually spill into sibling rows below — since
+ * single row, so nesting them inside a row (like the state popover
+ * does) let them visually spill into sibling rows below — since
  * those siblings are later in the DOM, they'd win hover/click there instead
  * of the menu. Body-level fixed positioning sidesteps that entirely.
  */
