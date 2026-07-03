@@ -1,13 +1,14 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { checkUpdatesManual, createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { getVersion } from "@tauri-apps/api/app";
+import { checkUpdatesManual, createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
-import { applyTheme } from "../shared/theme";
+import { applyTheme, toggledThemePref } from "../shared/theme";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
 import type { SidebarData, Project, WorkItem, ProjectState } from "../shared/types";
 import "../shared/app.css";
@@ -28,6 +29,7 @@ let workspace = "";
 let states: ProjectState[] = [];
 let openPopover: HTMLElement | null = null;
 let pinned = false;
+let themePref = "auto";
 let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
 
@@ -201,17 +203,20 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
   attachPopover(pop, rect.left, rect.bottom + 4);
 }
 
-async function openInBrowser(it: WorkItem) {
-  const url = buildIssueUrl(baseUrl, workspace, it.project_id, it.id);
+/** Opens `url` in the default browser, dropping always-on-top first so the
+ *  browser window can appear above the sidebar instead of behind it. */
+async function openExternal(url: string) {
   try {
-    // Drop always-on-top so the browser window we're about to open can
-    // appear above the sidebar instead of behind it.
     await win.setAlwaysOnTop(false);
     await openUrl(url);
   } catch (err) {
     synced.textContent = "열기 실패: " + err;
     console.error("openUrl failed:", url, err);
   }
+}
+
+async function openInBrowser(it: WorkItem) {
+  await openExternal(buildIssueUrl(baseUrl, workspace, it.project_id, it.id));
 }
 
 async function duplicateWorkItem(it: WorkItem) {
@@ -266,6 +271,19 @@ function attachPopover(pop: HTMLElement, x: number, y: number) {
   openPopover = pop;
 }
 
+/** Appends a standard clickable menu row to `pop`; clicking closes the popover, then runs `onClick`. */
+function appendPopItem(pop: HTMLElement, label: string, onClick: () => void) {
+  const opt = document.createElement("div");
+  opt.className = "pop-item";
+  opt.textContent = label;
+  opt.onclick = (e) => {
+    e.stopPropagation();
+    closePopover();
+    onClick();
+  };
+  pop.appendChild(opt);
+}
+
 function openContextMenu(it: WorkItem, x: number, y: number) {
   closePopover();
   const pop = document.createElement("div");
@@ -273,27 +291,15 @@ function openContextMenu(it: WorkItem, x: number, y: number) {
   pop.style.position = "fixed";
   pop.style.width = CONTEXT_MENU_WIDTH + "px";
 
-  const addItem = (label: string, onClick: () => void) => {
-    const opt = document.createElement("div");
-    opt.className = "pop-item";
-    opt.textContent = label;
-    opt.onclick = (e) => {
-      e.stopPropagation();
-      closePopover();
-      onClick();
-    };
-    pop.appendChild(opt);
-  };
-
-  addItem("복사본 만들기", () => duplicateWorkItem(it));
-  addItem("새 탭에서 열기", () => openInBrowser(it));
-  addItem("링크 복사", () => copyIssueLink(it));
+  appendPopItem(pop, "복사본 만들기", () => duplicateWorkItem(it));
+  appendPopItem(pop, "새 탭에서 열기", () => openInBrowser(it));
+  appendPopItem(pop, "링크 복사", () => copyIssueLink(it));
 
   const divider = document.createElement("div");
   divider.className = "popover-divider";
   pop.appendChild(divider);
 
-  addItem("삭제", () => openDeleteConfirm(it, x, y));
+  appendPopItem(pop, "삭제", () => openDeleteConfirm(it, x, y));
 
   attachPopover(pop, x, y);
 }
@@ -554,6 +560,7 @@ async function refresh() {
     const s = await getSettings();
     baseUrl = s.base_url;
     workspace = s.workspace;
+    themePref = s.theme;
     applyTheme(s.theme);
     const today = resolveDatePreset("today");
     const data: SidebarData = await fetchSidebarData(shiftIsoDate(today, -1), shiftIsoDate(today, 1));
@@ -574,10 +581,18 @@ function refreshIfStale() {
 
 document.getElementById("refresh")!.onclick = refresh;
 
+document.getElementById("openPlane")!.onclick = () => {
+  if (!baseUrl) {
+    synced.textContent = "설정에서 Base URL을 먼저 입력하세요";
+    return;
+  }
+  openExternal(baseUrl);
+};
+
 // Manual update check: the result lands in the footer. When an update exists
 // the backend opens its own confirm dialog instead of returning a message.
 let updateCheckInFlight = false;
-document.getElementById("checkUpdate")!.addEventListener("click", async () => {
+async function runUpdateCheck() {
   if (updateCheckInFlight) return;
   updateCheckInFlight = true;
   synced.textContent = "업데이트 확인 중…";
@@ -589,9 +604,60 @@ document.getElementById("checkUpdate")!.addEventListener("click", async () => {
   } finally {
     updateCheckInFlight = false;
   }
-});
+}
 
-document.getElementById("openSettings")!.onclick = () => openSettings();
+// Persists the flipped theme as an explicit preference. Settings are re-read
+// first so a toggle before the initial refresh cannot save an empty base_url
+// over the stored one.
+async function toggleTheme() {
+  const next = toggledThemePref(themePref, window.matchMedia("(prefers-color-scheme: light)").matches);
+  themePref = next;
+  applyTheme(next);
+  try {
+    const s = await getSettings();
+    await saveSettings(s.base_url, s.workspace, undefined, undefined, undefined, next, undefined);
+  } catch (err) {
+    synced.textContent = "테마 저장 실패: " + err;
+  }
+}
+
+const MORE_MENU_WIDTH = 170;
+const moreBtn = document.getElementById("moreMenu")!;
+
+function openMoreMenu() {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.position = "fixed";
+  pop.style.width = MORE_MENU_WIDTH + "px";
+
+  appendPopItem(pop, "업데이트 확인", () => runUpdateCheck());
+  appendPopItem(pop, "설정", () => openSettings());
+  appendPopItem(pop, "다크/라이트 전환", () => toggleTheme());
+
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  pop.appendChild(divider);
+
+  const ver = document.createElement("div");
+  ver.className = "pop-version";
+  getVersion().then((v) => {
+    ver.textContent = `Plane Quick Dock v${v}`;
+  });
+  pop.appendChild(ver);
+
+  const rect = moreBtn.getBoundingClientRect();
+  attachPopover(pop, rect.right - MORE_MENU_WIDTH, rect.bottom + 6);
+}
+
+moreBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (openPopover) {
+    closePopover();
+    return;
+  }
+  openMoreMenu();
+});
 document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {

@@ -5,6 +5,12 @@ export function resolveEffectiveTheme(pref: string, systemPrefersLight: boolean)
   return systemPrefersLight ? "light" : "dark";
 }
 
+/** Returns the explicit preference that flips what's currently rendered —
+ *  toggling from "auto" pins the theme to the opposite of the system-resolved one. */
+export function toggledThemePref(pref: string, systemLight: boolean): "light" | "dark" {
+  return resolveEffectiveTheme(pref, systemLight) === "dark" ? "light" : "dark";
+}
+
 let currentPref = "auto";
 let mediaListenerAttached = false;
 

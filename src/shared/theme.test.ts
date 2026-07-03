@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { resolveEffectiveTheme } from "./theme";
+import { resolveEffectiveTheme, toggledThemePref } from "./theme";
+
+describe("toggledThemePref", () => {
+  it("flips an explicit preference", () => {
+    expect(toggledThemePref("dark", false)).toBe("light");
+    expect(toggledThemePref("light", false)).toBe("dark");
+  });
+
+  it("pins the opposite of the system theme when preference is auto", () => {
+    expect(toggledThemePref("auto", true)).toBe("dark");
+    expect(toggledThemePref("auto", false)).toBe("light");
+  });
+});
 
 describe("resolveEffectiveTheme", () => {
   it("returns light when preference is light, regardless of system", () => {
