@@ -307,17 +307,15 @@ impl PlaneClient {
         format!("{}/api/v1/workspaces/{}", self.base_url, self.workspace)
     }
 
-    async fn get_json(&self, url: &str) -> Result<reqwest::Response, String> {
+    /// Sends `req`, retrying up to 2 times on 429 (honoring `Retry-After`, else
+    /// exponential backoff). Safe for mutations too: a 429 means the server
+    /// rejected the request without processing it, so nothing ran twice.
+    async fn send_retrying(&self, req: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
         const MAX_RETRIES: u32 = 2;
         let mut attempt = 0;
         loop {
-            let resp = self
-                .http
-                .get(url)
-                .header("X-Api-Key", &self.api_key)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?;
+            let attempt_req = req.try_clone().ok_or("request body is not retryable")?;
+            let resp = attempt_req.send().await.map_err(|e| e.to_string())?;
             if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < MAX_RETRIES {
                 let wait_secs = retry_after_seconds(resp.headers(), attempt);
                 tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
@@ -326,6 +324,10 @@ impl PlaneClient {
             }
             return error_with_body(resp).await;
         }
+    }
+
+    async fn get_json(&self, url: &str) -> Result<reqwest::Response, String> {
+        self.send_retrying(self.http.get(url).header("X-Api-Key", &self.api_key)).await
     }
 
     pub async fn current_user(&self) -> Result<CurrentUser, String> {
@@ -423,15 +425,13 @@ impl PlaneClient {
         if let Some(dh) = item.description_html {
             body.insert("description_html".into(), serde_json::json!(dh));
         }
-        let resp = self
-            .http
-            .post(&url)
-            .header("X-Api-Key", &self.api_key)
-            .json(&serde_json::Value::Object(body))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        error_with_body(resp).await?;
+        self.send_retrying(
+            self.http
+                .post(&url)
+                .header("X-Api-Key", &self.api_key)
+                .json(&serde_json::Value::Object(body)),
+        )
+        .await?;
         Ok(())
     }
 
@@ -442,28 +442,14 @@ impl PlaneClient {
         body: serde_json::Value,
     ) -> Result<(), String> {
         let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
-        let resp = self
-            .http
-            .patch(&url)
-            .header("X-Api-Key", &self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        error_with_body(resp).await?;
+        self.send_retrying(self.http.patch(&url).header("X-Api-Key", &self.api_key).json(&body))
+            .await?;
         Ok(())
     }
 
     pub async fn delete_work_item(&self, project_id: &str, item_id: &str) -> Result<(), String> {
         let url = format!("{}/projects/{}/work-items/{}/", self.ws_base(), project_id, item_id);
-        let resp = self
-            .http
-            .delete(&url)
-            .header("X-Api-Key", &self.api_key)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        error_with_body(resp).await?;
+        self.send_retrying(self.http.delete(&url).header("X-Api-Key", &self.api_key)).await?;
         Ok(())
     }
 
@@ -484,15 +470,13 @@ impl PlaneClient {
 
     pub async fn create_comment(&self, project_id: &str, item_id: &str, comment_html: &str) -> Result<(), String> {
         let url = format!("{}/projects/{}/work-items/{}/comments/", self.ws_base(), project_id, item_id);
-        let resp = self
-            .http
-            .post(&url)
-            .header("X-Api-Key", &self.api_key)
-            .json(&serde_json::json!({ "comment_html": comment_html }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        error_with_body(resp).await?;
+        self.send_retrying(
+            self.http
+                .post(&url)
+                .header("X-Api-Key", &self.api_key)
+                .json(&serde_json::json!({ "comment_html": comment_html })),
+        )
+        .await?;
         Ok(())
     }
 
@@ -634,6 +618,51 @@ mod tests {
         let projects = client_for(&server).await.list_projects().await.unwrap();
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].id, "p1");
+    }
+
+    #[tokio::test]
+    async fn delete_work_item_retries_once_after_429_then_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        client_for(&server).await.delete_work_item("p1", "i1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_work_item_retries_once_after_429_then_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/i1/"))
+            .and(wiremock::matchers::body_json(serde_json::json!({ "priority": "high" })))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        client_for(&server)
+            .await
+            .update_work_item("p1", "i1", serde_json::json!({ "priority": "high" }))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
