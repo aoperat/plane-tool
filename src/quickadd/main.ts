@@ -3,6 +3,7 @@ import { createIssue, listProjects, listMembers, getSettings } from "../shared/i
 import { colorForId } from "../shared/color";
 import type { Project, Member } from "../shared/types";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
+import { resolveDateShortcut } from "../shared/dateShortcut";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
@@ -32,6 +33,10 @@ const chipDesc = document.getElementById("chipDesc")!;
 const fieldPopover = document.getElementById("fieldPopover")!;
 const descriptionEl = document.getElementById("description") as HTMLTextAreaElement;
 const errorEl = document.getElementById("qaError")!;
+const qaClose = document.getElementById("qaClose")!;
+const qaCancel = document.getElementById("qaCancel")!;
+const qaSubmit = document.getElementById("qaSubmit")!;
+const qaTip = document.getElementById("qaTip")!;
 
 let projects: Project[] = [];
 let selectedId: string | null = null;
@@ -102,7 +107,12 @@ function clearError() {
   resizeToFit();
 }
 
+// Ctrl+Enter and the submit button can fire while a create request is still in flight;
+// without this guard each extra press files the same issue again.
+let submitting = false;
+
 async function submitIssue() {
+  if (submitting) return;
   const name = titleEl.value.trim();
   if (!name) {
     titleEl.classList.add("error");
@@ -113,6 +123,7 @@ async function submitIssue() {
     showError("프로젝트를 선택하세요");
     return;
   }
+  submitting = true;
   try {
     await createIssue(
       selectedId,
@@ -131,6 +142,8 @@ async function submitIssue() {
     titleEl.classList.add("error");
     showError("등록 실패: " + err);
     console.error(err);
+  } finally {
+    submitting = false;
   }
 }
 
@@ -491,6 +504,7 @@ chips.forEach((chip) => chip.addEventListener("keydown", handleChipArrowNav));
 
 function resetFields() {
   assigneeIds = [];
+  dropdown.hidden = true; // a submit can land while the project dropdown is open
   startChoice = "today";
   startCustomDate = "";
   dueChoice = "today";
@@ -526,6 +540,13 @@ projBtn.addEventListener(
   }),
 );
 
+/** Flashes the submit button — plain Enter no longer submits, so this teaches Ctrl+Enter. */
+function pulseSubmit() {
+  qaSubmit.classList.remove("pulse");
+  void (qaSubmit as HTMLElement).offsetWidth; // restart the animation on rapid presses
+  qaSubmit.classList.add("pulse");
+}
+
 titleEl.addEventListener("keydown", async (e) => {
   titleEl.classList.remove("error");
   if (e.key !== "Enter") clearError();
@@ -535,33 +556,62 @@ titleEl.addEventListener("keydown", async (e) => {
     await win.hide();
     return;
   }
-  if (!openPopover && (e.key === "[" || e.key === "]")) {
+  if (e.key === "Enter" && !e.ctrlKey) {
     e.preventDefault();
-    const delta = e.key === "]" ? 1 : -1;
-    shiftDateField(e.ctrlKey ? "due" : "start", delta);
-    return;
-  }
-  if (e.key === "Enter") {
-    if (openPopover) return;
-    await submitIssue();
+    pulseSubmit();
   }
 });
 
-// Enter submits from the description too — same contract as the title, so adding an
-// issue never depends on where the cursor is. Newlines move to Shift+Enter (textarea
-// native) and Ctrl+Enter (inserted manually; browsers do nothing with it natively).
-descriptionEl.addEventListener("keydown", async (e) => {
-  if (e.key !== "Enter") return;
-  if (e.shiftKey) return; // native newline
-  e.preventDefault();
-  if (e.ctrlKey) {
-    const { selectionStart, selectionEnd } = descriptionEl;
-    descriptionEl.setRangeText("\n", selectionStart, selectionEnd, "end");
-    autoResizeDescription();
+// The submit key is Ctrl+Enter everywhere — regardless of focus or open popovers — so
+// adding an issue never depends on where the cursor is. Plain Enter keeps each control's
+// native role (popover select, button press, textarea newline). The date shortcuts pause
+// while a popover or the project dropdown is open to stay out of their keyboard contracts.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.ctrlKey) {
+    e.preventDefault();
+    if (openPopover) closePopover();
+    dropdown.hidden = true;
+    submitIssue();
     return;
   }
-  await submitIssue();
+  const shortcut = resolveDateShortcut(e.key, e.ctrlKey);
+  if (shortcut && !openPopover && dropdown.hidden) {
+    e.preventDefault();
+    shiftDateField(shortcut.kind, shortcut.delta);
+  }
 });
+
+qaSubmit.addEventListener("click", () => { submitIssue(); });
+qaClose.addEventListener("click", () => {
+  if (openPopover) closePopover();
+  dropdown.hidden = true;
+  win.hide();
+});
+
+// Shortcut tooltip: one body-level pill moved under whichever trigger is hovered/focused.
+// It can't live inside the chips — they clip their content (overflow: hidden) so long
+// member names shrink instead of wrapping, and a nested tooltip would be cut off too.
+function bindTip(el: HTMLElement, html: string, placement: "above" | "below") {
+  const show = () => {
+    qaTip.innerHTML = html;
+    qaTip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const left = Math.max(6, Math.min(r.left + r.width / 2 - qaTip.offsetWidth / 2,
+      window.innerWidth - qaTip.offsetWidth - 6));
+    qaTip.style.left = `${left}px`;
+    // The window is sized to the popup exactly, so the close button (top edge) tips downward.
+    qaTip.style.top = placement === "above" ? `${r.top - qaTip.offsetHeight - 6}px` : `${r.bottom + 6}px`;
+  };
+  const hide = () => { qaTip.hidden = true; };
+  el.addEventListener("mouseenter", show);
+  el.addEventListener("mouseleave", hide);
+  el.addEventListener("focus", show);
+  el.addEventListener("blur", hide);
+  el.addEventListener("click", hide);
+}
+bindTip(chipStart, "<kbd>Ctrl+PgUp/Dn</kbd> 시작일 ±1일", "above");
+bindTip(chipDue, "<kbd>PgUp/Dn</kbd> 마감일 ±1일", "above");
+bindTip(qaClose, "닫기 <kbd>Esc</kbd>", "below");
 
 // Focus fires both when the window is summoned and when the user merely clicks
 // back into the still-open window, so it must never touch the draft — a draft

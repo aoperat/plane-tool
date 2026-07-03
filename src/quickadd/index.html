@@ -9,7 +9,10 @@
     <div class="popup" style="position:static;width:100%;transform:none;">
       <div class="popup-top">
         <div class="accent-bar"></div>
-        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Enter…" autofocus />
+        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
+        <button type="button" id="qaClose" class="qa-close" aria-label="닫기 (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
       </div>
       <textarea id="description" class="description-input" placeholder="설명을 입력하세요…" rows="1" hidden></textarea>
       <div class="chip-row" id="chipRow">
@@ -28,10 +31,14 @@
           <span id="projName">프로젝트 선택</span>
           <span class="chev">▾</span>
         </button>
-        <div class="keys"><kbd>Enter</kbd> 추가 · <kbd>Esc</kbd> 닫기</div>
+        <div class="qa-actions">
+          <button type="button" id="qaCancel" class="qa-cancel">닫기 <span class="bk">Esc</span></button>
+          <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+        </div>
       </div>
       <div id="dropdown" class="dropdown" hidden></div>
     </div>
+    <div id="qaTip" class="qa-tip" hidden></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
