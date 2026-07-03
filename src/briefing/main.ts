@@ -71,7 +71,8 @@ function render(b: Briefing) {
 
   const plan = el("div", "bf-plan");
   b.plan.forEach((e, i) => {
-    const row = el("div", "bf-plan-row" + (i === 0 && e.reason.includes("초과") ? " hot" : ""));
+    const overdue = dueLabel(e.item.target_date, b.date).startsWith("D+");
+    const row = el("div", "bf-plan-row" + (i === 0 && overdue ? " hot" : ""));
     row.appendChild(el("span", "num", String(i + 1)));
     const body = el("div", "bf-plan-body");
     const t = el("div", "t");
@@ -151,6 +152,14 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") win.hide();
 });
 
-listen("briefing-open", ensureToday);
+// 앱 시작 직후 아침 브리핑은 이 웹뷰의 listen() 등록보다 먼저 창을 띄우고
+// 이벤트를 보낼 수 있다 — Tauri는 리스너 없는 이벤트를 버리므로, 등록을 마친 뒤
+// 창이 이미 보이는 상태면 유실된 열림 신호로 간주하고 직접 생성한다.
+listen("briefing-open", ensureToday)
+  .then(() => win.isVisible())
+  .then((visible) => {
+    if (visible) ensureToday();
+  })
+  .catch((err) => console.error("briefing-open listener setup failed:", err));
 getSettings().then((s) => applyTheme(s.theme)).catch(() => {});
 resizeToFit();

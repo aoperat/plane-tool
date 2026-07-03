@@ -29,7 +29,7 @@
       {
         "label": "settings",
         "url": "src/settings/index.html",
-        "width": 460, "height": 420,
+        "width": 460, "height": 560,
         "decorations": true, "skipTaskbar": false, "visible": false, "resizable": false
       },
       {

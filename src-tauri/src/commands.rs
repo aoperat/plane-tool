@@ -488,28 +488,33 @@ pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<cra
     let items = briefing::open_assigned_items(&user.id, &projects, all_items);
     let fb_summary = briefing::fallback_summary(&items, &today);
     let model = s.briefing_model.clone();
-    let (source, summary, plan, rest, error) = match config::get_openai_key() {
-        None => {
-            let (plan, rest) = briefing::fallback_plan(items, &today);
-            ("fallback".into(), fb_summary, plan, rest, Some("no_key".to_string()))
-        }
-        Some(key) => {
-            let (system, user_msg) = briefing::build_prompt(&items, &today);
-            let ai = crate::openai::OpenAiClient::new(key);
-            match ai.chat_json(&model, &system, &user_msg).await {
-                Ok(content) => match briefing::apply_ai_response(&content, items.clone(), &today) {
-                    Ok((summary, plan, rest)) => {
-                        let summary = if summary.is_empty() { fb_summary } else { summary };
-                        ("openai".into(), summary, plan, rest, None)
-                    }
+    // 남은 작업이 없으면 AI를 부를 이유가 없다 — 빈 상태 문구를 그대로 쓴다.
+    let (source, summary, plan, rest, error) = if items.is_empty() {
+        ("fallback".into(), fb_summary.clone(), Vec::new(), Vec::new(), None)
+    } else {
+        match config::get_openai_key() {
+            None => {
+                let (plan, rest) = briefing::fallback_plan(items, &today);
+                ("fallback".into(), fb_summary, plan, rest, Some("no_key".to_string()))
+            }
+            Some(key) => {
+                let (system, user_msg) = briefing::build_prompt(&items, &today);
+                let ai = crate::openai::OpenAiClient::new(key);
+                match ai.chat_json(&model, &system, &user_msg).await {
+                    Ok(content) => match briefing::apply_ai_response(&content, items.clone(), &today) {
+                        Ok((summary, plan, rest)) => {
+                            let summary = if summary.is_empty() { fb_summary } else { summary };
+                            ("openai".into(), summary, plan, rest, None)
+                        }
+                        Err(e) => {
+                            let (plan, rest) = briefing::fallback_plan(items, &today);
+                            ("fallback".into(), fb_summary, plan, rest, Some(e))
+                        }
+                    },
                     Err(e) => {
                         let (plan, rest) = briefing::fallback_plan(items, &today);
                         ("fallback".into(), fb_summary, plan, rest, Some(e))
                     }
-                },
-                Err(e) => {
-                    let (plan, rest) = briefing::fallback_plan(items, &today);
-                    ("fallback".into(), fb_summary, plan, rest, Some(e))
                 }
             }
         }
@@ -524,7 +529,11 @@ pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<cra
         plan,
         rest,
     };
-    let _ = config::save_cached_briefing(&app, &b);
+    // 일시적 OpenAI 오류로 만든 폴백은 캐시하지 않는다 — 다음 열기에서 재시도.
+    // (no_key 폴백은 키를 등록하기 전까지 결과가 같으므로 캐시해도 안전하다.)
+    if b.source == "openai" || b.error.as_deref() == Some("no_key") {
+        let _ = config::save_cached_briefing(&app, &b);
+    }
     Ok(b)
 }
 
