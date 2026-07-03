@@ -2,7 +2,7 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getSettings, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
@@ -615,6 +615,10 @@ function refreshIfStale() {
 }
 
 document.getElementById("refresh")!.onclick = refresh;
+
+document.getElementById("briefingBtn")!.onclick = () => {
+  openBriefing().catch((e) => console.error("openBriefing failed:", e));
+};
 
 document.getElementById("openPlane")!.onclick = () => {
   if (!baseUrl) {
