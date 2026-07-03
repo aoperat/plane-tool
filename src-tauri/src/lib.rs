@@ -23,6 +23,10 @@ const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 /// push the buttons off screen.
 const UPDATE_NOTES_MAX_CHARS: usize = 600;
 
+/// 유휴 시간 폴링 간격. GetLastInputInfo는 시스템이 이미 기록해 둔
+/// 타임스탬프를 읽을 뿐이라 이 주기로 돌려도 부담이 없다.
+const IDLE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Last version the user was offered in an update dialog, shared between the
 /// hourly loop and the sidebar's manual check so neither path re-nags a
 /// version the user already declined. A newer release prompts again.
@@ -133,6 +137,24 @@ fn update_message(version: &str, notes: &str) -> String {
     msg
 }
 
+/// PC 유휴 시간을 폴링하다가 설정 기준(idle_open_minutes)을 넘으면
+/// 사이드바에 열기 전용 이벤트를 보낸다. 설정은 매 tick 다시 읽어
+/// 재시작 없이 반영된다. 유휴 세션당 1회 발화는 IdleOpenGate가 보장.
+fn spawn_idle_watcher(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut gate = idle::IdleOpenGate::new();
+        loop {
+            tokio::time::sleep(IDLE_POLL_INTERVAL).await;
+            let Some(idle_ms) = idle::system_idle_ms() else { continue };
+            let s = config::load_settings(&app);
+            let threshold_ms = u64::from(s.idle_open_minutes) * 60_000;
+            if gate.tick(s.idle_open_enabled, idle_ms, threshold_ms) {
+                let _ = app.emit_to("sidebar", "open-sidebar", ());
+            }
+        }
+    });
+}
+
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
@@ -226,6 +248,7 @@ pub fn run() {
             }
 
             check_for_updates(app.handle().clone());
+            spawn_idle_watcher(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
             // dismissed with Esc or its shortcut. The Sidebar auto-hides on
             // focus loss instead (see sidebar/main.ts's tauri://blur listener),
