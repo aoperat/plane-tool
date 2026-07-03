@@ -15,6 +15,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Builder as ShortcutBuilder, Shortcut, ShortcutState};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
 /// The app lives in the tray and is rarely restarted, so a launch-time-only
@@ -194,6 +195,125 @@ fn spawn_morning_briefing_watcher(app: tauri::AppHandle) {
     });
 }
 
+/// 할당 감지 폴링 간격. Plane 레이트 리밋을 고려해 60초 고정 (스펙 승인값).
+const ASSIGN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn spawn_assign_watcher(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(ASSIGN_POLL_INTERVAL).await;
+            let s = config::load_settings(&app);
+            if !s.assign_notify_enabled {
+                continue;
+            }
+            if let Err(e) = assign_tick(&app, &s).await {
+                // 오프라인/미설정은 정상 상황 — 로그만 남기고 다음 tick.
+                eprintln!("assign watch tick failed: {e}");
+            }
+        }
+    });
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(), String> {
+    if s.base_url.is_empty() || s.workspace.is_empty() {
+        return Ok(());
+    }
+    let Some(token) = config::get_token() else { return Ok(()) };
+    let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
+    let me = client.current_user().await?.id;
+
+    // 나에게 할당된 미완료 작업 전체 (프로젝트별 N+1 — 사이드바와 같은 패턴)
+    let projects = client.list_projects().await?;
+    let mut assigned_open: Vec<plane_api::WorkItem> = Vec::new();
+    for p in &projects {
+        let Ok(items) = client.list_work_items(&p.id).await else { continue };
+        assigned_open.extend(items.into_iter().filter(|i| {
+            i.assignee_ids.iter().any(|a| a == &me)
+                && i.state_group != "completed"
+                && i.state_group != "cancelled"
+        }));
+    }
+
+    let mut state = assign_watch::load_state(app);
+    let current_ids: std::collections::HashSet<String> =
+        assigned_open.iter().map(|i| i.id.clone()).collect();
+
+    // 새 할당 감지 → 할당자 이름 조회 → pending 추가 + 개별 토스트
+    let new_items: Vec<plane_api::WorkItem> =
+        assign_watch::detect_new_assignments(&assigned_open, &me, &state)
+            .into_iter()
+            .cloned()
+            .collect();
+    for item in &new_items {
+        let assigner_id = client
+            .list_activities(&item.project_id, &item.id)
+            .await
+            .ok()
+            .and_then(|acts| plane_api::find_assigner(&acts, item.created_by.as_deref(), &me));
+        let assigner_name = match &assigner_id {
+            Some(id) => client
+                .list_members(&item.project_id)
+                .await
+                .ok()
+                .and_then(|ms| ms.into_iter().find(|m| &m.id == id))
+                .map(|m| m.display_name)
+                .unwrap_or_else(|| "누군가".into()),
+            None => "누군가".into(),
+        };
+        let _ = app
+            .notification()
+            .builder()
+            .title("새 작업이 할당되었습니다")
+            .body(assign_watch::toast_body(
+                &assigner_name,
+                &item.name,
+                item.target_date.as_deref(),
+                item.priority.as_str(),
+            ))
+            .show();
+        state.pending.push(assign_watch::PendingAssignment {
+            item_id: item.id.clone(),
+            project_id: item.project_id.clone(),
+            name: item.name.clone(),
+            priority: item.priority.clone(),
+            target_date: item.target_date.clone(),
+            assigner_name,
+            detected_at_ms: now_ms(),
+        });
+    }
+    if !new_items.is_empty() {
+        // 방금 개별 토스트를 보냈으니 재알림 타이머도 지금부터 센다.
+        state.last_remind_ms = now_ms();
+    }
+
+    // 사라진 항목 정리 + 재알림
+    state.pending = assign_watch::prune_pending(std::mem::take(&mut state.pending), &current_ids);
+    if assign_watch::should_remind(state.pending.len(), state.last_remind_ms, now_ms(), s.assign_remind_hours) {
+        let _ = app
+            .notification()
+            .builder()
+            .title("미확인 할당이 있습니다")
+            .body(format!("확인하지 않은 할당 작업 {}건 — 사이드바에서 확인하세요", state.pending.len()))
+            .show();
+        state.last_remind_ms = now_ms();
+    }
+
+    state.last_ids = current_ids;
+    state.initialized = true;
+    let pending_count = state.pending.len();
+    assign_watch::save_state(app, &state)?;
+    update_tray_tooltip(app, pending_count);
+    let _ = app.emit_to("sidebar", "assignments-updated", ());
+    Ok(())
+}
+
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
@@ -256,12 +376,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_i, &quit_i])?;
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -306,6 +427,7 @@ pub fn run() {
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
+            spawn_assign_watcher(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
             // dismissed with Esc or its shortcut. The Sidebar auto-hides on
             // focus loss instead (see sidebar/main.ts's tauri://blur listener),
