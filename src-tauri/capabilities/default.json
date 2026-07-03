@@ -12,6 +12,7 @@
     "core:window:allow-set-position",
     "core:window:allow-start-dragging",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-set-focusable",
     "core:window:allow-is-visible",
     "core:window:allow-current-monitor",
     "core:window:allow-available-monitors",

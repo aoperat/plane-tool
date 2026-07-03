@@ -556,11 +556,10 @@ async function getTargetMonitor() {
   return pickMonitor(sortMonitorsByPosition(monitors), s.display_index) ?? null;
 }
 
-async function showSidebar(): Promise<void> {
+async function showSidebar(takeFocus = true): Promise<void> {
   const monitor = await getTargetMonitor();
   if (!monitor) {
-    await win.show();
-    await win.setFocus();
+    await showWindow(takeFocus);
     return;
   }
   const geo = computeSidebarGeometry(
@@ -574,8 +573,28 @@ async function showSidebar(): Promise<void> {
   await win.setSize(new PhysicalSize(geo.width, geo.height));
   await win.setPosition(new PhysicalPosition(geo.visibleX, geo.y));
   await win.setAlwaysOnTop(true);
-  await win.show();
-  await win.setFocus();
+  await showWindow(takeFocus);
+}
+
+// takeFocus=false는 유휴 자동 열기 전용: 포커스를 가지면 사용자가 자리에
+// 없는 동안 어떤 포커스 변화(화면 잠금, 알림, 다른 앱 활성화)든 blur 자동
+// 숨김을 발동시켜 사이드바가 저절로 닫힌다. show() 자체가 Windows에서 창을
+// 활성화하므로, 표시하는 동안만 focusable을 꺼서 활성화를 막는다.
+async function showWindow(takeFocus: boolean): Promise<void> {
+  if (takeFocus) {
+    await win.show();
+    await win.setFocus();
+    return;
+  }
+  // show()가 실패해도 focusable은 반드시 복구 — 아니면 이후 수동 열기의
+  // setFocus()가 활성화 불가 창에 막혀 사이드바가 앱 재시작 전까지
+  // 포커스를 못 받는다.
+  try {
+    await win.setFocusable(false);
+    await win.show();
+  } finally {
+    await win.setFocusable(true);
+  }
 }
 
 async function hideSidebar(): Promise<void> {
@@ -800,6 +819,9 @@ win.listen("toggle-sidebar", () => {
 // toggle과 달리 이미 열려 있으면 아무것도 하지 않는다 — 폴링이 토글로
 // 이어지면 열려 있던 사이드바를 닫아 버릴 수 있어서 이벤트를 분리했다.
 win.listen("open-sidebar", async () => {
-  if (!(await win.isVisible())) await showSidebar();
+  if (await win.isVisible()) return;
+  await showSidebar(false);
+  // 포커스 없이 열었으니 tauri://focus 기반 갱신이 안 돈다 — 직접 갱신.
+  refreshIfStale();
 });
 refresh();
