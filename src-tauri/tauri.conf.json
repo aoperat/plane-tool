@@ -16,14 +16,14 @@
         "label": "quickadd",
         "url": "src/quickadd/index.html",
         "width": 540, "height": 175,
-        "decorations": false, "transparent": true, "alwaysOnTop": true,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       },
       {
         "label": "sidebar",
         "url": "src/sidebar/index.html",
         "width": 320, "height": 720,
-        "decorations": false, "alwaysOnTop": true,
+        "decorations": false, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "resizable": false
       },
       {
@@ -36,7 +36,7 @@
         "label": "editmodal",
         "url": "src/editmodal/index.html",
         "width": 540, "height": 320,
-        "decorations": false, "transparent": true, "alwaysOnTop": true,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       }
     ],

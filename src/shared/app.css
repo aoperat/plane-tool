@@ -54,11 +54,15 @@ kbd {
 }
 
 /* ============ SURFACE 1: QUICK ADD POPUP ============ */
+/* Borderless look: the border stays 1px but transparent so the layout is
+   unchanged, and there is no box-shadow — the QuickAdd window also turns off
+   the OS shadow (tauri.conf.json), so the popup reads as a floating card
+   with no visible edge. */
 .popup {
   position: fixed; top: 230px; left: 50%; transform: translateX(-50%);
   width: 540px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); z-index: 30; overflow: visible;
+  border: 1px solid transparent; border-radius: var(--radius);
+  z-index: 30; overflow: visible;
 }
 .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
 .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); }
@@ -391,10 +395,12 @@ kbd {
 
 /* ============ SURFACE 4: EDIT MODAL ============ */
 /* 540px matches the QuickAdd popup so both surfaces share one chip-row layout. */
+/* Borderless like .popup: transparent 1px border (layout unchanged), no
+   box-shadow — the editmodal window also disables the OS shadow. */
 .editmodal {
   width: 540px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); color: var(--text); overflow: visible;
+  border: 1px solid transparent; border-radius: var(--radius);
+  color: var(--text); overflow: visible;
 }
 .em-head {
   display: flex; align-items: center; gap: 10px;
