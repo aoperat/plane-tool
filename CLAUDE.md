@@ -14,6 +14,9 @@
 
 ## 버전업(릴리스) 절차
 
+`/release` 스킬(`.claude/skills/release/SKILL.md`)이 이 절차를 실행한다 —
+사용자가 버전업을 요청하면 그 스킬을 사용한다. 요약:
+
 1. `CHANGELOG.md`의 `[Unreleased]` 섹션이 비어 있으면 **중단**하고 사용자에게
    알린다 — 릴리스할 사용자 가시 변경이 없다는 뜻이다.
 2. `## [Unreleased]`를 `## [X.Y.Z] - YYYY-MM-DD`(오늘 날짜)로 바꾸고, 그 위에
