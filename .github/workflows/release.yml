@@ -2,8 +2,10 @@
 # artifacts + latest.json) whenever a v* tag is pushed. The updater in the app
 # polls the latest release's latest.json — see tauri.conf.json plugins.updater.
 #
-# Required repository secret:
+# Required repository secrets:
 #   TAURI_SIGNING_PRIVATE_KEY — contents of the local ~/.tauri/plane-tool.key
+#   WINDOWS_CODESIGN_PFX — base64 of ~/.tauri/plane-tool-codesign.pfx
+#   WINDOWS_CODESIGN_PASSWORD — its password (~/.tauri/plane-tool-codesign.pfx.password.txt)
 name: Release
 
 on:
@@ -32,6 +34,20 @@ jobs:
           workspaces: src-tauri
 
       - run: pnpm install --frozen-lockfile
+
+      # tauri.conf.json signs the installer via bundle.windows.certificateThumbprint,
+      # so the certificate must exist in the runner's store before tauri-action runs.
+      - name: Import code signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX: ${{ secrets.WINDOWS_CODESIGN_PFX }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX))
+          $pwd = ConvertTo-SecureString $env:WINDOWS_CODESIGN_PASSWORD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password $pwd
+          Remove-Item $path
 
       - uses: tauri-apps/tauri-action@v0
         env:

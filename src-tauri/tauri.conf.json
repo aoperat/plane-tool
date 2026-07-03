@@ -46,7 +46,12 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/icon.ico"],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "certificateThumbprint": "0299EFBC21404EBE687A1429C65399FC8FE466A4",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    }
   },
   "plugins": {
     "updater": {
