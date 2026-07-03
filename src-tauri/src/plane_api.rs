@@ -224,13 +224,44 @@ fn retry_after_seconds(headers: &reqwest::header::HeaderMap, attempt: u32) -> u6
         .unwrap_or(1u64 << attempt)
 }
 
+/// True when the base URL points at a LAN or loopback address. The self-hosted
+/// Plane instance this app targets serves HTTPS with a self-signed certificate
+/// that client PCs don't trust, so TLS verification is relaxed for those hosts
+/// only — public hosts keep full certificate validation.
+fn is_private_host(base_url: &str) -> bool {
+    let Some(host) = reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+    else {
+        return false;
+    };
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),
+        Ok(std::net::IpAddr::V6(v6)) => v6.is_loopback(),
+        Err(_) => host == "localhost",
+    }
+}
+
+fn build_http_client(base_url: &str) -> reqwest::Client {
+    if is_private_host(base_url) {
+        reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    } else {
+        reqwest::Client::new()
+    }
+}
+
 impl PlaneClient {
     pub fn new(base_url: String, workspace: String, api_key: String) -> Self {
+        let http = build_http_client(&base_url);
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             workspace,
             api_key,
-            http: reqwest::Client::new(),
+            http,
         }
     }
 
@@ -476,6 +507,18 @@ mod tests {
 
     async fn client_for(server: &MockServer) -> PlaneClient {
         PlaneClient::new(server.uri(), "acme".into(), "secret-key".into())
+    }
+
+    #[test]
+    fn is_private_host_relaxes_lan_and_loopback_only() {
+        assert!(is_private_host("https://192.168.20.235"));
+        assert!(is_private_host("https://10.0.0.5:8443"));
+        assert!(is_private_host("http://172.16.1.1"));
+        assert!(is_private_host("http://localhost:8060"));
+        assert!(is_private_host("http://127.0.0.1"));
+        assert!(!is_private_host("https://plane.example.com"));
+        assert!(!is_private_host("https://8.8.8.8"));
+        assert!(!is_private_host("not a url"));
     }
 
     #[test]
