@@ -223,6 +223,15 @@ kbd {
   margin-bottom: 8px;
 }
 .sb-section .h .count { color: var(--muted); }
+.sb-section .h .h-tools { display: flex; align-items: center; gap: 6px; }
+/* completed-items visibility toggle: shows its current state as icon + label */
+.h-toggle {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
+  border-radius: 5px; cursor: pointer; color: var(--muted); font-size: 10px;
+}
+.h-toggle:hover { background: var(--panel-2); color: var(--text); }
+.h-toggle.active { color: var(--accent); background: var(--accent-soft); }
+.h-toggle svg { width: 12px; height: 12px; flex: none; }
 
 .grp {
   display: flex; align-items: center; gap: 7px; margin: 2px 2px 0;

@@ -5,7 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { checkUpdatesManual, createIssue, deleteWorkItem, fetchSidebarData, getSettings, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -32,6 +32,34 @@ let pinned = false;
 let themePref = "auto";
 let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
+let lastItems: WorkItem[] = [];
+let lastProjects: Project[] = [];
+
+// View preference, persisted in the webview's localStorage (no backend setting needed).
+const HIDE_DONE_KEY = "hideCompleted";
+let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
+const hideDoneEl = document.getElementById("hideDone")!;
+
+const EYE_ICON =
+  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>`;
+const EYE_OFF_ICON =
+  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 2.5l11 11"/></svg>`;
+
+// The button states its *current* mode (icon + label), not the action —
+// an action-labeled toggle reads ambiguously in both directions.
+function syncHideDoneButton() {
+  hideDoneEl.classList.toggle("active", hideCompleted);
+  hideDoneEl.innerHTML = hideCompleted ? `${EYE_OFF_ICON}<span>완료 숨김</span>` : `${EYE_ICON}<span>완료 표시</span>`;
+  hideDoneEl.title = hideCompleted ? "클릭하면 완료된 항목을 다시 표시합니다" : "클릭하면 완료된 항목을 숨깁니다";
+}
+syncHideDoneButton();
+
+hideDoneEl.onclick = () => {
+  hideCompleted = !hideCompleted;
+  localStorage.setItem(HIDE_DONE_KEY, hideCompleted ? "1" : "0");
+  syncHideDoneButton();
+  renderTasks(lastItems, lastProjects);
+};
 
 pinEl.onclick = () => {
   pinned = !pinned;
@@ -449,6 +477,8 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
 }
 
 function renderTasks(items: WorkItem[], projects: Project[]) {
+  lastItems = items;
+  lastProjects = projects;
   taskCount.textContent = String(items.length);
   tasksEl.innerHTML = "";
   const groups = groupItemsByProject(items, projects);
@@ -508,7 +538,9 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
 
     const body = document.createElement("div");
     body.className = "grp-body" + (collapsed ? " collapsed" : "");
-    for (const it of groupItems) {
+    // Filter rows only — the group header (and its progress ring above) still
+    // counts hidden completed items, so "3/3" stays visible when all are done.
+    for (const it of filterHiddenCompleted(groupItems, hideCompleted)) {
       body.appendChild(renderTaskRow(it, items, projects));
     }
     tasksEl.appendChild(body);

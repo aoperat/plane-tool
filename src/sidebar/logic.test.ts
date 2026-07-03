@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -128,6 +128,18 @@ describe("filterVisibleToday", () => {
     ];
     const visible = filterVisibleToday(items, now);
     expect(visible.map((i) => i.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("filterHiddenCompleted", () => {
+  it("drops completed items when hiding is on", () => {
+    const items = [wi("a", "p1", "started"), wi("b", "p1", "completed"), wi("c", "p1", "backlog")];
+    expect(filterHiddenCompleted(items, true).map((i) => i.id)).toEqual(["a", "c"]);
+  });
+
+  it("returns items unchanged when hiding is off", () => {
+    const items = [wi("a", "p1", "started"), wi("b", "p1", "completed")];
+    expect(filterHiddenCompleted(items, false)).toBe(items);
   });
 });
 

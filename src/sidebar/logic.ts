@@ -47,6 +47,13 @@ export function filterVisibleToday(items: WorkItem[], now: Date = new Date()): W
   return items.filter((it) => it.state_group !== "completed" || isCompletedToday(it, now));
 }
 
+/** Drops completed items when `hide` is on; otherwise returns `items` unchanged.
+ *  Applied per group at render time so the progress ring still counts hidden items. */
+export function filterHiddenCompleted(items: WorkItem[], hide: boolean): WorkItem[] {
+  if (!hide) return items;
+  return items.filter((it) => it.state_group !== "completed");
+}
+
 /** Formats a UTC timestamp as a local "오전/오후 H:MM" string. Manual (no Intl) so it's locale-independent. */
 export function formatLocalTime(iso: string): string {
   const d = new Date(iso);
