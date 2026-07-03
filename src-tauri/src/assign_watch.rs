@@ -12,6 +12,11 @@ use crate::plane_api::WorkItem;
 const STORE_FILE: &str = "assign-state.json";
 const STORE_KEY: &str = "state";
 
+/// assign-state.json은 watcher tick과 확인 커맨드 두 곳에서 read-modify-write
+/// 된다 — 이 락을 잡은 채로만 load_state→save_state 구간을 실행할 것.
+#[derive(Default)]
+pub struct StateLock(pub tokio::sync::Mutex<()>);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingAssignment {
     pub item_id: String,

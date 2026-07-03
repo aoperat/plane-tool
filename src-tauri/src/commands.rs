@@ -593,6 +593,10 @@ pub async fn acknowledge_assignment(
     let (client, _s) = client(&app)?;
     let html = plain_text_to_description_html(crate::plane_api::ACK_COMMENT_TEXT);
     client.create_comment(&project_id, &item_id, &html).await?;
+    // assign_tick(lib.rs)과 동시에 실행되면 서로의 load→save를 덮어써
+    // 확인한 카드가 되살아날 수 있다 — 같은 락으로 구간을 직렬화한다.
+    let lock = app.state::<assign_watch::StateLock>();
+    let _guard = lock.0.lock().await;
     let mut state = assign_watch::load_state(&app);
     state.pending.retain(|p| p.item_id != item_id);
     let count = state.pending.len();

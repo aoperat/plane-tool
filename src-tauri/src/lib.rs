@@ -230,10 +230,16 @@ async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(),
     let me = client.current_user().await?.id;
 
     // 나에게 할당된 미완료 작업 전체 (프로젝트별 N+1 — 사이드바와 같은 패턴)
+    // 사이드바(fetch_sidebar_data)와 달리 여기서는 프로젝트 하나가 실패해도
+    // skip-and-continue 하면 안 된다 — 이 루프의 결과가 diff baseline으로
+    // 영속화(last_ids/pending)되기 때문에, 일부만 담긴 assigned_open으로
+    // prune_pending을 돌리면 실패한 프로젝트의 항목이 seen-set에서 사라지고
+    // 다음 성공 tick에서 전부 "새 할당"으로 재감지된다 (중복 토스트/ACK).
+    // 그래서 실패하면 tick 전체를 중단하고 상태를 건드리지 않는다.
     let projects = client.list_projects().await?;
     let mut assigned_open: Vec<plane_api::WorkItem> = Vec::new();
     for p in &projects {
-        let Ok(items) = client.list_work_items(&p.id).await else { continue };
+        let items = client.list_work_items(&p.id).await?;
         assigned_open.extend(items.into_iter().filter(|i| {
             i.assignee_ids.iter().any(|a| a == &me)
                 && i.state_group != "completed"
@@ -241,6 +247,13 @@ async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(),
         }));
     }
 
+    // assign-state.json은 이 tick과 acknowledge_assignment 커맨드 양쪽에서
+    // read-modify-write 된다. 네트워크 조회(위)는 락 없이 끝냈으니, 이제부터
+    // load_state→save_state 구간(중간의 activities/members 조회 포함) 전체를
+    // 락 아래 유지해 확인 커맨드와의 경합을 막는다 — 홀드 시간이 조금 늘어도
+    // 정확성이 우선이라 락 범위를 세분화하지 않는다.
+    let lock = app.state::<assign_watch::StateLock>();
+    let _guard = lock.0.lock().await;
     let mut state = assign_watch::load_state(app);
     let current_ids: std::collections::HashSet<String> =
         assigned_open.iter().map(|i| i.id.clone()).collect();
@@ -252,11 +265,16 @@ async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(),
             .cloned()
             .collect();
     for item in &new_items {
-        let assigner_id = client
-            .list_activities(&item.project_id, &item.id)
-            .await
-            .ok()
-            .and_then(|acts| plane_api::find_assigner(&acts, item.created_by.as_deref(), &me));
+        let assigner_id = match client.list_activities(&item.project_id, &item.id).await {
+            Ok(acts) => plane_api::find_assigner(&acts, item.created_by.as_deref(), &me),
+            Err(e) => {
+                // 스모크 테스트가 stderr의 404를 보고 라이브 서버에서 activities
+                // 엔드포인트가 /issues/ 인지 /work-items/ 인지 판단한다 — 조용히
+                // 삼키면 그 절차가 무력화되므로 반드시 로그를 남긴다.
+                eprintln!("list_activities failed for {}: {e}", item.id);
+                plane_api::find_assigner(&[], item.created_by.as_deref(), &me)
+            }
+        };
         let assigner_name = match &assigner_id {
             Some(id) => client
                 .list_members(&item.project_id)
@@ -424,6 +442,7 @@ pub fn run() {
                 show_window(app.handle(), "settings");
             }
 
+            app.manage(assign_watch::StateLock::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
