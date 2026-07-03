@@ -582,11 +582,13 @@ document.addEventListener("keydown", (e) => {
 });
 
 qaSubmit.addEventListener("click", () => { submitIssue(); });
-qaClose.addEventListener("click", () => {
+function closeWindow() {
   if (openPopover) closePopover();
   dropdown.hidden = true;
   win.hide();
-});
+}
+qaClose.addEventListener("click", closeWindow);
+qaCancel.addEventListener("click", closeWindow);
 
 // Shortcut tooltip: one body-level pill moved under whichever trigger is hovered/focused.
 // It can't live inside the chips — they clip their content (overflow: hidden) so long
