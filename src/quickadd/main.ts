@@ -34,7 +34,6 @@ const fieldPopover = document.getElementById("fieldPopover")!;
 const descriptionEl = document.getElementById("description") as HTMLTextAreaElement;
 const errorEl = document.getElementById("qaError")!;
 const qaClose = document.getElementById("qaClose")!;
-const qaCancel = document.getElementById("qaCancel")!;
 const qaSubmit = document.getElementById("qaSubmit")!;
 const qaTip = document.getElementById("qaTip")!;
 
@@ -58,18 +57,29 @@ let openPopover: PopoverKind = null;
 const popupEl = document.querySelector(".popup") as HTMLElement;
 
 // Measures actual rendered content instead of guessing pixel constants —
-// the popup's own box for the idle height, plus the open popover's real
-// bottom edge (which varies with its content and can't be hardcoded).
+// the popup's own box for the idle height, plus the open popover's or project
+// dropdown's real bottom edge (which varies with content and can't be hardcoded).
 function resizeToFit() {
   let height = Math.ceil(popupEl.getBoundingClientRect().height);
   if (openPopover && !fieldPopover.hidden) {
     const popoverBottom = Math.ceil(fieldPopover.getBoundingClientRect().bottom);
     height = Math.max(height, popoverBottom);
   }
+  if (!dropdown.hidden) {
+    height = Math.max(height, Math.ceil(dropdown.getBoundingClientRect().bottom));
+  }
   height += 4; // small buffer so a border/shadow pixel never gets clipped
   win.setSize(new LogicalSize(540, height)).catch((err) => {
     console.error("resizeToFit failed:", err);
   });
+}
+
+// The dropdown hangs below the popup, so every open/close changes the window's
+// required height — funnel all visibility flips through here to keep them in sync.
+function setDropdownOpen(open: boolean) {
+  dropdown.hidden = !open;
+  if (open) initKeyboardFocus(dropdown);
+  resizeToFit();
 }
 
 function dateChoiceLabel(choice: DateChoice, custom: string): string {
@@ -171,7 +181,7 @@ function renderDropdown() {
       renderSelected();
       renderDropdown();
       renderChips();
-      dropdown.hidden = true;
+      setDropdownOpen(false);
       titleEl.focus();
     };
     dropdown.appendChild(item);
@@ -504,7 +514,7 @@ chips.forEach((chip) => chip.addEventListener("keydown", handleChipArrowNav));
 
 function resetFields() {
   assigneeIds = [];
-  dropdown.hidden = true; // a submit can land while the project dropdown is open
+  setDropdownOpen(false); // a submit can land while the project dropdown is open
   startChoice = "today";
   startCustomDate = "";
   dueChoice = "today";
@@ -529,13 +539,12 @@ async function load() {
 }
 
 projBtn.onclick = () => {
-  dropdown.hidden = !dropdown.hidden;
-  if (!dropdown.hidden) initKeyboardFocus(dropdown);
+  setDropdownOpen(dropdown.hidden);
 };
 projBtn.addEventListener(
   "keydown",
   handleDropdownKeydown(dropdown, () => !dropdown.hidden, () => {
-    dropdown.hidden = true;
+    setDropdownOpen(false);
     titleEl.focus();
   }),
 );
@@ -552,7 +561,7 @@ titleEl.addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") clearError();
   if (e.key === "Escape") {
     if (openPopover) { closePopover(); return; }
-    if (!dropdown.hidden) { dropdown.hidden = true; return; }
+    if (!dropdown.hidden) { setDropdownOpen(false); return; }
     await win.hide();
     return;
   }
@@ -570,7 +579,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.ctrlKey) {
     e.preventDefault();
     if (openPopover) closePopover();
-    dropdown.hidden = true;
+    setDropdownOpen(false);
     submitIssue();
     return;
   }
@@ -582,13 +591,11 @@ document.addEventListener("keydown", (e) => {
 });
 
 qaSubmit.addEventListener("click", () => { submitIssue(); });
-function closeWindow() {
+qaClose.addEventListener("click", () => {
   if (openPopover) closePopover();
-  dropdown.hidden = true;
+  setDropdownOpen(false);
   win.hide();
-}
-qaClose.addEventListener("click", closeWindow);
-qaCancel.addEventListener("click", closeWindow);
+});
 
 // Shortcut tooltip: one body-level pill moved under whichever trigger is hovered/focused.
 // It can't live inside the chips — they clip their content (overflow: hidden) so long

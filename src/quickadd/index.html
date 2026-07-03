@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="../shared/app.css" />
   </head>
   <body class="transparent-body">
-    <div class="popup" style="position:static;width:100%;transform:none;">
+    <div class="popup" style="position:relative;top:auto;left:auto;width:100%;transform:none;">
       <div class="popup-top">
         <div class="accent-bar"></div>
         <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
@@ -31,10 +31,7 @@
           <span id="projName">프로젝트 선택</span>
           <span class="chev">▾</span>
         </button>
-        <div class="qa-actions">
-          <button type="button" id="qaCancel" class="qa-cancel">닫기 <span class="bk">Esc</span></button>
-          <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
-        </div>
+        <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
       </div>
       <div id="dropdown" class="dropdown" hidden></div>
     </div>
