@@ -19,6 +19,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags: the release-notes step diffs against the previous tag.
+          fetch-depth: 0
+
+      # latest.json's "notes" — shown inside the app's update dialog — comes from
+      # tauri-action's releaseBody input, so build it from the commit subjects
+      # since the previous release tag.
+      - name: Build release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $prev = git describe --tags --abbrev=0 "$env:GITHUB_REF_NAME^" 2>$null
+          $range = if ($prev) { "$prev..$env:GITHUB_REF_NAME" } else { $env:GITHUB_REF_NAME }
+          $log = git log $range --no-merges --pretty=format:"- %s" |
+            Where-Object { $_ -notmatch '^- chore: bump version' }
+          "notes<<NOTES_EOF" >> $env:GITHUB_OUTPUT
+          ($log -join "`n") >> $env:GITHUB_OUTPUT
+          "NOTES_EOF" >> $env:GITHUB_OUTPUT
 
       - uses: pnpm/action-setup@v4
 
@@ -57,5 +75,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Plane Quick Dock ${{ github.ref_name }}"
+          releaseBody: ${{ steps.notes.outputs.notes }}
           releaseDraft: false
           prerelease: false

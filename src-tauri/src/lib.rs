@@ -13,50 +13,123 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::UpdaterExt;
 
-/// Checks the release feed once, in the background. If a newer version exists,
-/// asks the user first; on confirmation downloads, installs, and relaunches.
+/// The app lives in the tray and is rarely restarted, so a launch-time-only
+/// check would leave long-running instances on stale versions for days.
+const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// How much of the release notes the update dialog shows before truncating —
+/// a native message box has no scrollbar, so an unbounded changelog could
+/// push the buttons off screen.
+const UPDATE_NOTES_MAX_CHARS: usize = 600;
+
+/// Last version the user was offered in an update dialog, shared between the
+/// hourly loop and the sidebar's manual check so neither path re-nags a
+/// version the user already declined. A newer release prompts again.
+static LAST_OFFERED_VERSION: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Checks the release feed on launch and then every `UPDATE_CHECK_INTERVAL`,
+/// in the background. If a newer version exists, asks the user first (showing
+/// the release notes); on confirmation downloads, installs, and relaunches.
 /// Every failure path only logs — an unreachable update server must never
 /// get in the way of actually using the app.
 fn check_for_updates(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let updater = match app.updater() {
-            Ok(u) => u,
-            Err(e) => {
-                eprintln!("updater init failed: {e}");
-                return;
-            }
-        };
-        let update = match updater.check().await {
-            Ok(Some(u)) => u,
-            Ok(None) => return,
-            Err(e) => {
-                eprintln!("update check failed: {e}");
-                return;
-            }
-        };
-        let version = update.version.clone();
-        let handle = app.clone();
-        app.dialog()
-            .message(format!(
-                "새 버전 {version}이(가) 있습니다.\n지금 업데이트할까요? 설치 후 자동으로 재시작됩니다."
-            ))
-            .title("Plane Quick Dock 업데이트")
-            .buttons(MessageDialogButtons::OkCancelCustom(
-                "업데이트".to_string(),
-                "나중에".to_string(),
-            ))
-            .show(move |confirmed| {
-                if !confirmed {
-                    return;
-                }
-                tauri::async_runtime::spawn(async move {
-                    match update.download_and_install(|_, _| {}, || {}).await {
-                        Ok(()) => handle.restart(),
-                        Err(e) => eprintln!("update install failed: {e}"),
-                    }
-                });
-            });
+        loop {
+            check_for_updates_once(&app).await;
+            tokio::time::sleep(UPDATE_CHECK_INTERVAL).await;
+        }
     });
+}
+
+async fn check_for_updates_once(app: &tauri::AppHandle) {
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("updater init failed: {e}");
+            return;
+        }
+    };
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        Ok(None) => return,
+        Err(e) => {
+            eprintln!("update check failed: {e}");
+            return;
+        }
+    };
+    {
+        let mut last = LAST_OFFERED_VERSION.lock().unwrap();
+        if last.as_deref() == Some(update.version.as_str()) {
+            return;
+        }
+        *last = Some(update.version.clone());
+    }
+    prompt_install(app, update);
+}
+
+/// Sidebar's manual "업데이트 확인" button. Unlike the hourly loop this always
+/// prompts — even for a version the loop already offered — because the user
+/// explicitly asked. Returns a status message for the sidebar to display when
+/// there is nothing to install (the update case shows its own dialog).
+#[tauri::command]
+async fn check_updates_manual(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => {
+            *LAST_OFFERED_VERSION.lock().unwrap() = Some(update.version.clone());
+            prompt_install(&app, update);
+            Ok(None)
+        }
+        Ok(None) => Ok(Some(format!(
+            "현재 최신 버전입니다 (v{})",
+            app.package_info().version
+        ))),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Shows the confirm dialog for `update`; on confirmation downloads, installs,
+/// and relaunches.
+fn prompt_install(app: &tauri::AppHandle, update: tauri_plugin_updater::Update) {
+    let version = update.version.clone();
+    let notes = update.body.clone().unwrap_or_default();
+    let handle = app.clone();
+    app.dialog()
+        .message(update_message(&version, &notes))
+        .title("Plane Quick Dock 업데이트")
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "업데이트".to_string(),
+            "나중에".to_string(),
+        ))
+        .show(move |confirmed| {
+            if !confirmed {
+                return;
+            }
+            tauri::async_runtime::spawn(async move {
+                match update.download_and_install(|_, _| {}, || {}).await {
+                    Ok(()) => handle.restart(),
+                    Err(e) => eprintln!("update install failed: {e}"),
+                }
+            });
+        });
+}
+
+/// Builds the update dialog text: version line, the release notes from the
+/// update feed (truncated to `UPDATE_NOTES_MAX_CHARS`), and the confirm prompt.
+/// Empty notes (older releases published before notes were wired up) collapse
+/// to the version-only message.
+fn update_message(version: &str, notes: &str) -> String {
+    let mut msg = format!("새 버전 {version}이(가) 있습니다.");
+    let notes = notes.trim();
+    if !notes.is_empty() {
+        msg.push_str("\n\n변경 사항:\n");
+        msg.extend(notes.chars().take(UPDATE_NOTES_MAX_CHARS));
+        if notes.chars().count() > UPDATE_NOTES_MAX_CHARS {
+            msg.push_str("\n…");
+        }
+    }
+    msg.push_str("\n\n지금 업데이트할까요? 설치 후 자동으로 재시작됩니다.");
+    msg
 }
 
 fn show_window(app: &tauri::AppHandle, label: &str) {
@@ -173,7 +246,8 @@ pub fn run() {
             commands::update_work_item_fields,
             commands::open_edit_modal,
             commands::open_settings,
-            commands::show_quickadd_for_project
+            commands::show_quickadd_for_project,
+            check_updates_manual
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -183,6 +257,31 @@ pub fn run() {
 mod tests {
     use super::*;
     use crate::config::Settings;
+
+    #[test]
+    fn update_message_includes_release_notes() {
+        let msg = update_message("0.2.0", "- fix: keep quickadd draft\n- feat: hourly update check");
+        assert!(msg.contains("새 버전 0.2.0"));
+        assert!(msg.contains("변경 사항:"));
+        assert!(msg.contains("- fix: keep quickadd draft"));
+        assert!(msg.contains("지금 업데이트할까요?"));
+    }
+
+    #[test]
+    fn update_message_without_notes_collapses_to_version_only() {
+        let msg = update_message("0.2.0", "  \n ");
+        assert!(!msg.contains("변경 사항"));
+        assert!(msg.contains("새 버전 0.2.0"));
+    }
+
+    #[test]
+    fn update_message_truncates_overlong_notes() {
+        let notes = "가".repeat(UPDATE_NOTES_MAX_CHARS + 50);
+        let msg = update_message("0.2.0", &notes);
+        assert!(msg.contains('…'));
+        // The dialog body must stay bounded regardless of changelog length.
+        assert!(msg.chars().count() < UPDATE_NOTES_MAX_CHARS + 120);
+    }
 
     #[test]
     fn default_shortcuts_parse_as_valid_accelerators() {
