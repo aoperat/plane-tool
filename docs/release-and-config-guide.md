@@ -16,7 +16,13 @@
 
 버전 태그를 푸시하면 빌드 → 서명 → GitHub Release 발행까지 전부 자동이다.
 
-**① 버전 올리기 — 세 파일 모두:**
+**① CHANGELOG 확정:**
+
+`CHANGELOG.md`의 `## [Unreleased]` 섹션을 `## [x.y.z] - 날짜`로 바꾸고, 그 위에
+빈 `## [Unreleased]` 헤더를 새로 만든다. 이 섹션이 GitHub Release 본문과 앱
+업데이트 대화상자의 릴리스 노트가 된다 (비어 있으면 커밋 제목 나열로 폴백).
+
+**② 버전 올리기 — 세 파일 모두:**
 
 | 파일 | 필드 |
 |---|---|
@@ -24,7 +30,7 @@
 | `src-tauri/Cargo.toml` | `version = "0.1.1"` |
 | `package.json` | `"version": "0.1.1"` |
 
-**② 커밋 + 태그 푸시:**
+**③ 커밋 + 태그 푸시:**
 
 ```powershell
 git add -A
@@ -33,7 +39,7 @@ git tag v0.1.1
 git push origin master v0.1.1
 ```
 
-**③ 확인:** 10~15분 후 <https://github.com/aoperat/plane-tool/releases> 에 발행된다.
+**④ 확인:** 10~15분 후 <https://github.com/aoperat/plane-tool/releases> 에 발행된다.
 
 | 릴리스 파일 | 용도 |
 |---|---|
