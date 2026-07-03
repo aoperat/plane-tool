@@ -16,6 +16,8 @@ export const saveSettings = (
   briefingModel?: string,
   morningBriefingEnabled?: boolean,
   morningBriefingTime?: string,
+  assignNotifyEnabled?: boolean,
+  assignRemindHours?: number,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -31,6 +33,8 @@ export const saveSettings = (
     briefingModel,
     morningBriefingEnabled,
     morningBriefingTime,
+    assignNotifyEnabled,
+    assignRemindHours,
   });
 export const createIssue = (
   project_id: string,

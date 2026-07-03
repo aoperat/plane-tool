@@ -56,6 +56,8 @@ const theme = document.getElementById("theme") as HTMLSelectElement;
 const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
 const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputElement;
 const idleOpenMinutes = document.getElementById("idleOpenMinutes") as HTMLInputElement;
+const assignNotifyEnabled = document.getElementById("assignNotifyEnabled") as HTMLInputElement;
+const assignRemindHours = document.getElementById("assignRemindHours") as HTMLInputElement;
 const status = document.getElementById("status")!;
 
 tokenLink.onclick = (e) => {
@@ -89,6 +91,8 @@ async function load() {
   briefingModel.value = s.briefing_model;
   morningEnabled.checked = s.morning_briefing_enabled;
   morningTime.value = s.morning_briefing_time;
+  assignNotifyEnabled.checked = s.assign_notify_enabled;
+  assignRemindHours.value = String(s.assign_remind_hours);
 
   const monitors = sortMonitorsByPosition(await availableMonitors());
   displaySelect.innerHTML = "";
@@ -121,6 +125,8 @@ document.getElementById("save")!.onclick = async () => {
       briefingModel.value.trim() || undefined,
       morningEnabled.checked,
       morningTime.value || undefined,
+      assignNotifyEnabled.checked,
+      Math.max(1, Math.floor(Number(assignRemindHours.value) || 2)),
     );
     if (token.value) hasToken = true;
     token.value = "";

@@ -19,6 +19,8 @@ pub struct SettingsDto {
     pub briefing_model: String,
     pub morning_briefing_enabled: bool,
     pub morning_briefing_time: String,
+    pub assign_notify_enabled: bool,
+    pub assign_remind_hours: u32,
 }
 
 #[derive(Serialize)]
@@ -154,6 +156,8 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         briefing_model: s.briefing_model,
         morning_briefing_enabled: s.morning_briefing_enabled,
         morning_briefing_time: s.morning_briefing_time,
+        assign_notify_enabled: s.assign_notify_enabled,
+        assign_remind_hours: s.assign_remind_hours,
     }
 }
 
@@ -173,6 +177,8 @@ pub fn save_settings(
     briefing_model: Option<String>,
     morning_briefing_enabled: Option<bool>,
     morning_briefing_time: Option<String>,
+    assign_notify_enabled: Option<bool>,
+    assign_remind_hours: Option<u32>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -192,6 +198,8 @@ pub fn save_settings(
             && v[3..5].parse::<u32>().map_or(false, |m| m < 60);
         if ok { s.morning_briefing_time = v; }
     }
+    if let Some(v) = assign_notify_enabled { s.assign_notify_enabled = v; }
+    if let Some(v) = assign_remind_hours { if v >= 1 { s.assign_remind_hours = v; } }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {

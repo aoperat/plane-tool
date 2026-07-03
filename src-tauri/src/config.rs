@@ -39,6 +39,12 @@ pub struct Settings {
     /// 아침 브리핑 시각 "HH:MM".
     #[serde(default = "default_morning_briefing_time")]
     pub morning_briefing_time: String,
+    /// 작업 할당 알림 (기본 켬).
+    #[serde(default = "default_assign_notify_enabled")]
+    pub assign_notify_enabled: bool,
+    /// 미확인 할당 재알림 주기(시간).
+    #[serde(default = "default_assign_remind_hours")]
+    pub assign_remind_hours: u32,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
@@ -49,6 +55,8 @@ fn default_idle_open_enabled() -> bool { true }
 fn default_idle_open_minutes() -> u32 { 3 }
 fn default_briefing_model() -> String { "gpt-4o-mini".into() }
 fn default_morning_briefing_time() -> String { "09:00".into() }
+fn default_assign_notify_enabled() -> bool { true }
+fn default_assign_remind_hours() -> u32 { 2 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -68,6 +76,8 @@ impl Default for Settings {
             briefing_model: default_briefing_model(),
             morning_briefing_enabled: false,
             morning_briefing_time: default_morning_briefing_time(),
+            assign_notify_enabled: default_assign_notify_enabled(),
+            assign_remind_hours: default_assign_remind_hours(),
         }
     }
 }
@@ -167,6 +177,8 @@ mod tests {
             briefing_model: "gpt-4o".into(),
             morning_briefing_enabled: true,
             morning_briefing_time: "08:30".into(),
+            assign_notify_enabled: false,
+            assign_remind_hours: 6,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -250,5 +262,24 @@ mod tests {
         assert_eq!(s.briefing_model, "gpt-4o-mini");
         assert!(!s.morning_briefing_enabled);
         assert_eq!(s.morning_briefing_time, "09:00");
+    }
+
+    #[test]
+    fn settings_default_enables_assign_notify_every_2_hours() {
+        let s = Settings::default();
+        assert!(s.assign_notify_enabled);
+        assert_eq!(s.assign_remind_hours, 2);
+    }
+
+    #[test]
+    fn settings_without_assign_fields_gets_defaults() {
+        let old_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null
+        }"#;
+        let s: Settings = serde_json::from_str(old_json).unwrap();
+        assert!(s.assign_notify_enabled);
+        assert_eq!(s.assign_remind_hours, 2);
     }
 }

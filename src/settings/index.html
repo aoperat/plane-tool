@@ -49,6 +49,9 @@
       <label>모델<input id="briefingModel" placeholder="gpt-4o-mini" /></label>
       <label class="check-row"><input id="morningEnabled" type="checkbox" />아침 브리핑 자동 표시</label>
       <label>아침 브리핑 시각<input id="morningTime" type="time" /></label>
+      <h2>할당 알림</h2>
+      <label class="check-row"><input id="assignNotifyEnabled" type="checkbox" />다른 사람이 나에게 작업을 할당하면 알림</label>
+      <label>미확인 재알림 주기(시간)<input id="assignRemindHours" type="number" min="1" /></label>
       <p id="status" class="status"></p>
       <div class="row"><button id="save">저장</button></div>
     </div>
