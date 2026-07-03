@@ -29,6 +29,27 @@ tokenChange.onclick = (e) => {
   renderTokenField(true);
   token.focus();
 };
+const openaiKey = document.getElementById("openaiKey") as HTMLInputElement;
+const oaSaved = document.getElementById("oaSaved")!;
+const oaChange = document.getElementById("oaChange")!;
+const briefingModel = document.getElementById("briefingModel") as HTMLInputElement;
+const morningEnabled = document.getElementById("morningEnabled") as HTMLInputElement;
+const morningTime = document.getElementById("morningTime") as HTMLInputElement;
+
+// Plane 토큰 카드와 같은 규칙: 저장된 키는 카드로만 보이고 값은 절대
+// 페이지로 로드하지 않는다. 입력창의 값은 언제나 '새 키'다.
+let hasOpenaiKey = false;
+function renderOpenaiKeyField(editing: boolean) {
+  const showCard = hasOpenaiKey && !editing;
+  oaSaved.hidden = !showCard;
+  openaiKey.hidden = showCard;
+}
+oaChange.onclick = (e) => {
+  e.preventDefault();
+  renderOpenaiKeyField(true);
+  openaiKey.focus();
+};
+
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
@@ -63,6 +84,11 @@ async function load() {
   applyTheme(s.theme);
   idleOpenEnabled.checked = s.idle_open_enabled;
   idleOpenMinutes.value = String(s.idle_open_minutes);
+  hasOpenaiKey = s.has_openai_key;
+  renderOpenaiKeyField(false);
+  briefingModel.value = s.briefing_model;
+  morningEnabled.checked = s.morning_briefing_enabled;
+  morningTime.value = s.morning_briefing_time;
 
   const monitors = sortMonitorsByPosition(await availableMonitors());
   displaySelect.innerHTML = "";
@@ -91,10 +117,17 @@ document.getElementById("save")!.onclick = async () => {
       Number(displaySelect.value),
       idleOpenEnabled.checked,
       Math.max(1, Math.floor(Number(idleOpenMinutes.value) || 3)),
+      openaiKey.value || undefined,
+      briefingModel.value.trim() || undefined,
+      morningEnabled.checked,
+      morningTime.value || undefined,
     );
     if (token.value) hasToken = true;
     token.value = "";
     renderTokenField(false);
+    if (openaiKey.value) hasOpenaiKey = true;
+    openaiKey.value = "";
+    renderOpenaiKeyField(false);
     status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";
     setTimeout(() => getCurrentWindow().hide(), 800);
   } catch (e) {
