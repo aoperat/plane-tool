@@ -29,6 +29,9 @@ const UPDATE_NOTES_MAX_CHARS: usize = 600;
 /// 타임스탬프를 읽을 뿐이라 이 주기로 돌려도 부담이 없다.
 const IDLE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// 아침 브리핑 시각 판정 주기. 설정을 매 tick 다시 읽어 재시작 없이 반영된다.
+const MORNING_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Last version the user was offered in an update dialog, shared between the
 /// hourly loop and the sidebar's manual check so neither path re-nags a
 /// version the user already declined. A newer release prompts again.
@@ -157,6 +160,33 @@ fn spawn_idle_watcher(app: tauri::AppHandle) {
     });
 }
 
+/// 매분 로컬 시각을 확인해, 아침 브리핑이 켜져 있고 지정 시각이 지났으며
+/// 오늘 아직 안 띄웠다면 브리핑 창을 표시한다. 첫 판정을 sleep 전에 두어
+/// 지정 시각 이후에 앱을 켠 경우에도 시작 직후 한 번 뜬다.
+fn spawn_morning_briefing_watcher(app: tauri::AppHandle) {
+    use chrono::Timelike;
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let s = config::load_settings(&app);
+            if s.morning_briefing_enabled {
+                if let Some(cfg_min) = briefing::parse_hhmm(&s.morning_briefing_time) {
+                    let now = chrono::Local::now();
+                    let today = now.format("%Y-%m-%d").to_string();
+                    let now_min = now.hour() * 60 + now.minute();
+                    let last = config::get_morning_last(&app);
+                    if briefing::should_fire_morning(now_min, cfg_min, &today, last.as_deref()) {
+                        // 먼저 기록해 실패해도 반복 팝업으로 괴롭히지 않는다.
+                        let _ = config::set_morning_last(&app, &today);
+                        show_centered(&app, "briefing");
+                        let _ = app.emit_to("briefing", "briefing-open", ());
+                    }
+                }
+            }
+            tokio::time::sleep(MORNING_POLL_INTERVAL).await;
+        }
+    });
+}
+
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
@@ -256,6 +286,7 @@ pub fn run() {
 
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
+            spawn_morning_briefing_watcher(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
             // dismissed with Esc or its shortcut. The Sidebar auto-hides on
             // focus loss instead (see sidebar/main.ts's tauri://blur listener),

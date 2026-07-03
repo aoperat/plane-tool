@@ -133,6 +133,21 @@ pub fn save_cached_briefing(app: &tauri::AppHandle, b: &crate::briefing::Briefin
     store.save().map_err(|e| e.to_string())
 }
 
+const MORNING_LAST_KEY: &str = "briefing_morning_last";
+
+pub fn get_morning_last(app: &tauri::AppHandle) -> Option<String> {
+    app.store(STORE_FILE)
+        .ok()?
+        .get(MORNING_LAST_KEY)
+        .and_then(|v| v.as_str().map(str::to_owned))
+}
+
+pub fn set_morning_last(app: &tauri::AppHandle, date: &str) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(MORNING_LAST_KEY, serde_json::json!(date));
+    store.save().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

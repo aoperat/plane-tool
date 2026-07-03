@@ -169,6 +169,12 @@ pub fn parse_hhmm(s: &str) -> Option<u32> {
     Some(h * 60 + m)
 }
 
+/// 아침 브리핑 발화 판정. enabled 체크와 시각 파싱은 호출자(워처) 몫 —
+/// 여기는 "지정 시각이 지났고 오늘 아직 안 떴다"만 판단한다.
+pub fn should_fire_morning(now_min: u32, cfg_min: u32, today: &str, last_shown: Option<&str>) -> bool {
+    now_min >= cfg_min && last_shown != Some(today)
+}
+
 /// LLM에 보낼 메시지. user 메시지는 open_assigned_items가 만든 항목의 직렬화라
 /// 설명(description) 필드 자체가 존재하지 않는다.
 pub fn build_prompt(items: &[BriefingItem], today: &str) -> (String, String) {
@@ -407,6 +413,19 @@ mod tests {
     fn apply_ai_response_rejects_non_json() {
         let items = vec![bi("a", "none", None, "backlog")];
         assert!(apply_ai_response("이건 JSON이 아님", items, TODAY).is_err());
+    }
+
+    #[test]
+    fn morning_fires_once_after_configured_time() {
+        let nine = 9 * 60;
+        // 시각 전: 안 뜸
+        assert!(!should_fire_morning(8 * 60 + 59, nine, "2026-07-03", None));
+        // 시각 도달: 뜸
+        assert!(should_fire_morning(nine, nine, "2026-07-03", None));
+        // 훨씬 늦게 켜도 (그날 처음이면) 뜸 — 출근 후 PC 켜는 패턴
+        assert!(should_fire_morning(14 * 60, nine, "2026-07-03", Some("2026-07-02")));
+        // 오늘 이미 떴으면 다시 안 뜸
+        assert!(!should_fire_morning(10 * 60, nine, "2026-07-03", Some("2026-07-03")));
     }
 
     #[test]
