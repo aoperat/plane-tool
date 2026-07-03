@@ -154,8 +154,14 @@ fn spawn_idle_watcher(app: tauri::AppHandle) {
             let Some(idle_ms) = idle::system_idle_ms() else { continue };
             let s = config::load_settings(&app);
             let threshold_ms = u64::from(s.idle_open_minutes) * 60_000;
-            if gate.tick(s.idle_open_enabled, idle_ms, threshold_ms) {
-                let _ = app.emit_to("sidebar", "open-sidebar", ());
+            match gate.tick(s.idle_open_enabled, idle_ms, threshold_ms) {
+                idle::IdleAction::OpenSidebar => {
+                    let _ = app.emit_to("sidebar", "open-sidebar", ());
+                }
+                idle::IdleAction::IdleEnded => {
+                    let _ = app.emit_to("sidebar", "idle-ended", ());
+                }
+                idle::IdleAction::None => {}
             }
         }
     });

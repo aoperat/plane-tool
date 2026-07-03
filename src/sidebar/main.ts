@@ -30,6 +30,12 @@ let workspace = "";
 let states: ProjectState[] = [];
 let openPopover: HTMLElement | null = null;
 let pinned = false;
+// 유휴 자동 열림 보호: true인 동안은 blur 자동 숨김을 무시한다. 사용자가
+// 자리에 없을 때 열린 사이드바는 키보드/마우스 입력 없이는 닫히면 안 되고,
+// 무인 상태에서는 화면 잠금·알림·다른 앱 활성화 등이 얼마든지 blur를
+// 일으킬 수 있기 때문. 입력이 재개되면(백엔드 idle-ended, 또는 사이드바
+// 직접 조작) 해제되어 평소 규칙으로 복귀한다.
+let autoOpened = false;
 let themePref = "auto";
 let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
@@ -810,7 +816,7 @@ document.addEventListener("keydown", (e) => {
 win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
 win.listen("tauri://blur", () => {
-  if (!pinned) hideSidebar();
+  if (!pinned && !autoOpened) hideSidebar();
 });
 win.listen("toggle-sidebar", () => {
   toggleSidebar();
@@ -820,8 +826,17 @@ win.listen("toggle-sidebar", () => {
 // 이어지면 열려 있던 사이드바를 닫아 버릴 수 있어서 이벤트를 분리했다.
 win.listen("open-sidebar", async () => {
   if (await win.isVisible()) return;
+  autoOpened = true;
   await showSidebar(false);
   // 포커스 없이 열었으니 tauri://focus 기반 갱신이 안 돈다 — 직접 갱신.
   refreshIfStale();
 });
+// 입력 재개(폴링 5초 이내 감지) — 자동 열림 보호 해제.
+win.listen("idle-ended", () => {
+  autoOpened = false;
+});
+// 사이드바를 직접 조작하기 시작하면 idle-ended 폴링을 기다리지 않고 즉시 해제.
+document.addEventListener("pointerdown", () => {
+  autoOpened = false;
+}, true);
 refresh();
