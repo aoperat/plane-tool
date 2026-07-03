@@ -7,12 +7,16 @@
   </head>
   <body class="transparent-body">
     <div class="popup" style="position:relative;top:auto;left:auto;width:100%;transform:none;">
-      <div class="popup-top">
-        <div class="accent-bar"></div>
-        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
+      <div class="qa-header" data-tauri-drag-region>
+        <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+        <span class="qa-header-title">빠른 추가</span>
         <button type="button" id="qaClose" class="qa-close" aria-label="닫기 (Esc)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
         </button>
+      </div>
+      <div class="popup-top" data-tauri-drag-region>
+        <div class="accent-bar" data-tauri-drag-region></div>
+        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
       </div>
       <textarea id="description" class="description-input" placeholder="설명을 입력하세요…" rows="1" hidden></textarea>
       <div class="chip-row" id="chipRow">

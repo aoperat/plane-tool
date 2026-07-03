@@ -15,9 +15,9 @@
       {
         "label": "quickadd",
         "url": "src/quickadd/index.html",
-        "width": 540, "height": 175,
+        "width": 540, "height": 212,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
-        "skipTaskbar": true, "visible": false, "center": true, "resizable": true
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": false
       },
       {
         "label": "sidebar",

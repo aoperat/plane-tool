@@ -54,14 +54,14 @@ kbd {
 }
 
 /* ============ SURFACE 1: QUICK ADD POPUP ============ */
-/* Borderless look: the border stays 1px but transparent so the layout is
-   unchanged, and there is no box-shadow — the QuickAdd window also turns off
-   the OS shadow (tauri.conf.json), so the popup reads as a floating card
-   with no visible edge. */
+/* The border sits on this card only — the dropdown and field popover are
+   absolutely positioned below it, so opening them grows the window but not
+   this box, and the border never stretches around expanded content. No
+   box-shadow: the QuickAdd window turns off the OS shadow (tauri.conf.json). */
 .popup {
   position: fixed; top: 230px; left: 50%; transform: translateX(-50%);
   width: 540px; background: var(--panel);
-  border: 1px solid transparent; border-radius: var(--radius);
+  border: 1px solid var(--border); border-radius: var(--radius);
   z-index: 30; overflow: visible;
 }
 .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
@@ -135,6 +135,22 @@ kbd {
 .proj-select .dot { width: 9px; height: 9px; border-radius: 50%; }
 .proj-select .chev { color: var(--muted); margin-left: 2px; }
 /* Quick-add close (top-right, mirrors Esc) */
+/* Drag header: the whole bar is a Tauri drag region (data-tauri-drag-region).
+   Non-interactive children get pointer-events:none so mousedown lands on the
+   bar itself — Tauri only starts a drag when the event target carries the
+   attribute. The close button stays clickable. */
+.qa-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 13px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  cursor: grab; user-select: none;
+}
+.qa-header:active { cursor: grabbing; }
+.qa-grip { width: 13px; height: 13px; color: var(--muted-2); pointer-events: none; flex: none; }
+.qa-header-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); pointer-events: none; }
+.qa-header .qa-close { width: 24px; height: 24px; border: none; }
+
 .qa-close {
   flex: none; width: 28px; height: 28px; border-radius: 7px;
   display: grid; place-items: center; background: transparent;
