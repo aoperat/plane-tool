@@ -23,12 +23,20 @@ pub struct Settings {
     /// `alias` lets settings saved before this field was renamed keep their value.
     #[serde(alias = "sidebar_display_index", default = "default_display_index")]
     pub display_index: u32,
+    /// PC 유휴 시 사이드바 자동 열기 (기본 켬).
+    #[serde(default = "default_idle_open_enabled")]
+    pub idle_open_enabled: bool,
+    /// 자동 열기까지의 유휴 기준 시간(분).
+    #[serde(default = "default_idle_open_minutes")]
+    pub idle_open_minutes: u32,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
 fn default_sidebar_shortcut() -> String { "F2".into() }
 fn default_theme() -> String { "auto".into() }
 fn default_display_index() -> u32 { 1 }
+fn default_idle_open_enabled() -> bool { true }
+fn default_idle_open_minutes() -> u32 { 3 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -43,6 +51,8 @@ impl Default for Settings {
             sidebar_shortcut: default_sidebar_shortcut(),
             theme: default_theme(),
             display_index: default_display_index(),
+            idle_open_enabled: default_idle_open_enabled(),
+            idle_open_minutes: default_idle_open_minutes(),
         }
     }
 }
@@ -94,10 +104,33 @@ mod tests {
             sidebar_shortcut: "Alt+S".into(),
             theme: "light".into(),
             display_index: 2,
+            idle_open_enabled: false,
+            idle_open_minutes: 10,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(s, back);
+    }
+
+    #[test]
+    fn settings_default_enables_idle_open_at_3_minutes() {
+        let s = Settings::default();
+        assert!(s.idle_open_enabled);
+        assert_eq!(s.idle_open_minutes, 3);
+    }
+
+    #[test]
+    fn settings_without_idle_fields_gets_defaults() {
+        // 이 기능 이전에 저장된 설정 파일에는 idle 필드가 없다 — 기본값으로
+        // 채워져야 한다 (켬 / 3분).
+        let old_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null
+        }"#;
+        let s: Settings = serde_json::from_str(old_json).unwrap();
+        assert!(s.idle_open_enabled);
+        assert_eq!(s.idle_open_minutes, 3);
     }
 
     #[test]

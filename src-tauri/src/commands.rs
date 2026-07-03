@@ -13,6 +13,8 @@ pub struct SettingsDto {
     pub sidebar_shortcut: String,
     pub theme: String,
     pub display_index: u32,
+    pub idle_open_enabled: bool,
+    pub idle_open_minutes: u32,
 }
 
 #[derive(Serialize)]
@@ -140,6 +142,8 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         sidebar_shortcut: s.sidebar_shortcut,
         theme: s.theme,
         display_index: s.display_index,
+        idle_open_enabled: s.idle_open_enabled,
+        idle_open_minutes: s.idle_open_minutes,
     }
 }
 
@@ -153,6 +157,8 @@ pub fn save_settings(
     sidebar_shortcut: Option<String>,
     theme: Option<String>,
     display_index: Option<u32>,
+    idle_open_enabled: Option<bool>,
+    idle_open_minutes: Option<u32>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -161,6 +167,8 @@ pub fn save_settings(
     if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
     if let Some(v) = theme { if v == "auto" || v == "light" || v == "dark" { s.theme = v; } }
     if let Some(v) = display_index { if v >= 1 { s.display_index = v; } }
+    if let Some(v) = idle_open_enabled { s.idle_open_enabled = v; }
+    if let Some(v) = idle_open_minutes { if v >= 1 { s.idle_open_minutes = v; } }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {
