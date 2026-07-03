@@ -2,6 +2,7 @@ use crate::config;
 use tauri::{Emitter, Manager};
 use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::Serialize;
+use crate::assign_watch;
 
 #[derive(Serialize)]
 pub struct SettingsDto {
@@ -550,6 +551,55 @@ pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<cra
 pub fn open_briefing(app: tauri::AppHandle) {
     crate::show_centered(&app, "briefing");
     let _ = app.emit_to("briefing", "briefing-open", ());
+}
+
+#[derive(Serialize)]
+pub struct PendingAssignmentDto {
+    pub item_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub priority: String,
+    pub target_date: Option<String>,
+    pub assigner_name: String,
+    pub detected_at_ms: u64,
+}
+
+#[tauri::command]
+pub fn get_pending_assignments(app: tauri::AppHandle) -> Vec<PendingAssignmentDto> {
+    assign_watch::load_state(&app)
+        .pending
+        .into_iter()
+        .map(|p| PendingAssignmentDto {
+            item_id: p.item_id,
+            project_id: p.project_id,
+            name: p.name,
+            priority: p.priority,
+            target_date: p.target_date,
+            assigner_name: p.assigner_name,
+            detected_at_ms: p.detected_at_ms,
+        })
+        .collect()
+}
+
+/// 수신함 "확인" 버튼: Plane에 마커 댓글을 남기고 pending에서 제거한다.
+/// 댓글 작성이 실패하면 pending을 건드리지 않고 에러를 돌려준다 —
+/// 확인 기록 없이 수신함에서만 사라지면 할당자 쪽 추적이 어긋난다.
+#[tauri::command]
+pub async fn acknowledge_assignment(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+) -> Result<(), String> {
+    let (client, _s) = client(&app)?;
+    let html = plain_text_to_description_html(crate::plane_api::ACK_COMMENT_TEXT);
+    client.create_comment(&project_id, &item_id, &html).await?;
+    let mut state = assign_watch::load_state(&app);
+    state.pending.retain(|p| p.item_id != item_id);
+    let count = state.pending.len();
+    assign_watch::save_state(&app, &state)?;
+    crate::update_tray_tooltip(&app, count);
+    let _ = app.emit_to("sidebar", "assignments-updated", ());
+    Ok(())
 }
 
 #[cfg(test)]

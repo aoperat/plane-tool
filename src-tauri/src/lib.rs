@@ -227,6 +227,18 @@ pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
     show_centered(app, "quickadd");
 }
 
+/// 미확인 할당 수를 트레이 툴팁에 반영. 0이면 기본 툴팁으로 복귀.
+pub fn update_tray_tooltip(app: &tauri::AppHandle, pending_count: usize) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let tip = if pending_count > 0 {
+            format!("Plane Quick Dock — 미확인 할당 {pending_count}건")
+        } else {
+            "Plane Quick Dock".to_string()
+        };
+        let _ = tray.set_tooltip(Some(tip));
+    }
+}
+
 fn toggle_quickadd(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("quickadd") {
         if win.is_visible().unwrap_or(false) {
@@ -319,6 +331,8 @@ pub fn run() {
             commands::fetch_release_notes,
             commands::generate_briefing,
             commands::open_briefing,
+            commands::get_pending_assignments,
+            commands::acknowledge_assignment,
             check_updates_manual
         ])
         .run(tauri::generate_context!())
