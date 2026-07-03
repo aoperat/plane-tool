@@ -5,6 +5,7 @@ const STORE_FILE: &str = "settings.json";
 const STORE_KEY: &str = "settings";
 const KEYRING_SERVICE: &str = "plane-quick-dock";
 const KEYRING_ACCOUNT: &str = "api-token";
+const KEYRING_OPENAI_ACCOUNT: &str = "openai-api-key";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -29,6 +30,15 @@ pub struct Settings {
     /// 자동 열기까지의 유휴 기준 시간(분).
     #[serde(default = "default_idle_open_minutes")]
     pub idle_open_minutes: u32,
+    /// AI 브리핑에 쓰는 OpenAI 모델명.
+    #[serde(default = "default_briefing_model")]
+    pub briefing_model: String,
+    /// 아침 브리핑 자동 표시 (기본 끔).
+    #[serde(default)]
+    pub morning_briefing_enabled: bool,
+    /// 아침 브리핑 시각 "HH:MM".
+    #[serde(default = "default_morning_briefing_time")]
+    pub morning_briefing_time: String,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
@@ -37,6 +47,8 @@ fn default_theme() -> String { "auto".into() }
 fn default_display_index() -> u32 { 1 }
 fn default_idle_open_enabled() -> bool { true }
 fn default_idle_open_minutes() -> u32 { 3 }
+fn default_briefing_model() -> String { "gpt-4o-mini".into() }
+fn default_morning_briefing_time() -> String { "09:00".into() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -53,6 +65,9 @@ impl Default for Settings {
             display_index: default_display_index(),
             idle_open_enabled: default_idle_open_enabled(),
             idle_open_minutes: default_idle_open_minutes(),
+            briefing_model: default_briefing_model(),
+            morning_briefing_enabled: false,
+            morning_briefing_time: default_morning_briefing_time(),
         }
     }
 }
@@ -90,6 +105,17 @@ pub fn set_token(token: &str) -> Result<(), String> {
     entry.set_password(token).map_err(|e| e.to_string())
 }
 
+pub fn get_openai_key() -> Option<String> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_OPENAI_ACCOUNT)
+        .ok()
+        .and_then(|e| e.get_password().ok())
+}
+
+pub fn set_openai_key(key: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_OPENAI_ACCOUNT).map_err(|e| e.to_string())?;
+    entry.set_password(key).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +132,9 @@ mod tests {
             display_index: 2,
             idle_open_enabled: false,
             idle_open_minutes: 10,
+            briefing_model: "gpt-4o".into(),
+            morning_briefing_enabled: true,
+            morning_briefing_time: "08:30".into(),
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -175,5 +204,19 @@ mod tests {
         }"#;
         let s: Settings = serde_json::from_str(legacy_json).unwrap();
         assert_eq!(s.display_index, 2);
+    }
+
+    #[test]
+    fn settings_without_briefing_fields_gets_defaults() {
+        // 이 기능 이전에 저장된 설정 파일 — 기본값으로 채워져야 한다.
+        let old_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null
+        }"#;
+        let s: Settings = serde_json::from_str(old_json).unwrap();
+        assert_eq!(s.briefing_model, "gpt-4o-mini");
+        assert!(!s.morning_briefing_enabled);
+        assert_eq!(s.morning_briefing_time, "09:00");
     }
 }

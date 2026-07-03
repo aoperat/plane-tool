@@ -22,4 +22,6 @@ export interface SettingsDto {
   quickadd_shortcut: string; sidebar_shortcut: string;
   theme: string; display_index: number;
   idle_open_enabled: boolean; idle_open_minutes: number;
+  has_openai_key: boolean; briefing_model: string;
+  morning_briefing_enabled: boolean; morning_briefing_time: string;
 }

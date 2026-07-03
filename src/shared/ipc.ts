@@ -12,6 +12,10 @@ export const saveSettings = (
   displayIndex?: number,
   idleOpenEnabled?: boolean,
   idleOpenMinutes?: number,
+  openaiKey?: string,
+  briefingModel?: string,
+  morningBriefingEnabled?: boolean,
+  morningBriefingTime?: string,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -23,6 +27,10 @@ export const saveSettings = (
     displayIndex,
     idleOpenEnabled,
     idleOpenMinutes,
+    openaiKey,
+    briefingModel,
+    morningBriefingEnabled,
+    morningBriefingTime,
   });
 export const createIssue = (
   project_id: string,

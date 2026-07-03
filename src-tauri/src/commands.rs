@@ -15,6 +15,10 @@ pub struct SettingsDto {
     pub display_index: u32,
     pub idle_open_enabled: bool,
     pub idle_open_minutes: u32,
+    pub has_openai_key: bool,
+    pub briefing_model: String,
+    pub morning_briefing_enabled: bool,
+    pub morning_briefing_time: String,
 }
 
 #[derive(Serialize)]
@@ -146,6 +150,10 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         display_index: s.display_index,
         idle_open_enabled: s.idle_open_enabled,
         idle_open_minutes: s.idle_open_minutes,
+        has_openai_key: config::get_openai_key().is_some(),
+        briefing_model: s.briefing_model,
+        morning_briefing_enabled: s.morning_briefing_enabled,
+        morning_briefing_time: s.morning_briefing_time,
     }
 }
 
@@ -161,6 +169,10 @@ pub fn save_settings(
     display_index: Option<u32>,
     idle_open_enabled: Option<bool>,
     idle_open_minutes: Option<u32>,
+    openai_key: Option<String>,
+    briefing_model: Option<String>,
+    morning_briefing_enabled: Option<bool>,
+    morning_briefing_time: Option<String>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -171,10 +183,24 @@ pub fn save_settings(
     if let Some(v) = display_index { if v >= 1 { s.display_index = v; } }
     if let Some(v) = idle_open_enabled { s.idle_open_enabled = v; }
     if let Some(v) = idle_open_minutes { if v >= 1 { s.idle_open_minutes = v; } }
+    if let Some(v) = briefing_model { if !v.trim().is_empty() { s.briefing_model = v.trim().to_string(); } }
+    if let Some(v) = morning_briefing_enabled { s.morning_briefing_enabled = v; }
+    if let Some(v) = morning_briefing_time {
+        // "HH:MM"만 허용 — 형식이 다르면 조용히 무시해 기존 값을 지킨다.
+        let ok = v.len() == 5 && v.as_bytes()[2] == b':'
+            && v[0..2].parse::<u32>().map_or(false, |h| h < 24)
+            && v[3..5].parse::<u32>().map_or(false, |m| m < 60);
+        if ok { s.morning_briefing_time = v; }
+    }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {
             config::set_token(&t)?;
+        }
+    }
+    if let Some(k) = openai_key {
+        if !k.is_empty() {
+            config::set_openai_key(&k)?;
         }
     }
     Ok(())
