@@ -8,7 +8,27 @@ import "../shared/app.css";
 const baseUrl = document.getElementById("baseUrl") as HTMLInputElement;
 const workspace = document.getElementById("workspace") as HTMLInputElement;
 const token = document.getElementById("token") as HTMLInputElement;
+const tokenSaved = document.getElementById("tokenSaved")!;
+const tokenChange = document.getElementById("tokenChange")!;
 const tokenLink = document.getElementById("tokenLink")!;
+
+// A stored token renders as a "저장됨" card in place of the input; [변경]
+// switches back to the input. The input's value is only ever a NEW token —
+// the stored one is never loaded into the page.
+let hasToken = false;
+function renderTokenField(editing: boolean) {
+  const showCard = hasToken && !editing;
+  tokenSaved.hidden = !showCard;
+  token.hidden = showCard;
+}
+
+tokenChange.onclick = (e) => {
+  // A button inside <label> would also activate the label's input — block that
+  // and manage focus ourselves after the swap.
+  e.preventDefault();
+  renderTokenField(true);
+  token.focus();
+};
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
 const theme = document.getElementById("theme") as HTMLSelectElement;
@@ -33,7 +53,8 @@ async function load() {
   const s = await getSettings();
   baseUrl.value = s.base_url;
   workspace.value = s.workspace;
-  token.placeholder = s.has_token ? "(저장됨 — 변경 시에만 입력)" : "API 토큰 입력";
+  hasToken = s.has_token;
+  renderTokenField(false);
   qaShortcut.value = s.quickadd_shortcut;
   sbShortcut.value = s.sidebar_shortcut;
   theme.value = s.theme;
@@ -65,7 +86,9 @@ document.getElementById("save")!.onclick = async () => {
       theme.value,
       Number(displaySelect.value),
     );
+    if (token.value) hasToken = true;
     token.value = "";
+    renderTokenField(false);
     status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";
     setTimeout(() => getCurrentWindow().hide(), 800);
   } catch (e) {

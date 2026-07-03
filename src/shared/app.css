@@ -268,6 +268,22 @@ kbd {
   cursor: pointer;
 }
 .settings .token-link:hover { text-decoration: underline; }
+/* Saved-token card — swaps in for the token input while a token is stored */
+.token-saved-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px;
+}
+/* display:flex above beats the UA's [hidden] { display: none } — restate it. */
+.token-saved-row[hidden] { display: none; }
+.token-saved-row .check { color: var(--green); flex: none; display: flex; }
+.token-saved-row .mask { color: var(--text); font-size: 13.5px; letter-spacing: 2px; flex: 1; }
+.token-saved-row .meta { color: var(--muted-2); font-size: 11px; flex: none; }
+.token-change-btn {
+  flex: none; background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); font-size: 11.5px; padding: 4px 10px; cursor: pointer; font-family: inherit;
+}
+.token-change-btn:hover { border-color: var(--accent); color: var(--text); }
 .settings input {
   background: var(--bg);
   border: 1px solid var(--border);

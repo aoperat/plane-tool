@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>설정 — 토큰 상태 표시 목업</title>
+<style>
+  /* 실제 앱(src/shared/app.css)의 변수·설정창 스타일 복사 */
+  :root {
+    --bg: #0d0e12; --panel: #16181d; --panel-2: #1c1f26; --border: #2a2e37;
+    --text: #e6e8ec; --muted: #8a909c; --muted-2: #5c626d;
+    --accent: #4f7cff; --accent-soft: rgba(79,124,255,0.14);
+    --green: #2ecc71; --amber: #f5a623; --red: #ef4d56;
+    --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); padding: 70px 40px 60px;
+    background:
+      radial-gradient(1200px 600px at 18% -10%, #232a45 0%, transparent 55%),
+      radial-gradient(1000px 700px at 110% 120%, #2a2438 0%, transparent 50%),
+      #0a0b0f;
+  }
+  .hint-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; gap: 18px; align-items: center; justify-content: center;
+    padding: 10px; font-size: 12.5px; color: var(--muted);
+    background: rgba(8,9,12,0.6); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .hint-bar b { color: var(--text); }
+  .grid { display: flex; flex-wrap: wrap; gap: 48px 36px; justify-content: center; align-items: flex-start; }
+  .cell { display: flex; flex-direction: column; gap: 12px; }
+  .caption {
+    align-self: flex-start; font-size: 11px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid rgba(79,124,255,0.3);
+    padding: 3px 9px; border-radius: 20px;
+  }
+  .note { font-size: 11.5px; color: var(--muted); max-width: 460px; line-height: 1.5; }
+  .note b { color: var(--text); }
+
+  /* ===== 설정창 (실제 스타일, 토큰 섹션만 발췌) ===== */
+  .settings {
+    width: 460px; padding: 24px 28px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .settings h2 { margin: 0 0 20px; font-size: 16px; font-weight: 600; }
+  .settings label {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12.5px; color: var(--muted); margin-bottom: 16px;
+  }
+  .settings input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 13.5px; padding: 8px 12px; outline: none;
+    font-family: inherit; width: 100%;
+  }
+  .settings input::placeholder { color: var(--muted-2); }
+  .token-link { align-self: flex-start; color: var(--accent); font-size: 11.5px; text-decoration: none; cursor: pointer; }
+
+  /* ▼ 시안 A: 라벨 옆 상태 배지 */
+  .label-row { display: flex; align-items: center; gap: 8px; }
+  .token-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
+  }
+  .token-badge.saved { color: var(--green); background: rgba(46,204,113,0.12); border: 1px solid rgba(46,204,113,0.35); }
+  .token-badge.missing { color: var(--amber); background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.35); }
+
+  /* ▼ 시안 B: 저장됨 카드 + 변경 버튼 */
+  .token-saved-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px;
+  }
+  .token-saved-row .check { color: var(--green); flex: none; display: flex; }
+  .token-saved-row .mask { color: var(--text); font-size: 13.5px; letter-spacing: 2px; flex: 1; }
+  .token-saved-row .meta { color: var(--muted-2); font-size: 11px; flex: none; }
+  .token-change-btn {
+    flex: none; background: transparent; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--muted); font-size: 11.5px; padding: 4px 10px; cursor: pointer; font-family: inherit;
+  }
+  .token-change-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ▼ 시안 C: 입력창 내부 인디케이터 */
+  .token-input-wrap { position: relative; }
+  .token-input-wrap input { padding-right: 34px; }
+  .token-input-wrap input.saved { border-color: rgba(46,204,113,0.45); }
+  .token-input-wrap .inline-check {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--green); display: flex; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="hint-bar">
+    <span><b>설정창 토큰 상태 표시</b> — 시안 3종 × (저장됨 / 미입력) · 토큰 섹션만 발췌</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- ══════ 시안 A ══════ -->
+    <div class="cell">
+      <span class="caption">시안 A — 라벨 옆 상태 배지 (저장됨)</span>
+      <div class="settings">
+        <h2>Plane 연결</h2>
+        <label>
+          <span class="label-row">API 토큰
+            <span class="token-badge saved">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              저장됨
+            </span>
+          </span>
+          <input type="password" placeholder="변경하려면 새 토큰 입력" />
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <div class="settings">
+        <h2 style="opacity:.55">Plane 연결 <span style="font-size:11px;font-weight:400;color:var(--muted-2)">(미입력 상태)</span></h2>
+        <label>
+          <span class="label-row">API 토큰
+            <span class="token-badge missing">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v9M12 18.5v.5"/></svg>
+              미입력
+            </span>
+          </span>
+          <input type="password" placeholder="API 토큰 입력" />
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <p class="note">기존 레이아웃 유지, 라벨 옆에 <b>저장됨(초록)/미입력(주황) 배지</b>만 추가.
+      구현이 가장 가볍고 입력 흐름 변화 없음. 다만 "저장돼 있는데 입력창은 왜 비어있지?"라는
+      혼란은 완전히 해소되지 않음.</p>
+    </div>
+
+    <!-- ══════ 시안 B ══════ -->
+    <div class="cell">
+      <span class="caption">시안 B — 저장됨 카드 + 변경 버튼 (추천)</span>
+      <div class="settings">
+        <h2>Plane 연결</h2>
+        <label>API 토큰
+          <span class="token-saved-row">
+            <span class="check">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            <span class="mask">••••••••••••</span>
+            <span class="meta">저장됨</span>
+            <button type="button" class="token-change-btn">변경</button>
+          </span>
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <div class="settings">
+        <h2 style="opacity:.55">Plane 연결 <span style="font-size:11px;font-weight:400;color:var(--muted-2)">(미입력 상태 / 변경 클릭 후)</span></h2>
+        <label>API 토큰
+          <input type="password" placeholder="API 토큰 입력" />
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <p class="note">저장된 상태에선 입력창 대신 <b>✓ + 마스크(••••) + "저장됨" + [변경]</b> 카드를 보여줌.
+      "이미 토큰이 있다"가 한눈에 읽히고, 빈 입력창으로 인한 혼란이 원천 차단됨.
+      [변경]을 누르면 아래 미입력 상태처럼 입력창으로 전환(포커스 이동), 새 토큰 저장 시 다시 카드로.</p>
+    </div>
+
+    <!-- ══════ 시안 C ══════ -->
+    <div class="cell">
+      <span class="caption">시안 C — 입력창 내부 체크 표시</span>
+      <div class="settings">
+        <h2>Plane 연결</h2>
+        <label>API 토큰
+          <span class="token-input-wrap">
+            <input type="password" class="saved" placeholder="저장됨 — 변경 시에만 입력" />
+            <span class="inline-check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+          </span>
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <div class="settings">
+        <h2 style="opacity:.55">Plane 연결 <span style="font-size:11px;font-weight:400;color:var(--muted-2)">(미입력 상태)</span></h2>
+        <label>API 토큰
+          <span class="token-input-wrap">
+            <input type="password" placeholder="API 토큰 입력" />
+          </span>
+          <a class="token-link" href="#">토큰 발급받기 →</a>
+        </label>
+      </div>
+      <p class="note">입력창 오른쪽 안에 <b>초록 체크 + 테두리 초록 틴트</b>. 레이아웃 변화 최소.
+      다만 체크가 "입력값이 유효함"으로 오독될 수 있고(폼 검증 관례), 저장 여부 텍스트가 없어
+      placeholder에 계속 의존함.</p>
+    </div>
+
+  </div>
+</body>
+</html>
