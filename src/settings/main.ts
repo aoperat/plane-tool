@@ -1,6 +1,7 @@
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getSettings, saveSettings } from "../shared/ipc";
+import { captureFromKeyEvent } from "../shared/hotkey";
 import { sortMonitorsByPosition } from "../shared/monitors";
 import { applyTheme } from "../shared/theme";
 import "../shared/app.css";
@@ -52,6 +53,52 @@ oaChange.onclick = (e) => {
 
 const qaShortcut = document.getElementById("qaShortcut") as HTMLInputElement;
 const sbShortcut = document.getElementById("sbShortcut") as HTMLInputElement;
+
+// 단축키 입력은 텍스트 타이핑이 아니라 키 캡처로 받는다: 입력창에 포커스를
+// 두고 원하는 조합을 누르면 가속기 문자열이 기록된다. Esc는 취소, 수식키만
+// 누르고 있는 동안은 미완성 상태("Ctrl+…")로 보여준다.
+function attachShortcutCapture(input: HTMLInputElement) {
+  let committed = "";
+  const restore = () => {
+    input.value = committed;
+    delete input.dataset.pending;
+  };
+  input.addEventListener("focus", () => {
+    committed = input.value;
+  });
+  input.addEventListener("blur", () => {
+    if (input.dataset.pending) restore();
+  });
+  input.addEventListener("keydown", (e) => {
+    // Tab만은 포커스 이동용으로 남겨둔다.
+    if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) return;
+    e.preventDefault();
+    if (e.key === "Escape") {
+      restore();
+      input.blur();
+      return;
+    }
+    const r = captureFromKeyEvent(e);
+    if (r.kind === "commit") {
+      input.value = r.accelerator;
+      committed = r.accelerator;
+      delete input.dataset.pending;
+      status.textContent = "";
+    } else if (r.kind === "pending") {
+      input.value = r.display;
+      input.dataset.pending = "1";
+    } else if (r.kind === "invalid") {
+      restore();
+      status.textContent = r.reason;
+    }
+  });
+  input.addEventListener("keyup", (e) => {
+    // 수식키만 눌렀다 뗀 경우 미완성 표시를 원래 값으로 되돌린다.
+    if (input.dataset.pending && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) restore();
+  });
+}
+attachShortcutCapture(qaShortcut);
+attachShortcutCapture(sbShortcut);
 const theme = document.getElementById("theme") as HTMLSelectElement;
 const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
 const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputElement;
@@ -134,7 +181,7 @@ document.getElementById("save")!.onclick = async () => {
     if (openaiKey.value) hasOpenaiKey = true;
     openaiKey.value = "";
     renderOpenaiKeyField(false);
-    status.textContent = "저장됨 ✓ (단축키 변경은 재시작 후 적용)";
+    status.textContent = "저장됨 ✓";
     setTimeout(() => getCurrentWindow().hide(), 800);
   } catch (e) {
     status.textContent = "저장 실패: " + e;

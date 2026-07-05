@@ -184,8 +184,13 @@ pub fn save_settings(
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
     s.workspace = workspace.trim().trim_matches('/').to_string();
-    if let Some(v) = quickadd_shortcut { if !v.is_empty() { s.quickadd_shortcut = v; } }
-    if let Some(v) = sidebar_shortcut { if !v.is_empty() { s.sidebar_shortcut = v; } }
+    let mut shortcuts_changed = false;
+    if let Some(v) = quickadd_shortcut {
+        if !v.is_empty() && v != s.quickadd_shortcut { s.quickadd_shortcut = v; shortcuts_changed = true; }
+    }
+    if let Some(v) = sidebar_shortcut {
+        if !v.is_empty() && v != s.sidebar_shortcut { s.sidebar_shortcut = v; shortcuts_changed = true; }
+    }
     if let Some(v) = theme { if v == "auto" || v == "light" || v == "dark" { s.theme = v; } }
     if let Some(v) = display_index { if v >= 1 { s.display_index = v; } }
     if let Some(v) = idle_open_enabled { s.idle_open_enabled = v; }
@@ -201,6 +206,11 @@ pub fn save_settings(
     }
     if let Some(v) = assign_notify_enabled { s.assign_notify_enabled = v; }
     if let Some(v) = assign_remind_hours { if v >= 1 { s.assign_remind_hours = v; } }
+    // 재시작 없이 즉시 반영. 등록에 실패하면(다른 앱이 선점 등) 아무것도
+    // 저장하지 않고 에러를 돌려줘서 설정 파일과 실제 등록 상태를 일치시킨다.
+    if shortcuts_changed {
+        crate::reapply_shortcuts(&app, &s.quickadd_shortcut, &s.sidebar_shortcut)?;
+    }
     config::save_settings(&app, &s)?;
     if let Some(t) = token {
         if !t.is_empty() {

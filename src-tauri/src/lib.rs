@@ -39,6 +39,78 @@ const MORNING_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 /// version the user already declined. A newer release prompts again.
 static LAST_OFFERED_VERSION: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// 현재 등록되어 있는 전역 단축키 쌍. 단축키 핸들러가 시작 시점 값을
+/// 클로저에 캡처하는 대신 매 이벤트마다 이 상태를 읽기 때문에, 설정 저장
+/// 시 재시작 없이 단축키를 교체할 수 있다 (`reapply_shortcuts`).
+#[derive(Default, Clone)]
+pub struct ShortcutPair {
+    pub qa: Option<Shortcut>,
+    pub sb: Option<Shortcut>,
+}
+
+#[derive(Default)]
+pub struct ShortcutBindings(pub std::sync::Mutex<ShortcutPair>);
+
+fn register_one(app: &tauri::AppHandle, accel: &str) -> Result<Shortcut, String> {
+    let sc: Shortcut = accel
+        .parse()
+        .map_err(|_| format!("'{accel}'은(는) 올바른 단축키 형식이 아닙니다"))?;
+    app.global_shortcut().register(sc).map_err(|e| e.to_string())?;
+    Ok(sc)
+}
+
+/// 설정 저장 시 전역 단축키를 재시작 없이 교체한다. 둘 다 등록에 성공해야
+/// 반영하고, 하나라도 실패하면 이전 등록 상태로 되돌린 뒤 Err를 돌려준다 —
+/// 설정 파일에 적힌 단축키와 실제 등록 상태가 어긋나면 안 되기 때문이다.
+pub fn reapply_shortcuts(app: &tauri::AppHandle, qa: &str, sb: &str) -> Result<(), String> {
+    let qa_sc: Shortcut = qa
+        .parse()
+        .map_err(|_| format!("빠른 추가 단축키 '{qa}'은(는) 올바른 형식이 아닙니다"))?;
+    let sb_sc: Shortcut = sb
+        .parse()
+        .map_err(|_| format!("사이드바 단축키 '{sb}'은(는) 올바른 형식이 아닙니다"))?;
+    if qa_sc == sb_sc {
+        return Err("빠른 추가와 사이드바 단축키가 같습니다".into());
+    }
+    let gs = app.global_shortcut();
+    let bindings = app.state::<ShortcutBindings>();
+    let mut pair = bindings.0.lock().unwrap();
+    let old = pair.clone();
+    // 두 키를 서로 맞바꾸는 경우도 지원해야 하므로 새로 등록하기 전에
+    // 기존 둘을 모두 해제한다.
+    if let Some(sc) = &old.qa {
+        let _ = gs.unregister(*sc);
+    }
+    if let Some(sc) = &old.sb {
+        let _ = gs.unregister(*sc);
+    }
+    let result = gs
+        .register(qa_sc)
+        .map_err(|e| format!("빠른 추가 단축키 '{qa}' 등록 실패: {e}"))
+        .and_then(|_| {
+            gs.register(sb_sc).map_err(|e| {
+                let _ = gs.unregister(qa_sc);
+                format!("사이드바 단축키 '{sb}' 등록 실패: {e}")
+            })
+        });
+    match result {
+        Ok(()) => {
+            pair.qa = Some(qa_sc);
+            pair.sb = Some(sb_sc);
+            Ok(())
+        }
+        Err(e) => {
+            if let Some(sc) = &old.qa {
+                let _ = gs.register(*sc);
+            }
+            if let Some(sc) = &old.sb {
+                let _ = gs.register(*sc);
+            }
+            Err(e)
+        }
+    }
+}
+
 /// Checks the release feed on launch and then every `UPDATE_CHECK_INTERVAL`,
 /// in the background. If a newer version exists, asks the user first (showing
 /// the release notes); on confirmation downloads, installs, and relaunches.
@@ -411,17 +483,15 @@ pub fn run() {
                 .build(app)?;
 
             let s = config::load_settings(app.handle());
-            let qa = s.quickadd_shortcut.clone();
-            let sb = s.sidebar_shortcut.clone();
-            let qa_sc: Option<Shortcut> = qa.parse().ok();
-            let sb_sc: Option<Shortcut> = sb.parse().ok();
+            app.manage(ShortcutBindings::default());
             app.handle().plugin(
                 ShortcutBuilder::new()
                     .with_handler(move |app, shortcut, event| {
                         if event.state() != ShortcutState::Pressed { return; }
-                        if qa_sc.as_ref() == Some(shortcut) {
+                        let pair = app.state::<ShortcutBindings>().0.lock().unwrap().clone();
+                        if pair.qa.as_ref() == Some(shortcut) {
                             toggle_quickadd(app);
-                        } else if sb_sc.as_ref() == Some(shortcut) {
+                        } else if pair.sb.as_ref() == Some(shortcut) {
                             // The sidebar animates its own show/hide (slide in/out
                             // from the screen edge), so just ask it to toggle
                             // itself instead of driving show()/hide() here.
@@ -430,11 +500,19 @@ pub fn run() {
                     })
                     .build(),
             )?;
-            if let Err(e) = app.global_shortcut().register(s.quickadd_shortcut.as_str()) {
-                eprintln!("quickadd shortcut '{}' failed: {e}", s.quickadd_shortcut);
-            }
-            if let Err(e) = app.global_shortcut().register(s.sidebar_shortcut.as_str()) {
-                eprintln!("sidebar shortcut '{}' failed: {e}", s.sidebar_shortcut);
+            // 시작 시엔 각 단축키를 독립적으로 등록한다 — 하나가 (다른 앱
+            // 점유 등으로) 실패해도 나머지는 살아 있어야 한다.
+            {
+                let bindings = app.state::<ShortcutBindings>();
+                let mut pair = bindings.0.lock().unwrap();
+                match register_one(app.handle(), &s.quickadd_shortcut) {
+                    Ok(sc) => pair.qa = Some(sc),
+                    Err(e) => eprintln!("quickadd shortcut '{}' failed: {e}", s.quickadd_shortcut),
+                }
+                match register_one(app.handle(), &s.sidebar_shortcut) {
+                    Ok(sc) => pair.sb = Some(sc),
+                    Err(e) => eprintln!("sidebar shortcut '{}' failed: {e}", s.sidebar_shortcut),
+                }
             }
 
             let cfg = config::load_settings(app.handle());
@@ -508,6 +586,19 @@ mod tests {
         assert!(msg.contains('…'));
         // The dialog body must stay bounded regardless of changelog length.
         assert!(msg.chars().count() < UPDATE_NOTES_MAX_CHARS + 120);
+    }
+
+    #[test]
+    fn ui_captured_accelerators_parse() {
+        // 설정 화면의 키 캡처(src/shared/hotkey.ts)가 만들어내는 형식이
+        // global-shortcut 플러그인 파서와 계속 호환되는지 지키는 가드.
+        for accel in [
+            "F1", "Shift+F2", "Ctrl+Shift+A", "Alt+Space", "Ctrl+7", "Super+F24",
+            "Ctrl+Comma", "Ctrl+Alt+Up", "Alt+PageDown", "Ctrl+Backquote",
+            "Ctrl+BracketLeft", "Alt+Semicolon", "Ctrl+Minus", "Ctrl+Enter",
+        ] {
+            assert!(accel.parse::<Shortcut>().is_ok(), "'{accel}' failed to parse");
+        }
     }
 
     #[test]
