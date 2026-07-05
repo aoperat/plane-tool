@@ -91,15 +91,33 @@ function resolveDateChoice(choice: DateChoice, custom: string): string {
   return choice === "custom" ? custom : resolveDatePreset(choice);
 }
 
+// ISO yyyy-mm-dd strings compare correctly with plain string ordering, so the
+// clamps below don't need Date parsing.
 function shiftDateField(kind: "start" | "due", delta: number) {
   if (kind === "start") {
     const current = resolveDateChoice(startChoice, startCustomDate);
-    startCustomDate = shiftIsoDate(current, delta);
+    const next = shiftIsoDate(current, delta);
+    startCustomDate = next;
     startChoice = "custom";
+    // Pushing the start date past the due date would invert the range —
+    // carry the due date along with it instead.
+    const due = resolveDateChoice(dueChoice, dueCustomDate);
+    if (next > due) {
+      dueCustomDate = next;
+      dueChoice = "custom";
+    }
   } else {
     const current = resolveDateChoice(dueChoice, dueCustomDate);
-    dueCustomDate = shiftIsoDate(current, delta);
+    const next = shiftIsoDate(current, delta);
+    dueCustomDate = next;
     dueChoice = "custom";
+    // Same guard in reverse: pulling the due date before the start date
+    // carries the start date back with it.
+    const start = resolveDateChoice(startChoice, startCustomDate);
+    if (start > next) {
+      startCustomDate = next;
+      startChoice = "custom";
+    }
   }
   renderChips();
 }
@@ -618,8 +636,8 @@ function bindTip(el: HTMLElement, html: string, placement: "above" | "below") {
   el.addEventListener("blur", hide);
   el.addEventListener("click", hide);
 }
-bindTip(chipStart, "<kbd>Ctrl+PgUp/Dn</kbd> 시작일 ±1일", "above");
-bindTip(chipDue, "<kbd>PgUp/Dn</kbd> 마감일 ±1일", "above");
+bindTip(chipStart, "<kbd>PgUp/Dn</kbd> 시작일 ±1일", "above");
+bindTip(chipDue, "<kbd>Ctrl+PgUp/Dn</kbd> 마감일 ±1일", "above");
 bindTip(qaClose, "닫기 <kbd>Esc</kbd>", "below");
 
 // Focus fires both when the window is summoned and when the user merely clicks
