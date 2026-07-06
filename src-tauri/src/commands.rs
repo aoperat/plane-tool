@@ -386,6 +386,41 @@ pub async fn update_work_item_state(
     }
 }
 
+pub(crate) async fn try_update_fields_online(
+    client: &PlaneClient,
+    project_id: &str,
+    item_id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+    assignee_ids: Option<&[String]>,
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: Option<&str>,
+    state_group: Option<&str>,
+) -> Result<(), String> {
+    let description_html = description.map(plain_text_to_description_html);
+    let state_id = match state_group {
+        Some(sg) => {
+            let states = client.list_states(project_id).await?;
+            Some(resolve_state_id(&states, sg).ok_or_else(|| format!("no state found for group '{sg}'"))?)
+        }
+        None => None,
+    };
+    let body = build_update_body(
+        name,
+        description_html.as_deref(),
+        assignee_ids,
+        start_date,
+        target_date,
+        priority,
+        state_id.as_deref(),
+    );
+    if body.as_object().is_some_and(|m| m.is_empty()) {
+        return Ok(());
+    }
+    client.update_work_item(project_id, item_id, body).await
+}
+
 #[tauri::command]
 pub async fn update_work_item_fields(
     app: tauri::AppHandle,
@@ -400,29 +435,52 @@ pub async fn update_work_item_fields(
     state_group: Option<String>,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    let description_html = description.as_deref().map(plain_text_to_description_html);
-    let state_id = match &state_group {
-        Some(sg) => {
-            let states = client.list_states(&project_id).await?;
-            Some(resolve_state_id(&states, sg).ok_or_else(|| format!("no state found for group '{sg}'"))?)
-        }
-        None => None,
-    };
-    let body = build_update_body(
+    let result = try_update_fields_online(
+        &client,
+        &project_id,
+        &item_id,
         name.as_deref(),
-        description_html.as_deref(),
+        description.as_deref(),
         assignee_ids.as_deref(),
         start_date.as_deref(),
         target_date.as_deref(),
         priority.as_deref(),
-        state_id.as_deref(),
-    );
-    if body.as_object().is_some_and(|m| m.is_empty()) {
-        return Ok(());
+        state_group.as_deref(),
+    )
+    .await;
+    match result {
+        Ok(()) => {
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let payload = serde_json::json!({
+                "name": name, "description": description, "assignee_ids": assignee_ids,
+                "start_date": start_date, "target_date": target_date,
+                "priority": priority, "state_group": state_group,
+            });
+            let name_p = name.clone();
+            let priority_p = priority.clone();
+            let start_date_p = start_date.clone();
+            let target_date_p = target_date.clone();
+            let state_group_p = state_group.clone();
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdateFields,
+                &project_id,
+                &item_id,
+                payload,
+                move |dto| {
+                    if let Some(n) = name_p { dto.name = n; }
+                    if let Some(p) = priority_p { dto.priority = p; }
+                    if let Some(sd) = start_date_p { dto.start_date = if sd.is_empty() { None } else { Some(sd) }; }
+                    if let Some(td) = target_date_p { dto.target_date = if td.is_empty() { None } else { Some(td) }; }
+                    if let Some(sg) = state_group_p { dto.state_group = sg; }
+                },
+            )
+        }
+        Err(e) => Err(e),
     }
-    client.update_work_item(&project_id, &item_id, body).await?;
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
-    Ok(())
 }
 
 #[tauri::command]
