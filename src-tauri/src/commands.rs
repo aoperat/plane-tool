@@ -334,9 +334,22 @@ pub async fn update_work_item_priority(
     priority: String,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client
-        .update_work_item(&project_id, &item_id, serde_json::json!({ "priority": priority }))
-        .await
+    let body = serde_json::json!({ "priority": priority });
+    match client.update_work_item(&project_id, &item_id, body.clone()).await {
+        Ok(()) => Ok(()),
+        Err(e) if plane_api::is_network_error(&e) => {
+            let p = priority.clone();
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdatePriority,
+                &project_id,
+                &item_id,
+                body,
+                move |dto| dto.priority = p,
+            )
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
