@@ -288,7 +288,9 @@ pub async fn fetch_sidebar_data(
     let (client, _s) = client(&app)?;
     match fetch_sidebar_data_online(&client, &completed_after, &completed_before).await {
         Ok(data) => {
-            crate::offline::save_cache(&app, &data, crate::now_ms())?;
+            if let Err(e) = crate::offline::save_cache(&app, &data, crate::now_ms()) {
+                eprintln!("offline cache save failed: {e}");
+            }
             Ok(data)
         }
         Err(e) if plane_api::is_network_error(&e) => {
