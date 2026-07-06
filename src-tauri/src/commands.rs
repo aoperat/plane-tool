@@ -65,10 +65,12 @@ pub struct SidebarData {
     pub assigned: Vec<WorkItemDto>,
     pub states: Vec<StateDto>,
     /// 캐시(오프라인 폴백)에서 온 응답이면 true. 실시간 fetch 결과는 항상
-    /// false — 캐시 파일에는 절대 저장되지 않는 응답 전용 표시라 skip한다.
-    #[serde(skip, default)]
+    /// false. `skip`은 쓰지 않는다 — Tauri IPC 직렬화도 serde를 거치므로
+    /// skip하면 프론트엔드에도 이 값이 전달되지 않아 오프라인 배지가 깨진다
+    /// (캐시 파일에 저장돼도 항상 false/None으로 재구성되므로 무해하다).
+    #[serde(default)]
     pub is_cached: bool,
-    #[serde(skip, default)]
+    #[serde(default)]
     pub cached_at_ms: Option<u64>,
 }
 
