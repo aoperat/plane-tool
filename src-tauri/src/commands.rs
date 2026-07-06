@@ -1,6 +1,6 @@
 use crate::config;
 use tauri::{Emitter, Manager};
-use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{self, filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 
@@ -98,6 +98,12 @@ pub fn assemble_sidebar(
         .map(|s| StateDto { id: s.id, group: s.group, project_id: s.project_id, default: s.default })
         .collect();
     SidebarData { projects, assigned, states, is_cached: false, cached_at_ms: None }
+}
+
+/// 캐시에서 돌려주는 응답임을 표시한다 — 실시간 fetch 결과에는 호출하지 않는다.
+pub fn mark_from_cache(data: &mut SidebarData, cached_at_ms: u64) {
+    data.is_cached = true;
+    data.cached_at_ms = Some(cached_at_ms);
 }
 
 pub fn build_update_body(
@@ -280,6 +286,27 @@ pub async fn fetch_sidebar_data(
     completed_before: String,
 ) -> Result<SidebarData, String> {
     let (client, _s) = client(&app)?;
+    match fetch_sidebar_data_online(&client, &completed_after, &completed_before).await {
+        Ok(data) => {
+            crate::offline::save_cache(&app, &data, crate::now_ms())?;
+            Ok(data)
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let snapshot = crate::offline::load_cache(&app)
+                .ok_or_else(|| "오프라인 상태이며 아직 캐시된 데이터가 없습니다".to_string())?;
+            let mut data = snapshot.data;
+            mark_from_cache(&mut data, snapshot.cached_at_ms);
+            Ok(data)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn fetch_sidebar_data_online(
+    client: &PlaneClient,
+    completed_after: &str,
+    completed_before: &str,
+) -> Result<SidebarData, String> {
     let user = client.current_user().await?;
     let projects = client.list_projects().await?;
     let mut all_items: Vec<WorkItem> = Vec::new();
@@ -294,7 +321,7 @@ pub async fn fetch_sidebar_data(
             Err(_) => continue, // skip a project that fails; keep the rest
         }
     }
-    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, &completed_after, &completed_before))
+    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, completed_after, completed_before))
 }
 
 #[tauri::command]
@@ -783,5 +810,13 @@ mod tests {
         let back: SidebarData = serde_json::from_str(&json).unwrap();
         assert!(!back.is_cached);
         assert_eq!(back.cached_at_ms, None);
+    }
+
+    #[test]
+    fn sidebar_data_from_cache_marks_is_cached_and_carries_timestamp() {
+        let mut data = assemble_sidebar("me", vec![], vec![], vec![], "2026-06-30", "2026-07-02");
+        mark_from_cache(&mut data, 12345);
+        assert!(data.is_cached);
+        assert_eq!(data.cached_at_ms, Some(12345));
     }
 }
