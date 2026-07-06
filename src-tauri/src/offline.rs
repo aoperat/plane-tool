@@ -12,6 +12,7 @@ use crate::commands::{SidebarData, WorkItemDto};
 const STORE_FILE: &str = "offline.json";
 const CACHE_KEY: &str = "cache";
 const QUEUE_KEY: &str = "queue";
+const CONFLICTS_KEY: &str = "conflicts";
 
 /// pending-queue.json은 백그라운드 재생(`replay_queue`, lib.rs)과 쓰기
 /// 커맨드(각 `queue_*` 헬퍼)가 둘 다 read-modify-write 한다 — 이 락을 잡은
@@ -151,6 +152,62 @@ pub fn detect_conflict(base: Option<&str>, current: Option<&str>) -> Option<Conf
         (Some(b), Some(c)) if b != c => Some(ConflictReason::ServerUpdated),
         _ => None,
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConflictFields {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub assignee_ids: Option<Vec<String>>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+    pub priority: Option<String>,
+    pub state_group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictEntry {
+    pub id: String,
+    pub kind: MutationKind,
+    pub project_id: String,
+    pub target_id: String,
+    pub item_name: String,
+    pub reason: ConflictReason,
+    /// 화면 표시용으로 파싱된 값.
+    pub local_fields: ConflictFields,
+    /// "내 값 유지" 적용 시 그대로 재전송할 원본 페이로드(UpdatePriority/
+    /// UpdateState/Delete용 — 단일 필드라 병합이 필요 없다. UpdateFields는
+    /// 프런트엔드가 병합한 값을 별도로 받으므로 이 필드를 쓰지 않는다).
+    pub local_payload: serde_json::Value,
+    /// 대상이 삭제됐으면(`TargetDeleted`) None.
+    pub server_fields: Option<ConflictFields>,
+    pub detected_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConflictList {
+    pub items: Vec<ConflictEntry>,
+}
+
+pub fn load_conflicts(app: &tauri::AppHandle) -> ConflictList {
+    match app.store(STORE_FILE) {
+        Ok(store) => store.get(CONFLICTS_KEY).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default(),
+        Err(_) => ConflictList::default(),
+    }
+}
+
+pub fn save_conflicts(app: &tauri::AppHandle, list: &ConflictList) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(CONFLICTS_KEY, serde_json::to_value(list).map_err(|e| e.to_string())?);
+    store.save().map_err(|e| e.to_string())
+}
+
+pub fn add_conflict(list: &mut ConflictList, entry: ConflictEntry) {
+    list.items.push(entry);
+}
+
+pub fn remove_conflict(list: &mut ConflictList, id: &str) {
+    list.items.retain(|c| c.id != id);
 }
 
 fn emit_queue_changed(app: &tauri::AppHandle, pending: usize) {
@@ -322,5 +379,47 @@ mod tests {
         assert_eq!(detect_conflict(None, Some("t2")), None);
         assert_eq!(detect_conflict(Some("t1"), None), None);
         assert_eq!(detect_conflict(None, None), None);
+    }
+
+    fn sample_fields() -> ConflictFields {
+        ConflictFields { priority: Some("high".into()), ..Default::default() }
+    }
+
+    fn sample_entry(id: &str) -> ConflictEntry {
+        ConflictEntry {
+            id: id.into(),
+            kind: MutationKind::UpdatePriority,
+            project_id: "p1".into(),
+            target_id: "i1".into(),
+            item_name: "버그 수정".into(),
+            reason: ConflictReason::ServerUpdated,
+            local_fields: sample_fields(),
+            local_payload: serde_json::json!({ "priority": "high" }),
+            server_fields: Some(ConflictFields { priority: Some("urgent".into()), ..Default::default() }),
+            detected_at_ms: 1000,
+        }
+    }
+
+    #[test]
+    fn add_conflict_appends_and_remove_conflict_drops_by_id() {
+        let mut list = ConflictList::default();
+        add_conflict(&mut list, sample_entry("c1"));
+        add_conflict(&mut list, sample_entry("c2"));
+        assert_eq!(list.items.len(), 2);
+        remove_conflict(&mut list, "c1");
+        let ids: Vec<_> = list.items.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["c2"]);
+    }
+
+    #[test]
+    fn conflict_list_round_trips_through_json() {
+        let mut list = ConflictList::default();
+        add_conflict(&mut list, sample_entry("c1"));
+        let json = serde_json::to_string(&list).unwrap();
+        let back: ConflictList = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.items.len(), 1);
+        assert_eq!(back.items[0].id, "c1");
+        assert_eq!(back.items[0].local_fields.priority.as_deref(), Some("high"));
+        assert_eq!(back.items[0].server_fields.as_ref().unwrap().priority.as_deref(), Some("urgent"));
     }
 }
