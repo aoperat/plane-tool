@@ -2,11 +2,11 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getPendingAssignments, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -42,6 +42,7 @@ let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
 let lastItems: WorkItem[] = [];
 let lastProjects: Project[] = [];
+let pendingCount = 0;
 
 // View preference, persisted in the webview's localStorage (no backend setting needed).
 const HIDE_DONE_KEY = "hideCompleted";
@@ -705,7 +706,7 @@ async function refresh() {
     const data: SidebarData = await fetchSidebarData(shiftIsoDate(today, -1), shiftIsoDate(today, 1));
     states = data.states;
     renderTasks(filterVisibleToday(data.assigned), data.projects);
-    synced.textContent = "동기화 완료";
+    synced.textContent = offlineStatusText(data.is_cached, data.cached_at_ms, pendingCount, Date.now());
     refreshInbox();
   } catch (e) {
     const msg = typeof e === "string" ? e : ((e as any)?.message ?? JSON.stringify(e));
@@ -896,6 +897,10 @@ document.addEventListener("keydown", (e) => {
 win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
 win.listen("assignments-updated", refreshInbox);
+win.listen("offline-queue-changed", (e) => {
+  pendingCount = (e.payload as { pending: number }).pending;
+  synced.textContent = offlineStatusText(false, null, pendingCount, Date.now());
+});
 win.listen("tauri://blur", () => {
   if (!pinned && !autoOpened) hideSidebar();
 });
@@ -920,5 +925,6 @@ win.listen("idle-ended", () => {
 document.addEventListener("pointerdown", () => {
   autoOpened = false;
 }, true);
+getOfflineStatus().then((s) => { pendingCount = s.pending; }).catch(() => {});
 refresh();
 refreshInbox();
