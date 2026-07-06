@@ -816,6 +816,63 @@ pub fn get_offline_status(app: tauri::AppHandle) -> OfflineStatusDto {
     OfflineStatusDto { pending: crate::offline::load_queue(&app).items.len() }
 }
 
+#[derive(Serialize)]
+pub struct ConflictFieldsDto {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub assignee_ids: Option<Vec<String>>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+    pub priority: Option<String>,
+    pub state_group: Option<String>,
+}
+
+impl From<crate::offline::ConflictFields> for ConflictFieldsDto {
+    fn from(f: crate::offline::ConflictFields) -> Self {
+        Self {
+            name: f.name,
+            description: f.description,
+            assignee_ids: f.assignee_ids,
+            start_date: f.start_date,
+            target_date: f.target_date,
+            priority: f.priority,
+            state_group: f.state_group,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct ConflictDto {
+    pub id: String,
+    pub kind: crate::offline::MutationKind,
+    pub project_id: String,
+    pub target_id: String,
+    pub item_name: String,
+    pub reason: crate::offline::ConflictReason,
+    pub local_fields: ConflictFieldsDto,
+    pub server_fields: Option<ConflictFieldsDto>,
+    pub detected_at_ms: u64,
+}
+
+#[tauri::command]
+pub fn get_conflicts(app: tauri::AppHandle) -> Vec<ConflictDto> {
+    crate::offline::load_conflicts(&app)
+        .items
+        .into_iter()
+        .map(|c| ConflictDto {
+            id: c.id,
+            kind: c.kind,
+            project_id: c.project_id,
+            target_id: c.target_id,
+            item_name: c.item_name,
+            reason: c.reason,
+            local_fields: c.local_fields.into(),
+            server_fields: c.server_fields.map(Into::into),
+            detected_at_ms: c.detected_at_ms,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
