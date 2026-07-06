@@ -476,6 +476,12 @@ async fn replay_queue(app: &tauri::AppHandle) {
             }
             Ok(ReplayOutcome::Conflict(reason, detail)) => {
                 let entry = offline::build_conflict_entry(&m, reason, detail, &cached_states, now_ms());
+                // resolve_conflict 커맨드도 conflicts.json을 read-modify-write
+                // 하므로, 이 구간은 ConflictLock을 잡은 채로만 실행한다 —
+                // QueueLock과 같은 원칙(load→mutate→save 사이 새 락을 잡아
+                // 최신 상태로 다시 읽는다).
+                let conflict_lock = app.state::<offline::ConflictLock>();
+                let _conflict_guard = conflict_lock.0.lock().await;
                 let mut conflicts = offline::load_conflicts(app);
                 offline::add_conflict(&mut conflicts, entry);
                 let _ = offline::save_conflicts(app, &conflicts);
@@ -737,6 +743,7 @@ pub fn run() {
 
             app.manage(assign_watch::StateLock::default());
             app.manage(offline::QueueLock::default());
+            app.manage(offline::ConflictLock::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());

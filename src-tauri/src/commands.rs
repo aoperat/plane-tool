@@ -894,8 +894,10 @@ pub async fn resolve_conflict(
     action: String,
     fields: Option<serde_json::Value>,
 ) -> Result<(), String> {
-    let mut conflicts = crate::offline::load_conflicts(&app);
-    let Some(entry) = conflicts.items.iter().find(|c| c.id == conflict_id).cloned() else {
+    // 조회는 잠금 없이 — 어떤 항목을 적용할지 알기 위한 것뿐이고, 네트워크
+    // 호출 동안 잠금을 들고 있으면 안 된다(QueueLock과 같은 원칙).
+    let conflicts_peek = crate::offline::load_conflicts(&app);
+    let Some(entry) = conflicts_peek.items.iter().find(|c| c.id == conflict_id).cloned() else {
         return Err("conflict not found".into());
     };
     if action == "apply" {
@@ -931,6 +933,12 @@ pub async fn resolve_conflict(
             }
         }
     }
+    // 네트워크 호출이 끝난 뒤 잠금을 잡고 최신 목록을 다시 읽어 제거한다 —
+    // 그 사이 replay_queue가 다른 충돌을 추가했을 수 있으므로, 호출 전에
+    // 읽어둔 stale한 목록을 그대로 저장하면 그 추가분을 덮어써 유실시킨다.
+    let lock = app.state::<crate::offline::ConflictLock>();
+    let _guard = lock.0.lock().await;
+    let mut conflicts = crate::offline::load_conflicts(&app);
     crate::offline::remove_conflict(&mut conflicts, &conflict_id);
     crate::offline::save_conflicts(&app, &conflicts)?;
     let _ = app.emit_to(

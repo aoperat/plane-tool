@@ -22,6 +22,12 @@ const CONFLICTS_KEY: &str = "conflicts";
 #[derive(Default)]
 pub struct QueueLock(pub tokio::sync::Mutex<()>);
 
+/// conflicts.json은 백그라운드 재생(`replay_queue`, lib.rs)과 `resolve_conflict`
+/// 커맨드가 둘 다 read-modify-write 한다 — 이 락을 잡은 채로만
+/// load_conflicts→save_conflicts 구간을 실행할 것 (QueueLock과 같은 패턴).
+#[derive(Default)]
+pub struct ConflictLock(pub tokio::sync::Mutex<()>);
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MutationKind {
     CreateIssue,
