@@ -1,7 +1,7 @@
 use crate::config;
 use tauri::{Emitter, Manager};
-use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
-use serde::Serialize;
+use crate::plane_api::{self, filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 
 #[derive(Serialize)]
@@ -24,13 +24,13 @@ pub struct SettingsDto {
     pub assign_remind_hours: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProjectDto { pub id: String, pub name: String, pub identifier: String }
 
 #[derive(Serialize)]
 pub struct MemberDto { pub id: String, pub display_name: String, pub is_me: bool }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorkItemDto {
     pub id: String,
     pub name: String,
@@ -56,14 +56,22 @@ pub struct WorkItemDetailDto {
     pub project_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StateDto { pub id: String, pub group: String, pub project_id: String, pub default: bool }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SidebarData {
     pub projects: Vec<ProjectDto>,
     pub assigned: Vec<WorkItemDto>,
     pub states: Vec<StateDto>,
+    /// 캐시(오프라인 폴백)에서 온 응답이면 true. 실시간 fetch 결과는 항상
+    /// false. `skip`은 쓰지 않는다 — Tauri IPC 직렬화도 serde를 거치므로
+    /// skip하면 프론트엔드에도 이 값이 전달되지 않아 오프라인 배지가 깨진다
+    /// (캐시 파일에 저장돼도 항상 false/None으로 재구성되므로 무해하다).
+    #[serde(default)]
+    pub is_cached: bool,
+    #[serde(default)]
+    pub cached_at_ms: Option<u64>,
 }
 
 pub fn assemble_sidebar(
@@ -91,7 +99,13 @@ pub fn assemble_sidebar(
         .into_iter()
         .map(|s| StateDto { id: s.id, group: s.group, project_id: s.project_id, default: s.default })
         .collect();
-    SidebarData { projects, assigned, states }
+    SidebarData { projects, assigned, states, is_cached: false, cached_at_ms: None }
+}
+
+/// 캐시에서 돌려주는 응답임을 표시한다 — 실시간 fetch 결과에는 호출하지 않는다.
+pub fn mark_from_cache(data: &mut SidebarData, cached_at_ms: u64) {
+    data.is_cached = true;
+    data.cached_at_ms = Some(cached_at_ms);
 }
 
 pub fn build_update_body(
@@ -225,6 +239,39 @@ pub fn save_settings(
     Ok(())
 }
 
+pub(crate) async fn try_create_issue_online(
+    client: &PlaneClient,
+    project_id: &str,
+    name: &str,
+    assignee_ids: &[String],
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: &str,
+    state_group: &str,
+    description: Option<&str>,
+) -> Result<String, String> {
+    let assignees = if assignee_ids.is_empty() {
+        let user = client.current_user().await?;
+        vec![user.id]
+    } else {
+        assignee_ids.to_vec()
+    };
+    let states = client.list_states(project_id).await?;
+    let state_id = resolve_state_id(&states, state_group)
+        .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
+    let description_html = description.filter(|d| !d.is_empty()).map(plain_text_to_description_html);
+    let item = NewWorkItem {
+        name,
+        assignee_ids: &assignees,
+        start_date,
+        target_date,
+        priority,
+        state_id: &state_id,
+        description_html: description_html.as_deref(),
+    };
+    client.create_work_item(project_id, &item).await
+}
+
 #[tauri::command]
 pub async fn create_issue(
     app: tauri::AppHandle,
@@ -241,30 +288,40 @@ pub async fn create_issue(
         return Err("empty_title".into());
     }
     let (client, _s) = client(&app)?;
-    let assignees = if assignee_ids.is_empty() {
-        let user = client.current_user().await?;
-        vec![user.id]
-    } else {
-        assignee_ids
-    };
-    let states = client.list_states(&project_id).await?;
-    let state_id = resolve_state_id(&states, &state_group)
-        .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
-    let description_html = description
-        .filter(|d| !d.is_empty())
-        .map(|d| plain_text_to_description_html(&d));
-    let item = NewWorkItem {
-        name: name.trim(),
-        assignee_ids: &assignees,
-        start_date: start_date.as_deref(),
-        target_date: target_date.as_deref(),
-        priority: &priority,
-        state_id: &state_id,
-        description_html: description_html.as_deref(),
-    };
-    client.create_work_item(&project_id, &item).await?;
-    config::set_last_project(&app, &project_id)?;
-    Ok(())
+    let trimmed = name.trim().to_string();
+    let result = try_create_issue_online(
+        &client, &project_id, &trimmed, &assignee_ids,
+        start_date.as_deref(), target_date.as_deref(), &priority, &state_group, description.as_deref(),
+    )
+    .await;
+    match result {
+        Ok(_new_id) => {
+            config::set_last_project(&app, &project_id)?;
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let payload = serde_json::json!({
+                "name": trimmed, "assignee_ids": assignee_ids,
+                "start_date": start_date, "target_date": target_date,
+                "priority": priority, "state_group": state_group, "description": description,
+            });
+            let placeholder = WorkItemDto {
+                id: String::new(),
+                name: trimmed,
+                priority: priority.clone(),
+                target_date: target_date.clone(),
+                start_date: start_date.clone(),
+                state_group: state_group.clone(),
+                project_id: project_id.clone(),
+                completed_at: None,
+                created_at: None,
+            };
+            crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
+            config::set_last_project(&app, &project_id)?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -274,6 +331,29 @@ pub async fn fetch_sidebar_data(
     completed_before: String,
 ) -> Result<SidebarData, String> {
     let (client, _s) = client(&app)?;
+    match fetch_sidebar_data_online(&client, &completed_after, &completed_before).await {
+        Ok(data) => {
+            if let Err(e) = crate::offline::save_cache(&app, &data, crate::now_ms()) {
+                eprintln!("offline cache save failed: {e}");
+            }
+            Ok(data)
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let snapshot = crate::offline::load_cache(&app)
+                .ok_or_else(|| "오프라인 상태이며 아직 캐시된 데이터가 없습니다".to_string())?;
+            let mut data = snapshot.data;
+            mark_from_cache(&mut data, snapshot.cached_at_ms);
+            Ok(data)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn fetch_sidebar_data_online(
+    client: &PlaneClient,
+    completed_after: &str,
+    completed_before: &str,
+) -> Result<SidebarData, String> {
     let user = client.current_user().await?;
     let projects = client.list_projects().await?;
     let mut all_items: Vec<WorkItem> = Vec::new();
@@ -288,7 +368,7 @@ pub async fn fetch_sidebar_data(
             Err(_) => continue, // skip a project that fails; keep the rest
         }
     }
-    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, &completed_after, &completed_before))
+    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, completed_after, completed_before))
 }
 
 #[tauri::command]
@@ -299,9 +379,23 @@ pub async fn update_work_item_priority(
     priority: String,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client
-        .update_work_item(&project_id, &item_id, serde_json::json!({ "priority": priority }))
-        .await
+    let body = serde_json::json!({ "priority": priority });
+    match client.update_work_item(&project_id, &item_id, body.clone()).await {
+        Ok(()) => Ok(()),
+        Err(e) if plane_api::is_network_error(&e) => {
+            let p = priority.clone();
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdatePriority,
+                &project_id,
+                &item_id,
+                body,
+                move |dto| dto.priority = p,
+            )
+            .await
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -312,9 +406,66 @@ pub async fn update_work_item_state(
     state_id: String,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client
-        .update_work_item(&project_id, &item_id, serde_json::json!({ "state": state_id }))
-        .await
+    let body = serde_json::json!({ "state": state_id });
+    match client.update_work_item(&project_id, &item_id, body.clone()).await {
+        Ok(()) => Ok(()),
+        Err(e) if plane_api::is_network_error(&e) => {
+            // 목록 캐시는 state_group(문자열)을 저장하므로, 표시용으로만
+            // 캐시된 states 목록에서 이 state_id에 해당하는 그룹명을 찾는다
+            // — 못 찾아도 큐잉 자체는 그대로 진행한다(재생 시 실제 id로 처리).
+            let group = crate::offline::load_cache(&app)
+                .and_then(|c| c.data.states.iter().find(|s| s.id == state_id).map(|s| s.group.clone()));
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdateState,
+                &project_id,
+                &item_id,
+                body,
+                move |dto| {
+                    if let Some(g) = group {
+                        dto.state_group = g;
+                    }
+                },
+            )
+            .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub(crate) async fn try_update_fields_online(
+    client: &PlaneClient,
+    project_id: &str,
+    item_id: &str,
+    name: Option<&str>,
+    description: Option<&str>,
+    assignee_ids: Option<&[String]>,
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: Option<&str>,
+    state_group: Option<&str>,
+) -> Result<(), String> {
+    let description_html = description.map(plain_text_to_description_html);
+    let state_id = match state_group {
+        Some(sg) => {
+            let states = client.list_states(project_id).await?;
+            Some(resolve_state_id(&states, sg).ok_or_else(|| format!("no state found for group '{sg}'"))?)
+        }
+        None => None,
+    };
+    let body = build_update_body(
+        name,
+        description_html.as_deref(),
+        assignee_ids,
+        start_date,
+        target_date,
+        priority,
+        state_id.as_deref(),
+    );
+    if body.as_object().is_some_and(|m| m.is_empty()) {
+        return Ok(());
+    }
+    client.update_work_item(project_id, item_id, body).await
 }
 
 #[tauri::command]
@@ -331,37 +482,70 @@ pub async fn update_work_item_fields(
     state_group: Option<String>,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    let description_html = description.as_deref().map(plain_text_to_description_html);
-    let state_id = match &state_group {
-        Some(sg) => {
-            let states = client.list_states(&project_id).await?;
-            Some(resolve_state_id(&states, sg).ok_or_else(|| format!("no state found for group '{sg}'"))?)
-        }
-        None => None,
-    };
-    let body = build_update_body(
+    let result = try_update_fields_online(
+        &client,
+        &project_id,
+        &item_id,
         name.as_deref(),
-        description_html.as_deref(),
+        description.as_deref(),
         assignee_ids.as_deref(),
         start_date.as_deref(),
         target_date.as_deref(),
         priority.as_deref(),
-        state_id.as_deref(),
-    );
-    if body.as_object().is_some_and(|m| m.is_empty()) {
-        return Ok(());
+        state_group.as_deref(),
+    )
+    .await;
+    match result {
+        Ok(()) => {
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let payload = serde_json::json!({
+                "name": name, "description": description, "assignee_ids": assignee_ids,
+                "start_date": start_date, "target_date": target_date,
+                "priority": priority, "state_group": state_group,
+            });
+            let name_p = name.clone();
+            let priority_p = priority.clone();
+            let start_date_p = start_date.clone();
+            let target_date_p = target_date.clone();
+            let state_group_p = state_group.clone();
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdateFields,
+                &project_id,
+                &item_id,
+                payload,
+                move |dto| {
+                    if let Some(n) = name_p { dto.name = n; }
+                    if let Some(p) = priority_p { dto.priority = p; }
+                    if let Some(sd) = start_date_p { dto.start_date = if sd.is_empty() { None } else { Some(sd) }; }
+                    if let Some(td) = target_date_p { dto.target_date = if td.is_empty() { None } else { Some(td) }; }
+                    if let Some(sg) = state_group_p { dto.state_group = sg; }
+                },
+            )
+            .await
+        }
+        Err(e) => Err(e),
     }
-    client.update_work_item(&project_id, &item_id, body).await?;
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
-    Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client.delete_work_item(&project_id, &item_id).await?;
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
-    Ok(())
+    match client.delete_work_item(&project_id, &item_id).await {
+        Ok(()) => {
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            crate::offline::queue_delete_and_remove(&app, &project_id, &item_id).await?;
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -620,6 +804,16 @@ pub async fn acknowledge_assignment(
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct OfflineStatusDto {
+    pub pending: usize,
+}
+
+#[tauri::command]
+pub fn get_offline_status(app: tauri::AppHandle) -> OfflineStatusDto {
+    OfflineStatusDto { pending: crate::offline::load_queue(&app).items.len() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -772,5 +966,22 @@ mod tests {
         assert_eq!(notes[0].date, "");
         assert_eq!(notes[0].notes, "");
         assert!(map_release_notes(&serde_json::json!({"message": "rate limited"})).is_empty());
+    }
+
+    #[test]
+    fn sidebar_data_round_trips_through_json_and_defaults_is_cached_to_false() {
+        let data = assemble_sidebar("me", vec![], vec![], vec![], "2026-06-30", "2026-07-02");
+        let json = serde_json::to_string(&data).unwrap();
+        let back: SidebarData = serde_json::from_str(&json).unwrap();
+        assert!(!back.is_cached);
+        assert_eq!(back.cached_at_ms, None);
+    }
+
+    #[test]
+    fn sidebar_data_from_cache_marks_is_cached_and_carries_timestamp() {
+        let mut data = assemble_sidebar("me", vec![], vec![], vec![], "2026-06-30", "2026-07-02");
+        mark_from_cache(&mut data, 12345);
+        assert!(data.is_cached);
+        assert_eq!(data.cached_at_ms, Some(12345));
     }
 }
