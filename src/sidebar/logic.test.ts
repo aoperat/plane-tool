@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -297,5 +297,19 @@ describe("formatRelativeTime", () => {
   });
   it("미래 타임스탬프(시계 오차)는 '방금 전'으로 처리", () => {
     expect(formatRelativeTime(now + 60_000, now)).toBe("방금 전");
+  });
+});
+
+describe("offlineStatusText", () => {
+  it("shows pending count when items are queued, regardless of cache state", () => {
+    expect(offlineStatusText(false, null, 2, 1000)).toBe("동기화 대기 2건");
+  });
+  it("shows offline-with-timestamp when serving from cache and nothing pending", () => {
+    const now = 1_000_000;
+    const cachedAt = now - 65_000; // just over a minute ago
+    expect(offlineStatusText(true, cachedAt, 0, now)).toContain("오프라인");
+  });
+  it("falls back to normal synced message when online and nothing pending", () => {
+    expect(offlineStatusText(false, null, 0, 1000)).toBe("동기화 완료");
   });
 });

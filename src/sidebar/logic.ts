@@ -162,3 +162,22 @@ export function formatRelativeTime(thenMs: number, nowMs: number): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}시간 전`;
   return `${Math.floor(diff / 86_400_000)}일 전`;
 }
+
+/** 사이드바 footer에 보여줄 동기화 상태 문구. 대기 중인 변경이 있으면
+ *  그것부터 보여주고(가장 실용적인 정보), 없으면 캐시 여부에 따라
+ *  오프라인/정상 동기화 문구를 고른다. */
+export function offlineStatusText(
+  isCached: boolean,
+  cachedAtMs: number | null,
+  pending: number,
+  now: number,
+): string {
+  if (pending > 0) return `동기화 대기 ${pending}건`;
+  if (isCached && cachedAtMs != null) {
+    const d = new Date(cachedAtMs);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `오프라인 · 마지막 동기화 ${hh}:${mm}`;
+  }
+  return "동기화 완료";
+}

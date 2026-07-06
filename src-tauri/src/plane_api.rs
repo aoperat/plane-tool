@@ -252,6 +252,17 @@ async fn error_with_body(resp: reqwest::Response) -> Result<reqwest::Response, S
     Err(msg)
 }
 
+/// True when `err` (a String produced by this client's methods) reflects a
+/// network-transport failure (server unreachable, timeout, DNS, TLS) rather
+/// than a server-side rejection. `error_with_body` always formats HTTP error
+/// responses as `"HTTP {status} (...)"`; every other error string in this
+/// file comes from `reqwest`'s own `Display`, which never starts with that
+/// prefix. Used by the offline queue to decide "queue for later" vs
+/// "show the user a real error right now".
+pub fn is_network_error(err: &str) -> bool {
+    !err.starts_with("HTTP ")
+}
+
 /// Seconds to wait before retrying a 429 response: honors the server's `Retry-After` header when
 /// present, otherwise falls back to exponential backoff (1s, 2s, 4s, ...) keyed on retry attempt.
 fn retry_after_seconds(headers: &reqwest::header::HeaderMap, attempt: u32) -> u64 {
@@ -403,11 +414,11 @@ impl PlaneClient {
         &self,
         project_id: &str,
         item: &NewWorkItem<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         // The create endpoint (no `expand` param) returns `assignees`/`state` as
         // flat id strings, not the nested objects `RawWorkItem` expects (that
         // shape only applies to the `expand=assignees,state` list endpoint).
-        // Nothing consumes the created item, so skip parsing the body.
+        // We only need the new item's own id from the response.
         let url = format!("{}/projects/{}/work-items/", self.ws_base(), project_id);
         // Absent optional fields are omitted rather than sent as `null` —
         // Plane 0.27+ rejects `"description_html": null` with a 400.
@@ -425,14 +436,20 @@ impl PlaneClient {
         if let Some(dh) = item.description_html {
             body.insert("description_html".into(), serde_json::json!(dh));
         }
-        self.send_retrying(
-            self.http
-                .post(&url)
-                .header("X-Api-Key", &self.api_key)
-                .json(&serde_json::Value::Object(body)),
-        )
-        .await?;
-        Ok(())
+        let resp = self
+            .send_retrying(
+                self.http
+                    .post(&url)
+                    .header("X-Api-Key", &self.api_key)
+                    .json(&serde_json::Value::Object(body)),
+            )
+            .await?;
+        #[derive(Deserialize)]
+        struct CreatedId {
+            id: String,
+        }
+        let created: CreatedId = resp.json().await.map_err(|e| e.to_string())?;
+        Ok(created.id)
     }
 
     pub async fn update_work_item(
@@ -811,7 +828,7 @@ mod tests {
                 "state": "state-1",
                 "description_html": "<p>World</p>"
             })))
-            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-item-1" })))
             .mount(&server)
             .await;
 
@@ -824,7 +841,8 @@ mod tests {
             state_id: "state-1",
             description_html: Some("<p>World</p>"),
         };
-        client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        assert_eq!(id, "new-item-1");
     }
 
     // Plane 0.27+ rejects explicit `null` for description_html ("This field may
@@ -842,7 +860,7 @@ mod tests {
                 "priority": "none",
                 "state": "state-1"
             })))
-            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-item-2" })))
             .mount(&server)
             .await;
 
@@ -855,7 +873,8 @@ mod tests {
             state_id: "state-1",
             description_html: None,
         };
-        client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        assert_eq!(id, "new-item-2");
     }
 
     // The server's validation errors arrive in the response body — surfacing
@@ -1133,5 +1152,11 @@ mod tests {
 
         let items = client_for(&server).await.list_work_items("p1").await.unwrap();
         assert_eq!(items[0].created_by.as_deref(), Some("pm-id"));
+    }
+
+    #[test]
+    fn is_network_error_distinguishes_http_status_from_transport_failure() {
+        assert!(!is_network_error("HTTP 400 Bad Request (http://x): oops"));
+        assert!(is_network_error("error sending request for url (http://x/): connection refused"));
     }
 }

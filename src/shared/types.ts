@@ -14,7 +14,11 @@ export interface WorkItemDetail {
   start_date: string | null; target_date: string | null;
   priority: string; state_group: string; project_id: string;
 }
-export interface SidebarData { projects: Project[]; assigned: WorkItem[]; states: ProjectState[]; }
+export interface SidebarData {
+  projects: Project[]; assigned: WorkItem[]; states: ProjectState[];
+  is_cached: boolean; cached_at_ms: number | null;
+}
+export interface OfflineStatus { pending: number; }
 export interface ReleaseNote { version: string; date: string; notes: string; }
 export interface SettingsDto {
   base_url: string; workspace: string;
