@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
-use crate::commands::{SidebarData, WorkItemDto};
+use crate::commands::{SidebarData, StateDto, WorkItemDto};
+use crate::plane_api::WorkItemDetail;
 
 const STORE_FILE: &str = "offline.json";
 const CACHE_KEY: &str = "cache";
@@ -284,6 +285,86 @@ pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, t
     Ok(())
 }
 
+fn local_fields_from_payload(kind: &MutationKind, payload: &serde_json::Value) -> ConflictFields {
+    local_fields_from_payload_with_states(kind, payload, &[])
+}
+
+/// `UpdateState`의 페이로드는 이미 해석된 state id만 담고 있어(`{"state": "<id>"}`),
+/// 표시용 그룹 라벨을 얻으려면 캐시된 states 목록에서 역으로 찾아야 한다.
+/// 못 찾으면(캐시가 없거나 상태가 지워졌으면) id를 그대로 보여준다 — 드문
+/// 경우라 이 정도 성능 저하는 감수한다.
+fn local_fields_from_payload_with_states(
+    kind: &MutationKind,
+    payload: &serde_json::Value,
+    cached_states: &[StateDto],
+) -> ConflictFields {
+    match kind {
+        MutationKind::UpdatePriority => ConflictFields {
+            priority: payload.get("priority").and_then(|v| v.as_str()).map(str::to_string),
+            ..Default::default()
+        },
+        MutationKind::UpdateState => {
+            let state_id = payload.get("state").and_then(|v| v.as_str());
+            let label = state_id.and_then(|id| cached_states.iter().find(|s| s.id == id).map(|s| s.group.clone()));
+            ConflictFields {
+                state_group: label.or_else(|| state_id.map(str::to_string)),
+                ..Default::default()
+            }
+        }
+        MutationKind::UpdateFields => ConflictFields {
+            name: payload.get("name").and_then(|v| v.as_str()).map(str::to_string),
+            description: payload.get("description").and_then(|v| v.as_str()).map(str::to_string),
+            assignee_ids: payload.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+            }),
+            start_date: payload.get("start_date").and_then(|v| v.as_str()).map(str::to_string),
+            target_date: payload.get("target_date").and_then(|v| v.as_str()).map(str::to_string),
+            priority: payload.get("priority").and_then(|v| v.as_str()).map(str::to_string),
+            state_group: payload.get("state_group").and_then(|v| v.as_str()).map(str::to_string),
+        },
+        MutationKind::Delete | MutationKind::CreateIssue => ConflictFields::default(),
+    }
+}
+
+/// 큐 항목 하나와 재생 시점에 조회한 서버 상태(`detail`, 대상이 삭제됐으면
+/// `None`)로부터 사용자에게 보여줄 `ConflictEntry`를 만든다.
+pub fn build_conflict_entry(
+    m: &PendingMutation,
+    reason: ConflictReason,
+    detail: Option<crate::plane_api::WorkItemDetail>,
+    cached_states: &[StateDto],
+    now_ms: u64,
+) -> ConflictEntry {
+    let local_fields = local_fields_from_payload_with_states(&m.kind, &m.payload, cached_states);
+    let (item_name, server_fields) = match detail {
+        Some(d) => (
+            d.name.clone(),
+            Some(ConflictFields {
+                name: Some(d.name),
+                description: Some(d.description),
+                assignee_ids: Some(d.assignee_ids),
+                start_date: d.start_date,
+                target_date: d.target_date,
+                priority: Some(d.priority),
+                state_group: Some(d.state_group),
+            }),
+        ),
+        None => ("(삭제된 항목)".to_string(), None),
+    };
+    ConflictEntry {
+        id: format!("conflict-{now_ms}"),
+        kind: m.kind.clone(),
+        project_id: m.project_id.clone(),
+        target_id: m.target_id.clone(),
+        item_name,
+        reason,
+        local_fields,
+        local_payload: m.payload.clone(),
+        server_fields,
+        detected_at_ms: now_ms,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +502,71 @@ mod tests {
         assert_eq!(back.items[0].id, "c1");
         assert_eq!(back.items[0].local_fields.priority.as_deref(), Some("high"));
         assert_eq!(back.items[0].server_fields.as_ref().unwrap().priority.as_deref(), Some("urgent"));
+    }
+
+    fn detail(name: &str, priority: &str, updated_at: &str) -> WorkItemDetail {
+        WorkItemDetail {
+            id: "i1".into(), name: name.into(), description: "".into(),
+            assignee_ids: vec![], start_date: None, target_date: None,
+            priority: priority.into(), state_group: "started".into(), project_id: "p1".into(),
+            updated_at: Some(updated_at.into()),
+        }
+    }
+
+    #[test]
+    fn local_fields_from_payload_reads_only_the_touched_field_for_single_field_kinds() {
+        let payload = serde_json::json!({ "priority": "high" });
+        let fields = local_fields_from_payload(&MutationKind::UpdatePriority, &payload);
+        assert_eq!(fields.priority.as_deref(), Some("high"));
+        assert_eq!(fields.name, None);
+    }
+
+    #[test]
+    fn local_fields_from_payload_resolves_state_id_to_group_label() {
+        let payload = serde_json::json!({ "state": "s-started" });
+        let states = vec![StateDto { id: "s-started".into(), group: "started".into(), project_id: "p1".into(), default: false }];
+        let fields = local_fields_from_payload_with_states(&MutationKind::UpdateState, &payload, &states);
+        assert_eq!(fields.state_group.as_deref(), Some("started"));
+    }
+
+    #[test]
+    fn local_fields_from_payload_reads_every_touched_field_for_update_fields() {
+        let payload = serde_json::json!({
+            "name": "새 제목", "priority": "urgent", "state_group": "started",
+            "description": null, "assignee_ids": null, "start_date": null, "target_date": null,
+        });
+        let fields = local_fields_from_payload(&MutationKind::UpdateFields, &payload);
+        assert_eq!(fields.name.as_deref(), Some("새 제목"));
+        assert_eq!(fields.priority.as_deref(), Some("urgent"));
+        assert_eq!(fields.state_group.as_deref(), Some("started"));
+        assert_eq!(fields.description, None);
+    }
+
+    #[test]
+    fn build_conflict_entry_fills_item_name_and_server_fields_from_detail() {
+        let m = PendingMutation {
+            id: "pending-1".into(), kind: MutationKind::UpdatePriority,
+            project_id: "p1".into(), target_id: "i1".into(),
+            payload: serde_json::json!({ "priority": "high" }),
+            base_updated_at: Some("t1".into()), queued_at_ms: 1000,
+        };
+        let entry = build_conflict_entry(&m, ConflictReason::ServerUpdated, Some(detail("버그 수정", "urgent", "t2")), &[], 2000);
+        assert_eq!(entry.item_name, "버그 수정");
+        assert_eq!(entry.local_fields.priority.as_deref(), Some("high"));
+        assert_eq!(entry.server_fields.unwrap().priority.as_deref(), Some("urgent"));
+        assert_eq!(entry.reason, ConflictReason::ServerUpdated);
+    }
+
+    #[test]
+    fn build_conflict_entry_handles_a_deleted_target() {
+        let m = PendingMutation {
+            id: "pending-1".into(), kind: MutationKind::UpdateFields,
+            project_id: "p1".into(), target_id: "i1".into(),
+            payload: serde_json::json!({ "name": "새 제목" }),
+            base_updated_at: Some("t1".into()), queued_at_ms: 1000,
+        };
+        let entry = build_conflict_entry(&m, ConflictReason::TargetDeleted, None, &[], 2000);
+        assert_eq!(entry.reason, ConflictReason::TargetDeleted);
+        assert!(entry.server_fields.is_none());
     }
 }
