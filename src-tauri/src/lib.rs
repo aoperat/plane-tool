@@ -412,7 +412,7 @@ const OFFLINE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 
 fn spawn_offline_watcher(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut was_offline = false;
+        let mut was_offline = true;
         loop {
             tokio::time::sleep(OFFLINE_POLL_INTERVAL).await;
             let s = config::load_settings(&app);
