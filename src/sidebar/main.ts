@@ -609,9 +609,17 @@ async function hideSidebar(): Promise<void> {
   await win.hide();
 }
 
-async function toggleSidebar() {
-  if (await win.isVisible()) await hideSidebar();
-  else await showSidebar();
+// F2 연타(또는 OS 키 반복)로 toggle-sidebar가 겹쳐 들어오면 win.isVisible()의
+// IPC 왕복 도중 여러 호출이 같은 옛 가시성 상태를 읽고 같은 동작을 중복
+// 실행할 수 있다(TOCTOU) — 프라미스 체인으로 직렬화해 항상 이전 토글이 끝난
+// 뒤의 상태를 보게 한다. .catch로 앞선 실패가 뒤 토글까지 막지 않게 한다.
+let toggleInFlight: Promise<void> = Promise.resolve();
+function toggleSidebar(): Promise<void> {
+  toggleInFlight = toggleInFlight.catch(() => {}).then(async () => {
+    if (await win.isVisible()) await hideSidebar();
+    else await showSidebar();
+  });
+  return toggleInFlight;
 }
 
 function renderInbox(pending: PendingAssignment[]) {
@@ -692,7 +700,30 @@ async function refreshInbox() {
   }
 }
 
-async function refresh() {
+// 새로고침 버튼과 백엔드의 refresh-sidebar 이벤트는 refreshIfStale()의
+// 쿨다운을 거치지 않고 refresh()를 직접 부른다. 연속 편집/삭제나 버튼 연타로
+// 여러 호출이 겹치면 프로젝트당 N+1 요청 묶음이 동시에 나가고, 응답 순서가
+// 뒤바뀌면 최신 렌더가 옛 데이터로 되돌아갈 수 있다 — 진행 중인 요청이 있으면
+// 새로 fetch하지 않고 완료 후 한 번만 더 돌게 합쳐(coalesce) 항상 순차 실행되게 한다.
+let refreshInFlight: Promise<void> | null = null;
+let refreshQueued = false;
+
+function refresh(): Promise<void> {
+  if (refreshInFlight) {
+    refreshQueued = true;
+    return refreshInFlight;
+  }
+  refreshInFlight = runRefresh().finally(() => {
+    refreshInFlight = null;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refresh();
+    }
+  });
+  return refreshInFlight;
+}
+
+async function runRefresh() {
   lastRefreshAt = Date.now();
   synced.textContent = "동기화 중…";
   try {
