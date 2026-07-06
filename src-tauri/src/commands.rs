@@ -486,9 +486,18 @@ pub async fn update_work_item_fields(
 #[tauri::command]
 pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client.delete_work_item(&project_id, &item_id).await?;
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
-    Ok(())
+    match client.delete_work_item(&project_id, &item_id).await {
+        Ok(()) => {
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            crate::offline::queue_delete_and_remove(&app, &project_id, &item_id)?;
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
