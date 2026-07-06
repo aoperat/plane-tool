@@ -74,6 +74,8 @@ function attachShortcutCapture(input: HTMLInputElement) {
     if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) return;
     e.preventDefault();
     if (e.key === "Escape") {
+      // 창 전역 Esc(닫기)로 번지지 않게 막는다 — 여기서는 캡처 취소만 한다.
+      e.stopPropagation();
       restore();
       input.blur();
       return;
@@ -187,5 +189,12 @@ document.getElementById("save")!.onclick = async () => {
     status.textContent = "저장 실패: " + e;
   }
 };
+
+document.getElementById("setClose")!.onclick = () => {
+  getCurrentWindow().hide();
+};
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") getCurrentWindow().hide();
+});
 
 load();

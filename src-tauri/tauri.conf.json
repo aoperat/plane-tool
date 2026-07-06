@@ -30,7 +30,8 @@
         "label": "settings",
         "url": "src/settings/index.html",
         "width": 460, "height": 560,
-        "decorations": true, "skipTaskbar": false, "visible": false, "resizable": false
+        "decorations": false, "transparent": true, "shadow": false,
+        "skipTaskbar": false, "visible": false, "resizable": false
       },
       {
         "label": "editmodal",

@@ -469,13 +469,19 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let settings_i = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings_i, &quit_i])?;
+            let sidebar_i = MenuItem::with_id(app, "sidebar", "사이드바 열기", true, None::<&str>)?;
+            let quickadd_i = MenuItem::with_id(app, "quickadd", "빠른 추가", true, None::<&str>)?;
+            let settings_i = MenuItem::with_id(app, "settings", "설정", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&sidebar_i, &quickadd_i, &settings_i, &quit_i])?;
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    // Sidebar animates its own show/hide, so ask it to toggle itself
+                    // instead of driving show()/hide() here (mirrors the global shortcut).
+                    "sidebar" => { let _ = app.emit_to("sidebar", "toggle-sidebar", ()); }
+                    "quickadd" => toggle_quickadd(app),
                     "settings" => show_window(app, "settings"),
                     "quit" => app.exit(0),
                     _ => {}
