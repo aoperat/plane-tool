@@ -237,6 +237,39 @@ pub fn save_settings(
     Ok(())
 }
 
+pub(crate) async fn try_create_issue_online(
+    client: &PlaneClient,
+    project_id: &str,
+    name: &str,
+    assignee_ids: &[String],
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: &str,
+    state_group: &str,
+    description: Option<&str>,
+) -> Result<String, String> {
+    let assignees = if assignee_ids.is_empty() {
+        let user = client.current_user().await?;
+        vec![user.id]
+    } else {
+        assignee_ids.to_vec()
+    };
+    let states = client.list_states(project_id).await?;
+    let state_id = resolve_state_id(&states, state_group)
+        .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
+    let description_html = description.filter(|d| !d.is_empty()).map(plain_text_to_description_html);
+    let item = NewWorkItem {
+        name,
+        assignee_ids: &assignees,
+        start_date,
+        target_date,
+        priority,
+        state_id: &state_id,
+        description_html: description_html.as_deref(),
+    };
+    client.create_work_item(project_id, &item).await
+}
+
 #[tauri::command]
 pub async fn create_issue(
     app: tauri::AppHandle,
@@ -253,30 +286,40 @@ pub async fn create_issue(
         return Err("empty_title".into());
     }
     let (client, _s) = client(&app)?;
-    let assignees = if assignee_ids.is_empty() {
-        let user = client.current_user().await?;
-        vec![user.id]
-    } else {
-        assignee_ids
-    };
-    let states = client.list_states(&project_id).await?;
-    let state_id = resolve_state_id(&states, &state_group)
-        .ok_or_else(|| format!("no state found for group '{state_group}'"))?;
-    let description_html = description
-        .filter(|d| !d.is_empty())
-        .map(|d| plain_text_to_description_html(&d));
-    let item = NewWorkItem {
-        name: name.trim(),
-        assignee_ids: &assignees,
-        start_date: start_date.as_deref(),
-        target_date: target_date.as_deref(),
-        priority: &priority,
-        state_id: &state_id,
-        description_html: description_html.as_deref(),
-    };
-    let _new_id = client.create_work_item(&project_id, &item).await?;
-    config::set_last_project(&app, &project_id)?;
-    Ok(())
+    let trimmed = name.trim().to_string();
+    let result = try_create_issue_online(
+        &client, &project_id, &trimmed, &assignee_ids,
+        start_date.as_deref(), target_date.as_deref(), &priority, &state_group, description.as_deref(),
+    )
+    .await;
+    match result {
+        Ok(_new_id) => {
+            config::set_last_project(&app, &project_id)?;
+            Ok(())
+        }
+        Err(e) if plane_api::is_network_error(&e) => {
+            let payload = serde_json::json!({
+                "name": trimmed, "assignee_ids": assignee_ids,
+                "start_date": start_date, "target_date": target_date,
+                "priority": priority, "state_group": state_group, "description": description,
+            });
+            let placeholder = WorkItemDto {
+                id: String::new(),
+                name: trimmed,
+                priority: priority.clone(),
+                target_date: target_date.clone(),
+                start_date: start_date.clone(),
+                state_group: state_group.clone(),
+                project_id: project_id.clone(),
+                completed_at: None,
+                created_at: None,
+            };
+            crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder)?;
+            config::set_last_project(&app, &project_id)?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
