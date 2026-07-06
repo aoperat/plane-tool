@@ -490,9 +490,50 @@ async fn replay_queue(app: &tauri::AppHandle) {
     let _ = app.emit_to("sidebar", "refresh-sidebar", ());
 }
 
+/// `replay_one`의 결과. `Applied(Some(id))`는 `CreateIssue`가 성공해 실제
+/// 서버 id를 얻었을 때만 쓰인다. `Conflict`는 그 항목을 큐에서 빼서
+/// 충돌 목록으로 옮겨야 함을 뜻한다 — 재생은 계속 진행된다(멈추지 않음).
+enum ReplayOutcome {
+    Applied(Option<String>),
+    Conflict(offline::ConflictReason, Option<plane_api::WorkItemDetail>),
+}
+
+/// 충돌이 없다고 판정된 뒤 실제로 서버에 적용한다. `CreateIssue`는
+/// `replay_one`에서 별도 분기로 처리하므로 여기 도달하지 않는다.
+async fn apply_mutation(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<(), String> {
+    match m.kind {
+        offline::MutationKind::UpdatePriority | offline::MutationKind::UpdateState => {
+            client.update_work_item(&m.project_id, &m.target_id, m.payload.clone()).await
+        }
+        offline::MutationKind::UpdateFields => {
+            let p = &m.payload;
+            let assignee_ids: Option<Vec<String>> = p.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+            });
+            commands::try_update_fields_online(
+                client,
+                &m.project_id,
+                &m.target_id,
+                p.get("name").and_then(|v| v.as_str()),
+                p.get("description").and_then(|v| v.as_str()),
+                assignee_ids.as_deref(),
+                p.get("start_date").and_then(|v| v.as_str()),
+                p.get("target_date").and_then(|v| v.as_str()),
+                p.get("priority").and_then(|v| v.as_str()),
+                p.get("state_group").and_then(|v| v.as_str()),
+            )
+            .await
+        }
+        offline::MutationKind::Delete => client.delete_work_item(&m.project_id, &m.target_id).await,
+        offline::MutationKind::CreateIssue => unreachable!("CreateIssue is handled separately in replay_one"),
+    }
+}
+
 /// 큐 항목 하나를 재생. `CreateIssue`가 성공하면 실제 서버 id를
-/// `Some(..)`으로 돌려줘 호출자가 이후 항목들의 target_id를 치환하게 한다.
-async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<Option<String>, String> {
+/// `ReplayOutcome::Applied(Some(..))`으로 돌려줘 호출자가 이후 항목들의
+/// target_id를 치환하게 한다. `Delete` + 대상이 이미 삭제됨은 충돌이
+/// 아니라 성공으로 본다(원하는 최종 상태가 이미 달성됨).
+async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<ReplayOutcome, String> {
     match m.kind {
         offline::MutationKind::CreateIssue => {
             let p = &m.payload;
@@ -513,36 +554,31 @@ async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutatio
                 p.get("description").and_then(|v| v.as_str()),
             )
             .await?;
-            Ok(Some(new_id))
+            Ok(ReplayOutcome::Applied(Some(new_id)))
         }
-        offline::MutationKind::UpdatePriority | offline::MutationKind::UpdateState => {
-            client.update_work_item(&m.project_id, &m.target_id, m.payload.clone()).await?;
-            Ok(None)
-        }
-        offline::MutationKind::UpdateFields => {
-            let p = &m.payload;
-            let assignee_ids: Option<Vec<String>> = p.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
-                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
-            });
-            commands::try_update_fields_online(
-                client,
-                &m.project_id,
-                &m.target_id,
-                p.get("name").and_then(|v| v.as_str()),
-                p.get("description").and_then(|v| v.as_str()),
-                assignee_ids.as_deref(),
-                p.get("start_date").and_then(|v| v.as_str()),
-                p.get("target_date").and_then(|v| v.as_str()),
-                p.get("priority").and_then(|v| v.as_str()),
-                p.get("state_group").and_then(|v| v.as_str()),
-            )
-            .await?;
-            Ok(None)
-        }
-        offline::MutationKind::Delete => {
-            client.delete_work_item(&m.project_id, &m.target_id).await?;
-            Ok(None)
-        }
+        offline::MutationKind::UpdatePriority
+        | offline::MutationKind::UpdateState
+        | offline::MutationKind::UpdateFields
+        | offline::MutationKind::Delete => match client.get_work_item(&m.project_id, &m.target_id).await {
+            Ok(detail) => {
+                match offline::detect_conflict(m.base_updated_at.as_deref(), detail.updated_at.as_deref()) {
+                    Some(reason) => Ok(ReplayOutcome::Conflict(reason, Some(detail))),
+                    None => {
+                        apply_mutation(client, m).await?;
+                        Ok(ReplayOutcome::Applied(None))
+                    }
+                }
+            }
+            Err(e) if plane_api::is_not_found_error(&e) => {
+                if m.kind == offline::MutationKind::Delete {
+                    // 이미 지워져 있다 — 원하던 결과가 이미 달성됐으니 충돌이 아니다.
+                    Ok(ReplayOutcome::Applied(None))
+                } else {
+                    Ok(ReplayOutcome::Conflict(offline::ConflictReason::TargetDeleted, None))
+                }
+            }
+            Err(e) => Err(e),
+        },
     }
 }
 
