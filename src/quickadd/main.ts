@@ -329,10 +329,8 @@ function handleDropdownKeydown(container: HTMLElement, isOpen: () => boolean, on
   };
 }
 
-function toggleAssignee(id: string | null) {
-  if (id === null) {
-    assigneeIds = [];
-  } else if (assigneeIds.includes(id)) {
+function toggleAssignee(id: string) {
+  if (assigneeIds.includes(id)) {
     assigneeIds = assigneeIds.filter((x) => x !== id);
   } else {
     assigneeIds = [...assigneeIds, id];
@@ -343,32 +341,33 @@ function toggleAssignee(id: string | null) {
 
 // Mouse click picks a single assignee and closes the popover; Ctrl+click toggles the
 // entry within the multi-select and leaves the popover open (mirrors the Space/Enter
-// keyboard contract below).
-function handleAssigneeItemClick(e: MouseEvent, id: string | null) {
+// keyboard contract below). Picking the "me" member resets to the empty-array default
+// (server assigns to the caller) rather than pinning an explicit id, so it still reads
+// as "no explicit choice" if the member list is ever re-fetched.
+function handleAssigneeItemClick(e: MouseEvent, m: Member) {
   if (e.ctrlKey) {
-    toggleAssignee(id);
+    toggleAssignee(m.id);
     return;
   }
-  assigneeIds = id === null ? [] : [id];
+  assigneeIds = m.is_me ? [] : [m.id];
   renderChips();
   closePopover();
   titleEl.focus();
 }
 
+// The project member list already includes the current user, so there's no separate
+// "나 (기본값)" placeholder row — the matching member is labeled "(나)" and shows as
+// selected whenever assigneeIds is empty (the default-to-self state).
 function renderAssigneePopoverItems() {
   fieldPopover.innerHTML = "";
-  const selfItem = document.createElement("div");
-  selfItem.className = "dd-item" + (assigneeIds.length === 0 ? " sel" : "");
-  selfItem.textContent = "나 (기본값)";
-  selfItem.dataset.id = "";
-  selfItem.onclick = (e) => handleAssigneeItemClick(e, null);
-  fieldPopover.appendChild(selfItem);
   for (const m of members) {
     const item = document.createElement("div");
-    item.className = "dd-item" + (assigneeIds.includes(m.id) ? " sel" : "");
-    item.textContent = m.display_name;
+    const selected = assigneeIds.includes(m.id) || (m.is_me && assigneeIds.length === 0);
+    item.className = "dd-item" + (selected ? " sel" : "");
+    item.textContent = m.is_me ? `${m.display_name} (나)` : m.display_name;
     item.dataset.id = m.id;
-    item.onclick = (e) => handleAssigneeItemClick(e, m.id);
+    if (m.is_me) item.dataset.self = "1";
+    item.onclick = (e) => handleAssigneeItemClick(e, m);
     fieldPopover.appendChild(item);
   }
   initKeyboardFocus(fieldPopover);
@@ -494,7 +493,8 @@ const fieldPopoverKeydown = handleDropdownKeydown(fieldPopover, () => openPopove
 // The assignee popover is multi-select, so it gets its own keyboard contract instead of
 // handleDropdownKeydown's single-select one: Space toggles the focused member in and out
 // (popover stays open), Enter replaces the whole selection with just the focused entry
-// and closes. dataset.id carries the member id ("" = the "나 (기본값)" self entry).
+// and closes. dataset.id carries the member id; dataset.self marks the current-user row,
+// which resets to the empty-array default instead of pinning its explicit id.
 chipAssignee.addEventListener("keydown", (e) => {
   if (openPopover !== "assignee") return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -504,14 +504,14 @@ chipAssignee.addEventListener("keydown", (e) => {
     e.preventDefault();
     const index = keyboardFocusIndex(fieldPopover);
     const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
-    if (!focused) return;
-    toggleAssignee(focused.dataset.id || null); // re-renders the list, so restore the cursor
+    if (!focused?.dataset.id) return;
+    toggleAssignee(focused.dataset.id); // re-renders the list, so restore the cursor
     setKeyboardFocusIndex(fieldPopover, index);
   } else if (e.key === "Enter") {
     e.preventDefault();
     const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
-    if (focused) {
-      assigneeIds = focused.dataset.id ? [focused.dataset.id] : [];
+    if (focused?.dataset.id) {
+      assigneeIds = focused.dataset.self ? [] : [focused.dataset.id];
       renderChips();
     }
     closePopover();

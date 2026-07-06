@@ -28,7 +28,7 @@ pub struct SettingsDto {
 pub struct ProjectDto { pub id: String, pub name: String, pub identifier: String }
 
 #[derive(Serialize)]
-pub struct MemberDto { pub id: String, pub display_name: String }
+pub struct MemberDto { pub id: String, pub display_name: String, pub is_me: bool }
 
 #[derive(Serialize)]
 pub struct WorkItemDto {
@@ -378,9 +378,13 @@ pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, Str
 pub async fn list_members(app: tauri::AppHandle, project_id: String) -> Result<Vec<MemberDto>, String> {
     let (client, _s) = client(&app)?;
     let members = client.list_members(&project_id).await?;
+    let user = client.current_user().await?;
     Ok(members
         .into_iter()
-        .map(|m| MemberDto { id: m.id, display_name: m.display_name })
+        .map(|m| {
+            let is_me = m.id == user.id;
+            MemberDto { id: m.id, display_name: m.display_name, is_me }
+        })
         .collect())
 }
 
