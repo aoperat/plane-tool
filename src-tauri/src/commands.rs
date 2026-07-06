@@ -873,6 +873,66 @@ pub fn get_conflicts(app: tauri::AppHandle) -> Vec<ConflictDto> {
         .collect()
 }
 
+/// 충돌 하나를 해결한다. `action`은 `"apply"`(내 값 유지 — 종류별로 아래
+/// 표대로 실제 서버에 반영) 또는 `"discard"`(서버 값 그대로 두고 버림, API
+/// 호출 없음). `UpdateFields` 충돌의 `"apply"`는 `fields`(프런트엔드가
+/// 필드별로 고른 값을 합친 것)가 반드시 있어야 한다 — 상태 그룹→id 변환은
+/// `try_update_fields_online`이 다시 온라인으로 처리한다.
+#[tauri::command]
+pub async fn resolve_conflict(
+    app: tauri::AppHandle,
+    conflict_id: String,
+    action: String,
+    fields: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let mut conflicts = crate::offline::load_conflicts(&app);
+    let Some(entry) = conflicts.items.iter().find(|c| c.id == conflict_id).cloned() else {
+        return Err("conflict not found".into());
+    };
+    if action == "apply" {
+        let (client, _s) = client(&app)?;
+        match entry.kind {
+            crate::offline::MutationKind::Delete => {
+                client.delete_work_item(&entry.project_id, &entry.target_id).await?;
+            }
+            crate::offline::MutationKind::UpdatePriority | crate::offline::MutationKind::UpdateState => {
+                client.update_work_item(&entry.project_id, &entry.target_id, entry.local_payload.clone()).await?;
+            }
+            crate::offline::MutationKind::UpdateFields => {
+                let f = fields.ok_or_else(|| "fields required for UpdateFields conflicts".to_string())?;
+                let assignee_ids: Option<Vec<String>> = f.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                    a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+                });
+                try_update_fields_online(
+                    &client,
+                    &entry.project_id,
+                    &entry.target_id,
+                    f.get("name").and_then(|v| v.as_str()),
+                    f.get("description").and_then(|v| v.as_str()),
+                    assignee_ids.as_deref(),
+                    f.get("start_date").and_then(|v| v.as_str()),
+                    f.get("target_date").and_then(|v| v.as_str()),
+                    f.get("priority").and_then(|v| v.as_str()),
+                    f.get("state_group").and_then(|v| v.as_str()),
+                )
+                .await?;
+            }
+            crate::offline::MutationKind::CreateIssue => {
+                return Err("create_issue conflicts are not supported".into());
+            }
+        }
+    }
+    crate::offline::remove_conflict(&mut conflicts, &conflict_id);
+    crate::offline::save_conflicts(&app, &conflicts)?;
+    let _ = app.emit_to(
+        "sidebar",
+        "offline-conflicts-changed",
+        serde_json::json!({ "count": conflicts.items.len() }),
+    );
+    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
