@@ -571,7 +571,7 @@ async function load() {
 }
 
 projBtn.onclick = () => {
-  setDropdownOpen(dropdown.hidden);
+  setDropdownOpen(!dropdown.hidden);
 };
 projBtn.addEventListener(
   "keydown",
