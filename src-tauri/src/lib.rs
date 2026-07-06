@@ -434,8 +434,9 @@ fn spawn_offline_watcher(app: tauri::AppHandle) {
 /// 그 외 오류(검증 오류 등, Phase 2에서 다룰 충돌 포함)를 만나면 그 항목과
 /// 이후 항목을 큐에 남긴 채 멈춘다.
 async fn replay_queue(app: &tauri::AppHandle) {
-    let mut queue = offline::load_queue(app);
-    if queue.items.is_empty() {
+    // 잠금 없이 저장된 상태만 훑어보는 값싼 조기 종료 확인 — 아래에서 잠금을
+    // 잡은 뒤 다시 읽으므로 여기서 읽은 값은 버린다.
+    if offline::load_queue(app).items.is_empty() {
         return;
     }
     let s = config::load_settings(app);
@@ -448,6 +449,12 @@ async fn replay_queue(app: &tauri::AppHandle) {
     // 유실시킨다 — assign_watch::StateLock과 같은 패턴으로 직렬화한다.
     let lock = app.state::<offline::QueueLock>();
     let _guard = lock.0.lock().await;
+    // 잠금을 잡은 뒤 다시 읽어야 이 함수가 쓰는 상태가 최신이다 — 잠금 전
+    // 읽은 값을 그대로 쓰면 그 사이 큐잉된 항목이 유실될 수 있다.
+    let mut queue = offline::load_queue(app);
+    if queue.items.is_empty() {
+        return;
+    }
     let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
 
     while !queue.items.is_empty() {
