@@ -683,7 +683,8 @@ pub fn run() {
             commands::open_briefing,
             commands::get_pending_assignments,
             commands::acknowledge_assignment,
-            check_updates_manual
+            check_updates_manual,
+            commands::get_offline_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

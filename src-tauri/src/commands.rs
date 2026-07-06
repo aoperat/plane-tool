@@ -795,6 +795,16 @@ pub async fn acknowledge_assignment(
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct OfflineStatusDto {
+    pub pending: usize,
+}
+
+#[tauri::command]
+pub fn get_offline_status(app: tauri::AppHandle) -> OfflineStatusDto {
+    OfflineStatusDto { pending: crate::offline::load_queue(&app).items.len() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
