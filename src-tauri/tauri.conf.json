@@ -41,6 +41,13 @@
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       },
       {
+        "label": "conflict",
+        "url": "src/conflict/index.html",
+        "width": 480, "height": 420,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": true
+      },
+      {
         "label": "briefing",
         "url": "src/briefing/index.html",
         "width": 560, "height": 340,

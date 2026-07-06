@@ -605,6 +605,15 @@ pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: Strin
 }
 
 #[tauri::command]
+pub fn open_conflict_window(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("conflict") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+    let _ = app.emit_to("conflict", "conflicts-open", ());
+}
+
+#[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("settings") {
         let _ = win.show();

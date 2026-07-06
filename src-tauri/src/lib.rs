@@ -770,7 +770,10 @@ pub fn run() {
             commands::get_pending_assignments,
             commands::acknowledge_assignment,
             check_updates_manual,
-            commands::get_offline_status
+            commands::get_offline_status,
+            commands::get_conflicts,
+            commands::resolve_conflict,
+            commands::open_conflict_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
