@@ -1,7 +1,7 @@
 use crate::config;
 use tauri::{Emitter, Manager};
 use crate::plane_api::{filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 
 #[derive(Serialize)]
@@ -24,13 +24,13 @@ pub struct SettingsDto {
     pub assign_remind_hours: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProjectDto { pub id: String, pub name: String, pub identifier: String }
 
 #[derive(Serialize)]
 pub struct MemberDto { pub id: String, pub display_name: String }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorkItemDto {
     pub id: String,
     pub name: String,
@@ -56,14 +56,20 @@ pub struct WorkItemDetailDto {
     pub project_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StateDto { pub id: String, pub group: String, pub project_id: String, pub default: bool }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SidebarData {
     pub projects: Vec<ProjectDto>,
     pub assigned: Vec<WorkItemDto>,
     pub states: Vec<StateDto>,
+    /// 캐시(오프라인 폴백)에서 온 응답이면 true. 실시간 fetch 결과는 항상
+    /// false — 캐시 파일에는 절대 저장되지 않는 응답 전용 표시라 skip한다.
+    #[serde(skip, default)]
+    pub is_cached: bool,
+    #[serde(skip, default)]
+    pub cached_at_ms: Option<u64>,
 }
 
 pub fn assemble_sidebar(
@@ -91,7 +97,7 @@ pub fn assemble_sidebar(
         .into_iter()
         .map(|s| StateDto { id: s.id, group: s.group, project_id: s.project_id, default: s.default })
         .collect();
-    SidebarData { projects, assigned, states }
+    SidebarData { projects, assigned, states, is_cached: false, cached_at_ms: None }
 }
 
 pub fn build_update_body(
@@ -768,5 +774,14 @@ mod tests {
         assert_eq!(notes[0].date, "");
         assert_eq!(notes[0].notes, "");
         assert!(map_release_notes(&serde_json::json!({"message": "rate limited"})).is_empty());
+    }
+
+    #[test]
+    fn sidebar_data_round_trips_through_json_and_defaults_is_cached_to_false() {
+        let data = assemble_sidebar("me", vec![], vec![], vec![], "2026-06-30", "2026-07-02");
+        let json = serde_json::to_string(&data).unwrap();
+        let back: SidebarData = serde_json::from_str(&json).unwrap();
+        assert!(!back.is_cached);
+        assert_eq!(back.cached_at_ms, None);
     }
 }
