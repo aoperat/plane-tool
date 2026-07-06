@@ -4,6 +4,7 @@
 //! 구조와 영속 상태, 순수 판정 로직만 둔다 (assign_watch.rs와 같은 구조).
 
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 use tauri_plugin_store::StoreExt;
 
 use crate::commands::{SidebarData, WorkItemDto};
@@ -123,6 +124,74 @@ pub fn remap_cached_item_id(items: &mut [WorkItemDto], old_id: &str, new_id: &st
 /// true면 직전 tick은 오프라인이었고 이번 tick은 온라인 — 큐 재생을 트리거할 시점.
 pub fn is_recovery_transition(was_offline: bool, is_online_now: bool) -> bool {
     was_offline && is_online_now
+}
+
+fn emit_queue_changed(app: &tauri::AppHandle, pending: usize) {
+    let _ = app.emit_to("sidebar", "offline-queue-changed", serde_json::json!({ "pending": pending }));
+}
+
+/// 네트워크 실패 시 공통 처리: 큐에 적재 + 캐시에 낙관적 반영 + 이벤트 발행.
+/// `patch`는 캐시 스냅샷에 있는 해당 항목(WorkItemDto)에 적용할 변경.
+/// 캐시가 아직 없거나(첫 실행부터 오프라인) 항목을 못 찾으면 조용히
+/// 건너뛴다 — 큐잉 자체는 캐시 유무와 무관하게 항상 성공해야 한다.
+pub fn queue_and_patch(
+    app: &tauri::AppHandle,
+    kind: MutationKind,
+    project_id: &str,
+    target_id: &str,
+    payload: serde_json::Value,
+    patch: impl FnOnce(&mut WorkItemDto),
+) -> Result<(), String> {
+    let now = crate::now_ms();
+    let mut queue = load_queue(app);
+    push_mutation(&mut queue, kind, project_id, target_id, payload, now);
+    let pending = queue.items.len();
+    save_queue(app, &queue)?;
+    if let Some(mut snapshot) = load_cache(app) {
+        patch_cached_item(&mut snapshot.data.assigned, target_id, patch);
+        save_cache_snapshot(app, &snapshot)?;
+    }
+    emit_queue_changed(app, pending);
+    Ok(())
+}
+
+/// `create_issue`가 오프라인일 때: 큐에 생성 요청을 적재하고, 임시 id를 붙인
+/// `placeholder`를 캐시 목록에 즉시 추가해 화면에 보이게 한다. 임시 id를 돌려준다.
+pub fn queue_create_and_insert(
+    app: &tauri::AppHandle,
+    project_id: &str,
+    payload: serde_json::Value,
+    mut placeholder: WorkItemDto,
+) -> Result<String, String> {
+    let now = crate::now_ms();
+    let mut queue = load_queue(app);
+    let local_id = format!("local-{now}-{}", queue.items.len());
+    push_mutation(&mut queue, MutationKind::CreateIssue, project_id, &local_id, payload, now);
+    let pending = queue.items.len();
+    save_queue(app, &queue)?;
+    if let Some(mut snapshot) = load_cache(app) {
+        placeholder.id = local_id.clone();
+        snapshot.data.assigned.push(placeholder);
+        save_cache_snapshot(app, &snapshot)?;
+    }
+    emit_queue_changed(app, pending);
+    Ok(local_id)
+}
+
+/// `delete_work_item`이 오프라인일 때: 큐에 삭제 요청을 적재하고 캐시
+/// 목록에서 즉시 제거한다.
+pub fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, target_id: &str) -> Result<(), String> {
+    let now = crate::now_ms();
+    let mut queue = load_queue(app);
+    push_mutation(&mut queue, MutationKind::Delete, project_id, target_id, serde_json::Value::Null, now);
+    let pending = queue.items.len();
+    save_queue(app, &queue)?;
+    if let Some(mut snapshot) = load_cache(app) {
+        remove_cached_item(&mut snapshot.data.assigned, target_id);
+        save_cache_snapshot(app, &snapshot)?;
+    }
+    emit_queue_changed(app, pending);
+    Ok(())
 }
 
 #[cfg(test)]
