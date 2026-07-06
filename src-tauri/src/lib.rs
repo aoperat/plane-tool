@@ -430,9 +430,10 @@ fn spawn_offline_watcher(app: tauri::AppHandle) {
     });
 }
 
-/// 큐를 순서대로 재생한다. 네트워크 오류를 다시 만나거나(아직 오프라인)
-/// 그 외 오류(검증 오류 등, Phase 2에서 다룰 충돌 포함)를 만나면 그 항목과
-/// 이후 항목을 큐에 남긴 채 멈춘다.
+/// 큐를 순서대로 재생한다. 충돌(그 사이 서버에서 항목이 바뀌었거나 삭제됨)을
+/// 만나면 그 항목만 큐에서 빼서 충돌 목록으로 옮기고 계속 진행한다. 네트워크
+/// 오류를 다시 만나거나(아직 오프라인) 그 외 오류(검증 오류 등)를 만나면 그
+/// 항목과 이후 항목을 큐에 남긴 채 멈춘다.
 async fn replay_queue(app: &tauri::AppHandle) {
     // 잠금 없이 저장된 상태만 훑어보는 값싼 조기 종료 확인 — 아래에서 잠금을
     // 잡은 뒤 다시 읽으므로 여기서 읽은 값은 버린다.
@@ -457,10 +458,12 @@ async fn replay_queue(app: &tauri::AppHandle) {
     }
     let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
 
+    let cached_states = offline::load_cache(app).map(|s| s.data.states).unwrap_or_default();
+
     while !queue.items.is_empty() {
         let m = queue.items[0].clone();
         match replay_one(&client, &m).await {
-            Ok(Some(real_id)) => {
+            Ok(ReplayOutcome::Applied(Some(real_id))) => {
                 offline::remap_target_id(&mut queue, &m.target_id, &real_id);
                 if let Some(mut snapshot) = offline::load_cache(app) {
                     offline::remap_cached_item_id(&mut snapshot.data.assigned, &m.target_id, &real_id);
@@ -468,8 +471,16 @@ async fn replay_queue(app: &tauri::AppHandle) {
                 }
                 queue.items.remove(0);
             }
-            Ok(None) => {
+            Ok(ReplayOutcome::Applied(None)) => {
                 queue.items.remove(0);
+            }
+            Ok(ReplayOutcome::Conflict(reason, detail)) => {
+                let entry = offline::build_conflict_entry(&m, reason, detail, &cached_states, now_ms());
+                let mut conflicts = offline::load_conflicts(app);
+                offline::add_conflict(&mut conflicts, entry);
+                let _ = offline::save_conflicts(app, &conflicts);
+                queue.items.remove(0);
+                // 충돌은 이 항목만 빼고 계속 진행한다 — 재생 전체를 멈추지 않는다.
             }
             Err(e) if plane_api::is_network_error(&e) => {
                 eprintln!("offline replay stopped: still offline: {e}");
@@ -486,6 +497,12 @@ async fn replay_queue(app: &tauri::AppHandle) {
         "sidebar",
         "offline-queue-changed",
         serde_json::json!({ "pending": queue.items.len() }),
+    );
+    let conflict_count = offline::load_conflicts(app).items.len();
+    let _ = app.emit_to(
+        "sidebar",
+        "offline-conflicts-changed",
+        serde_json::json!({ "count": conflict_count }),
     );
     let _ = app.emit_to("sidebar", "refresh-sidebar", ());
 }
