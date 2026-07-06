@@ -36,6 +36,7 @@ pub struct PendingMutation {
     pub project_id: String,
     pub target_id: String,
     pub payload: serde_json::Value,
+    pub base_updated_at: Option<String>,
     pub queued_at_ms: u64,
 }
 
@@ -80,14 +81,16 @@ pub fn save_queue(app: &tauri::AppHandle, q: &OfflineQueue) -> Result<(), String
     store.save().map_err(|e| e.to_string())
 }
 
-/// 큐에 새 변경을 적재하고 그 항목의 id를 돌려준다. id는 `target_id`(실제
-/// 이슈 id 또는 오프라인 생성 임시 id)와는 다른, 큐 항목 자체의 식별자다.
+/// 큐에 새 변경을 적재하고 그 항목의 id를 돌려준다. `base_updated_at`은 큐잉
+/// 시점에 캐시에 있던 서버 `updated_at` 값 — 재생 시 충돌 판정에 쓰인다.
+/// `CreateIssue`는 항상 `None`(비교할 서버 상태가 없음).
 pub fn push_mutation(
     queue: &mut OfflineQueue,
     kind: MutationKind,
     project_id: &str,
     target_id: &str,
     payload: serde_json::Value,
+    base_updated_at: Option<String>,
     now_ms: u64,
 ) -> String {
     let id = format!("pending-{now_ms}-{}", queue.items.len());
@@ -97,6 +100,7 @@ pub fn push_mutation(
         project_id: project_id.to_string(),
         target_id: target_id.to_string(),
         payload,
+        base_updated_at,
         queued_at_ms: now_ms,
     });
     id
@@ -131,6 +135,22 @@ pub fn remap_cached_item_id(items: &mut [WorkItemDto], old_id: &str, new_id: &st
 /// true면 직전 tick은 오프라인이었고 이번 tick은 온라인 — 큐 재생을 트리거할 시점.
 pub fn is_recovery_transition(was_offline: bool, is_online_now: bool) -> bool {
     was_offline && is_online_now
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ConflictReason {
+    ServerUpdated,
+    TargetDeleted,
+}
+
+/// 큐잉 시점 `updated_at`(`base`)과 재생 시점에 새로 조회한 값(`current`)을
+/// 비교한다. 둘 다 있고 다르면 충돌, 그 외(같음/둘 중 하나라도 없음)에는
+/// 진행해도 안전하다고 본다 — 정보 부족을 막을 이유로 쓰지 않는다.
+pub fn detect_conflict(base: Option<&str>, current: Option<&str>) -> Option<ConflictReason> {
+    match (base, current) {
+        (Some(b), Some(c)) if b != c => Some(ConflictReason::ServerUpdated),
+        _ => None,
+    }
 }
 
 fn emit_queue_changed(app: &tauri::AppHandle, pending: usize) {
@@ -222,20 +242,22 @@ mod tests {
     #[test]
     fn push_mutation_appends_and_returns_a_unique_id() {
         let mut q = OfflineQueue::default();
-        let id1 = push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "i1", serde_json::json!({"priority":"high"}), 1000);
-        let id2 = push_mutation(&mut q, MutationKind::Delete, "p1", "i2", serde_json::Value::Null, 1000);
+        let id1 = push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "i1", serde_json::json!({"priority":"high"}), Some("t1".into()), 1000);
+        let id2 = push_mutation(&mut q, MutationKind::Delete, "p1", "i2", serde_json::Value::Null, None, 1000);
         assert_eq!(q.items.len(), 2);
         assert_ne!(id1, id2);
         assert_eq!(q.items[0].target_id, "i1");
+        assert_eq!(q.items[0].base_updated_at.as_deref(), Some("t1"));
         assert_eq!(q.items[1].kind, MutationKind::Delete);
+        assert_eq!(q.items[1].base_updated_at, None);
     }
 
     #[test]
     fn remap_target_id_updates_every_matching_entry() {
         let mut q = OfflineQueue::default();
-        push_mutation(&mut q, MutationKind::CreateIssue, "p1", "local-1", serde_json::Value::Null, 1000);
-        push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "local-1", serde_json::json!({"priority":"high"}), 1001);
-        push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "other", serde_json::json!({"priority":"low"}), 1002);
+        push_mutation(&mut q, MutationKind::CreateIssue, "p1", "local-1", serde_json::Value::Null, None, 1000);
+        push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "local-1", serde_json::json!({"priority":"high"}), Some("t1".into()), 1001);
+        push_mutation(&mut q, MutationKind::UpdatePriority, "p1", "other", serde_json::json!({"priority":"low"}), Some("t2".into()), 1002);
         remap_target_id(&mut q, "local-1", "real-99");
         assert_eq!(q.items[0].target_id, "real-99");
         assert_eq!(q.items[1].target_id, "real-99");
@@ -277,10 +299,28 @@ mod tests {
     #[test]
     fn queue_round_trips_through_json() {
         let mut q = OfflineQueue::default();
-        push_mutation(&mut q, MutationKind::Delete, "p1", "i1", serde_json::Value::Null, 1000);
+        push_mutation(&mut q, MutationKind::Delete, "p1", "i1", serde_json::Value::Null, None, 1000);
         let json = serde_json::to_string(&q).unwrap();
         let back: OfflineQueue = serde_json::from_str(&json).unwrap();
         assert_eq!(back.items.len(), 1);
         assert_eq!(back.items[0].target_id, "i1");
+    }
+
+    #[test]
+    fn detect_conflict_flags_when_updated_at_differs() {
+        assert_eq!(detect_conflict(Some("t1"), Some("t2")), Some(ConflictReason::ServerUpdated));
+    }
+
+    #[test]
+    fn detect_conflict_passes_when_updated_at_matches() {
+        assert_eq!(detect_conflict(Some("t1"), Some("t1")), None);
+    }
+
+    #[test]
+    fn detect_conflict_passes_when_either_side_is_unknown() {
+        // 검증할 정보가 부족하면(캐시에 없었거나 서버 응답에 없으면) 막지 않는다.
+        assert_eq!(detect_conflict(None, Some("t2")), None);
+        assert_eq!(detect_conflict(Some("t1"), None), None);
+        assert_eq!(detect_conflict(None, None), None);
     }
 }
