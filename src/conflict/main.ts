@@ -100,9 +100,23 @@ function buildMergedFields(c: Conflict, keys: FieldKey[], choices: Map<string, "
 }
 
 async function resolveFieldConflict(c: Conflict, card: HTMLElement, choices: Map<string, "local" | "server">, keys: FieldKey[]) {
-  const fields = buildMergedFields(c, keys, choices);
   try {
-    await resolveConflict(c.id, "apply", fields);
+    if (c.kind === "UpdatePriority" || c.kind === "UpdateState") {
+      // 단일 필드 충돌 — 부분 병합이 필요 없다. 사용자가 고른 쪽에 따라
+      // apply(로컬 값 그대로 재적용)와 discard(서버 값 유지, 아무 것도 보내지 않음)
+      // 중 하나로 정확히 매핑한다. keys가 비어있으면(우연히 같아져 필드가 안
+      // 보였던 경우) 기본값 "local"로 취급 — apply해도 서버 값과 같으므로 무해하다.
+      const onlyKey = keys[0];
+      const picked = onlyKey ? (choices.get(`${c.id}:${onlyKey}`) ?? "local") : "local";
+      if (picked === "server") {
+        await resolveConflict(c.id, "discard");
+      } else {
+        await resolveConflict(c.id, "apply");
+      }
+    } else {
+      const fields = buildMergedFields(c, keys, choices);
+      await resolveConflict(c.id, "apply", fields);
+    }
     card.remove();
     if (!listEl.childElementCount) await load();
     resizeToFit();
