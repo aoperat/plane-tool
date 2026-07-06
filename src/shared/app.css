@@ -220,12 +220,14 @@ kbd {
   color: var(--text);
 }
 .sb-head {
-  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 10px;
+  display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px;
   border-bottom: 1px solid var(--border);
 }
-.sb-brand { display: flex; align-items: center; gap: 10px; }
-.sb-tools { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
-.logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center; }
+.logo {
+  width: 26px; height: 26px; border-radius: 7px; flex: none; cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), #8a5cff); display: grid; place-items: center;
+}
+.logo:hover { filter: brightness(1.15); }
 .logo svg { width: 15px; height: 15px; display: block; }
 .sb-head .t { font-weight: 600; font-size: 14px; }
 /* min-width:0 + ellipsis: the username is the only flexible item in the fixed

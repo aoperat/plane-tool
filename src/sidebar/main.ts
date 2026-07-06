@@ -752,10 +752,6 @@ function refreshIfStale() {
 
 document.getElementById("refresh")!.onclick = refresh;
 
-document.getElementById("closeSidebar")!.onclick = () => {
-  hideSidebar();
-};
-
 document.getElementById("briefingBtn")!.onclick = () => {
   openBriefing().catch((e) => console.error("openBriefing failed:", e));
 };
