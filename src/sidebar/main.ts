@@ -2,7 +2,7 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getConflicts, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openConflictWindow, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
@@ -43,6 +43,14 @@ const collapsedGroups = new Set<string>();
 let lastItems: WorkItem[] = [];
 let lastProjects: Project[] = [];
 let pendingCount = 0;
+let conflictCount = 0;
+const conflictBadgeEl = document.getElementById("conflictBadge")!;
+const conflictCountEl = document.getElementById("conflictCount")!;
+
+function renderConflictBadge() {
+  conflictBadgeEl.hidden = conflictCount === 0;
+  conflictCountEl.textContent = String(conflictCount);
+}
 
 // View preference, persisted in the webview's localStorage (no backend setting needed).
 const HIDE_DONE_KEY = "hideCompleted";
@@ -913,6 +921,11 @@ moreBtn.addEventListener("click", (e) => {
   }
   openMoreMenu();
 });
+
+conflictBadgeEl.onclick = () => {
+  openConflictWindow().catch((err) => console.error("openConflictWindow failed:", err));
+};
+
 document.addEventListener("click", () => closePopover());
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
@@ -931,6 +944,10 @@ win.listen("assignments-updated", refreshInbox);
 win.listen("offline-queue-changed", (e) => {
   pendingCount = (e.payload as { pending: number }).pending;
   synced.textContent = offlineStatusText(false, null, pendingCount, Date.now());
+});
+win.listen("offline-conflicts-changed", (e) => {
+  conflictCount = (e.payload as { count: number }).count;
+  renderConflictBadge();
 });
 win.listen("tauri://blur", () => {
   if (!pinned && !autoOpened) hideSidebar();
@@ -957,5 +974,9 @@ document.addEventListener("pointerdown", () => {
   autoOpened = false;
 }, true);
 getOfflineStatus().then((s) => { pendingCount = s.pending; }).catch(() => {});
+getConflicts().then((cs) => {
+  conflictCount = cs.length;
+  renderConflictBadge();
+}).catch(() => {});
 refresh();
 refreshInbox();

@@ -41,6 +41,7 @@ pub struct WorkItemDto {
     pub project_id: String,
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -88,7 +89,7 @@ pub fn assemble_sidebar(
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
             start_date: w.start_date,
             state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
-            created_at: w.created_at,
+            created_at: w.created_at, updated_at: w.updated_at,
         })
         .collect();
     let projects = projects
@@ -315,6 +316,7 @@ pub async fn create_issue(
                 project_id: project_id.clone(),
                 completed_at: None,
                 created_at: None,
+                updated_at: None,
             };
             crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
@@ -603,6 +605,15 @@ pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: Strin
 }
 
 #[tauri::command]
+pub fn open_conflict_window(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("conflict") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+    let _ = app.emit_to("conflict", "conflicts-open", ());
+}
+
+#[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("settings") {
         let _ = win.show();
@@ -814,6 +825,131 @@ pub fn get_offline_status(app: tauri::AppHandle) -> OfflineStatusDto {
     OfflineStatusDto { pending: crate::offline::load_queue(&app).items.len() }
 }
 
+#[derive(Serialize)]
+pub struct ConflictFieldsDto {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub assignee_ids: Option<Vec<String>>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+    pub priority: Option<String>,
+    pub state_group: Option<String>,
+}
+
+impl From<crate::offline::ConflictFields> for ConflictFieldsDto {
+    fn from(f: crate::offline::ConflictFields) -> Self {
+        Self {
+            name: f.name,
+            description: f.description,
+            assignee_ids: f.assignee_ids,
+            start_date: f.start_date,
+            target_date: f.target_date,
+            priority: f.priority,
+            state_group: f.state_group,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct ConflictDto {
+    pub id: String,
+    pub kind: crate::offline::MutationKind,
+    pub project_id: String,
+    pub target_id: String,
+    pub item_name: String,
+    pub reason: crate::offline::ConflictReason,
+    pub local_fields: ConflictFieldsDto,
+    pub server_fields: Option<ConflictFieldsDto>,
+    pub detected_at_ms: u64,
+}
+
+#[tauri::command]
+pub fn get_conflicts(app: tauri::AppHandle) -> Vec<ConflictDto> {
+    crate::offline::load_conflicts(&app)
+        .items
+        .into_iter()
+        .map(|c| ConflictDto {
+            id: c.id,
+            kind: c.kind,
+            project_id: c.project_id,
+            target_id: c.target_id,
+            item_name: c.item_name,
+            reason: c.reason,
+            local_fields: c.local_fields.into(),
+            server_fields: c.server_fields.map(Into::into),
+            detected_at_ms: c.detected_at_ms,
+        })
+        .collect()
+}
+
+/// 충돌 하나를 해결한다. `action`은 `"apply"`(내 값 유지 — 종류별로 아래
+/// 표대로 실제 서버에 반영) 또는 `"discard"`(서버 값 그대로 두고 버림, API
+/// 호출 없음). `UpdateFields` 충돌의 `"apply"`는 `fields`(프런트엔드가
+/// 필드별로 고른 값을 합친 것)가 반드시 있어야 한다 — 상태 그룹→id 변환은
+/// `try_update_fields_online`이 다시 온라인으로 처리한다.
+#[tauri::command]
+pub async fn resolve_conflict(
+    app: tauri::AppHandle,
+    conflict_id: String,
+    action: String,
+    fields: Option<serde_json::Value>,
+) -> Result<(), String> {
+    // 조회는 잠금 없이 — 어떤 항목을 적용할지 알기 위한 것뿐이고, 네트워크
+    // 호출 동안 잠금을 들고 있으면 안 된다(QueueLock과 같은 원칙).
+    let conflicts_peek = crate::offline::load_conflicts(&app);
+    let Some(entry) = conflicts_peek.items.iter().find(|c| c.id == conflict_id).cloned() else {
+        return Err("conflict not found".into());
+    };
+    if action == "apply" {
+        let (client, _s) = client(&app)?;
+        match entry.kind {
+            crate::offline::MutationKind::Delete => {
+                client.delete_work_item(&entry.project_id, &entry.target_id).await?;
+            }
+            crate::offline::MutationKind::UpdatePriority | crate::offline::MutationKind::UpdateState => {
+                client.update_work_item(&entry.project_id, &entry.target_id, entry.local_payload.clone()).await?;
+            }
+            crate::offline::MutationKind::UpdateFields => {
+                let f = fields.ok_or_else(|| "fields required for UpdateFields conflicts".to_string())?;
+                let assignee_ids: Option<Vec<String>> = f.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                    a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+                });
+                try_update_fields_online(
+                    &client,
+                    &entry.project_id,
+                    &entry.target_id,
+                    f.get("name").and_then(|v| v.as_str()),
+                    f.get("description").and_then(|v| v.as_str()),
+                    assignee_ids.as_deref(),
+                    f.get("start_date").and_then(|v| v.as_str()),
+                    f.get("target_date").and_then(|v| v.as_str()),
+                    f.get("priority").and_then(|v| v.as_str()),
+                    f.get("state_group").and_then(|v| v.as_str()),
+                )
+                .await?;
+            }
+            crate::offline::MutationKind::CreateIssue => {
+                return Err("create_issue conflicts are not supported".into());
+            }
+        }
+    }
+    // 네트워크 호출이 끝난 뒤 잠금을 잡고 최신 목록을 다시 읽어 제거한다 —
+    // 그 사이 replay_queue가 다른 충돌을 추가했을 수 있으므로, 호출 전에
+    // 읽어둔 stale한 목록을 그대로 저장하면 그 추가분을 덮어써 유실시킨다.
+    let lock = app.state::<crate::offline::ConflictLock>();
+    let _guard = lock.0.lock().await;
+    let mut conflicts = crate::offline::load_conflicts(&app);
+    crate::offline::remove_conflict(&mut conflicts, &conflict_id);
+    crate::offline::save_conflicts(&app, &conflicts)?;
+    let _ = app.emit_to(
+        "sidebar",
+        "offline-conflicts-changed",
+        serde_json::json!({ "count": conflicts.items.len() }),
+    );
+    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,6 +967,7 @@ mod tests {
             completed_at: completed_at.map(|s| s.to_string()),
             created_at: None,
             created_by: None,
+            updated_at: None,
         }
     }
 
@@ -872,6 +1009,15 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
         let completed = data.assigned.iter().find(|i| i.id == "b").unwrap();
         assert_eq!(completed.completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
+    }
+
+    #[test]
+    fn assemble_sidebar_carries_updated_at_into_work_item_dto() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let mut item = wi("a", "started", &["me"], "p1");
+        item.updated_at = Some("2026-07-01T10:00:00Z".into());
+        let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
+        assert_eq!(data.assigned[0].updated_at.as_deref(), Some("2026-07-01T10:00:00Z"));
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub struct WorkItem {
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
     pub created_by: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +48,7 @@ pub struct WorkItemDetail {
     pub priority: String,
     pub state_group: String,
     pub project_id: String,
+    pub updated_at: Option<String>,
 }
 
 pub struct NewWorkItem<'a> {
@@ -192,6 +194,7 @@ struct RawWorkItem {
     #[serde(default)] assignees: Vec<RawAssignee>,
     #[serde(default)] completed_at: Option<String>,
     #[serde(default)] created_at: Option<String>,
+    #[serde(default)] updated_at: Option<String>,
     #[serde(default)] description_html: Option<String>,
     #[serde(default)] created_by: Option<String>,
 }
@@ -261,6 +264,12 @@ async fn error_with_body(resp: reqwest::Response) -> Result<reqwest::Response, S
 /// "show the user a real error right now".
 pub fn is_network_error(err: &str) -> bool {
     !err.starts_with("HTTP ")
+}
+
+/// True when `err` is specifically an HTTP 404 — used to distinguish "the
+/// item was deleted on the server" from other errors during offline replay.
+pub fn is_not_found_error(err: &str) -> bool {
+    err.starts_with("HTTP 404")
 }
 
 /// Seconds to wait before retrying a 429 response: honors the server's `Retry-After` header when
@@ -518,6 +527,7 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         completed_at: w.completed_at,
         created_at: w.created_at,
         created_by: w.created_by,
+        updated_at: w.updated_at,
     }
 }
 
@@ -532,6 +542,7 @@ fn map_work_item_detail(w: RawWorkItem, project_id: &str) -> WorkItemDetail {
         priority: w.priority,
         state_group: w.state.map(|s| s.group).unwrap_or_default(),
         project_id: project_id.to_string(),
+        updated_at: w.updated_at,
     }
 }
 
@@ -551,6 +562,7 @@ mod tests {
             completed_at: completed_at.map(|s| s.to_string()),
             created_at: None,
             created_by: None,
+            updated_at: None,
         }
     }
 
@@ -749,7 +761,8 @@ mod tests {
                     "start_date": "2026-07-01",
                     "state": { "group": "started" },
                     "assignees": [{ "id": "me" }],
-                    "completed_at": "2026-07-01T09:00:00Z"
+                    "completed_at": "2026-07-01T09:00:00Z",
+                    "updated_at": "2026-07-01T10:00:00Z"
                 }]
             })))
             .mount(&server)
@@ -762,6 +775,7 @@ mod tests {
         assert_eq!(items[0].project_id, "p1");
         assert_eq!(items[0].completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
         assert_eq!(items[0].start_date.as_deref(), Some("2026-07-01"));
+        assert_eq!(items[0].updated_at.as_deref(), Some("2026-07-01T10:00:00Z"));
     }
 
     #[tokio::test]
@@ -776,7 +790,8 @@ mod tests {
                 "target_date": "2026-07-05",
                 "state": { "group": "started" },
                 "assignees": [{ "id": "me" }],
-                "description_html": "<p>Steps to repro</p>"
+                "description_html": "<p>Steps to repro</p>",
+                "updated_at": "2026-07-05T08:00:00Z"
             })))
             .mount(&server)
             .await;
@@ -791,6 +806,7 @@ mod tests {
         assert_eq!(detail.priority, "high");
         assert_eq!(detail.state_group, "started");
         assert_eq!(detail.project_id, "p1");
+        assert_eq!(detail.updated_at.as_deref(), Some("2026-07-05T08:00:00Z"));
     }
 
     #[tokio::test]
@@ -1158,5 +1174,12 @@ mod tests {
     fn is_network_error_distinguishes_http_status_from_transport_failure() {
         assert!(!is_network_error("HTTP 400 Bad Request (http://x): oops"));
         assert!(is_network_error("error sending request for url (http://x/): connection refused"));
+    }
+
+    #[test]
+    fn is_not_found_error_only_matches_http_404() {
+        assert!(is_not_found_error("HTTP 404 Not Found (http://x): oops"));
+        assert!(!is_not_found_error("HTTP 400 Bad Request (http://x): oops"));
+        assert!(!is_not_found_error("error sending request for url (http://x/): connection refused"));
     }
 }

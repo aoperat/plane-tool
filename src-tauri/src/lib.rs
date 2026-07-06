@@ -430,9 +430,10 @@ fn spawn_offline_watcher(app: tauri::AppHandle) {
     });
 }
 
-/// 큐를 순서대로 재생한다. 네트워크 오류를 다시 만나거나(아직 오프라인)
-/// 그 외 오류(검증 오류 등, Phase 2에서 다룰 충돌 포함)를 만나면 그 항목과
-/// 이후 항목을 큐에 남긴 채 멈춘다.
+/// 큐를 순서대로 재생한다. 충돌(그 사이 서버에서 항목이 바뀌었거나 삭제됨)을
+/// 만나면 그 항목만 큐에서 빼서 충돌 목록으로 옮기고 계속 진행한다. 네트워크
+/// 오류를 다시 만나거나(아직 오프라인) 그 외 오류(검증 오류 등)를 만나면 그
+/// 항목과 이후 항목을 큐에 남긴 채 멈춘다.
 async fn replay_queue(app: &tauri::AppHandle) {
     // 잠금 없이 저장된 상태만 훑어보는 값싼 조기 종료 확인 — 아래에서 잠금을
     // 잡은 뒤 다시 읽으므로 여기서 읽은 값은 버린다.
@@ -457,10 +458,12 @@ async fn replay_queue(app: &tauri::AppHandle) {
     }
     let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
 
+    let cached_states = offline::load_cache(app).map(|s| s.data.states).unwrap_or_default();
+
     while !queue.items.is_empty() {
         let m = queue.items[0].clone();
         match replay_one(&client, &m).await {
-            Ok(Some(real_id)) => {
+            Ok(ReplayOutcome::Applied(Some(real_id))) => {
                 offline::remap_target_id(&mut queue, &m.target_id, &real_id);
                 if let Some(mut snapshot) = offline::load_cache(app) {
                     offline::remap_cached_item_id(&mut snapshot.data.assigned, &m.target_id, &real_id);
@@ -468,8 +471,22 @@ async fn replay_queue(app: &tauri::AppHandle) {
                 }
                 queue.items.remove(0);
             }
-            Ok(None) => {
+            Ok(ReplayOutcome::Applied(None)) => {
                 queue.items.remove(0);
+            }
+            Ok(ReplayOutcome::Conflict(reason, detail)) => {
+                let entry = offline::build_conflict_entry(&m, reason, detail, &cached_states, now_ms());
+                // resolve_conflict 커맨드도 conflicts.json을 read-modify-write
+                // 하므로, 이 구간은 ConflictLock을 잡은 채로만 실행한다 —
+                // QueueLock과 같은 원칙(load→mutate→save 사이 새 락을 잡아
+                // 최신 상태로 다시 읽는다).
+                let conflict_lock = app.state::<offline::ConflictLock>();
+                let _conflict_guard = conflict_lock.0.lock().await;
+                let mut conflicts = offline::load_conflicts(app);
+                offline::add_conflict(&mut conflicts, entry);
+                let _ = offline::save_conflicts(app, &conflicts);
+                queue.items.remove(0);
+                // 충돌은 이 항목만 빼고 계속 진행한다 — 재생 전체를 멈추지 않는다.
             }
             Err(e) if plane_api::is_network_error(&e) => {
                 eprintln!("offline replay stopped: still offline: {e}");
@@ -487,12 +504,59 @@ async fn replay_queue(app: &tauri::AppHandle) {
         "offline-queue-changed",
         serde_json::json!({ "pending": queue.items.len() }),
     );
+    let conflict_count = offline::load_conflicts(app).items.len();
+    let _ = app.emit_to(
+        "sidebar",
+        "offline-conflicts-changed",
+        serde_json::json!({ "count": conflict_count }),
+    );
     let _ = app.emit_to("sidebar", "refresh-sidebar", ());
 }
 
+/// `replay_one`의 결과. `Applied(Some(id))`는 `CreateIssue`가 성공해 실제
+/// 서버 id를 얻었을 때만 쓰인다. `Conflict`는 그 항목을 큐에서 빼서
+/// 충돌 목록으로 옮겨야 함을 뜻한다 — 재생은 계속 진행된다(멈추지 않음).
+enum ReplayOutcome {
+    Applied(Option<String>),
+    Conflict(offline::ConflictReason, Option<plane_api::WorkItemDetail>),
+}
+
+/// 충돌이 없다고 판정된 뒤 실제로 서버에 적용한다. `CreateIssue`는
+/// `replay_one`에서 별도 분기로 처리하므로 여기 도달하지 않는다.
+async fn apply_mutation(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<(), String> {
+    match m.kind {
+        offline::MutationKind::UpdatePriority | offline::MutationKind::UpdateState => {
+            client.update_work_item(&m.project_id, &m.target_id, m.payload.clone()).await
+        }
+        offline::MutationKind::UpdateFields => {
+            let p = &m.payload;
+            let assignee_ids: Option<Vec<String>> = p.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+            });
+            commands::try_update_fields_online(
+                client,
+                &m.project_id,
+                &m.target_id,
+                p.get("name").and_then(|v| v.as_str()),
+                p.get("description").and_then(|v| v.as_str()),
+                assignee_ids.as_deref(),
+                p.get("start_date").and_then(|v| v.as_str()),
+                p.get("target_date").and_then(|v| v.as_str()),
+                p.get("priority").and_then(|v| v.as_str()),
+                p.get("state_group").and_then(|v| v.as_str()),
+            )
+            .await
+        }
+        offline::MutationKind::Delete => client.delete_work_item(&m.project_id, &m.target_id).await,
+        offline::MutationKind::CreateIssue => unreachable!("CreateIssue is handled separately in replay_one"),
+    }
+}
+
 /// 큐 항목 하나를 재생. `CreateIssue`가 성공하면 실제 서버 id를
-/// `Some(..)`으로 돌려줘 호출자가 이후 항목들의 target_id를 치환하게 한다.
-async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<Option<String>, String> {
+/// `ReplayOutcome::Applied(Some(..))`으로 돌려줘 호출자가 이후 항목들의
+/// target_id를 치환하게 한다. `Delete` + 대상이 이미 삭제됨은 충돌이
+/// 아니라 성공으로 본다(원하는 최종 상태가 이미 달성됨).
+async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<ReplayOutcome, String> {
     match m.kind {
         offline::MutationKind::CreateIssue => {
             let p = &m.payload;
@@ -513,36 +577,31 @@ async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutatio
                 p.get("description").and_then(|v| v.as_str()),
             )
             .await?;
-            Ok(Some(new_id))
+            Ok(ReplayOutcome::Applied(Some(new_id)))
         }
-        offline::MutationKind::UpdatePriority | offline::MutationKind::UpdateState => {
-            client.update_work_item(&m.project_id, &m.target_id, m.payload.clone()).await?;
-            Ok(None)
-        }
-        offline::MutationKind::UpdateFields => {
-            let p = &m.payload;
-            let assignee_ids: Option<Vec<String>> = p.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
-                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
-            });
-            commands::try_update_fields_online(
-                client,
-                &m.project_id,
-                &m.target_id,
-                p.get("name").and_then(|v| v.as_str()),
-                p.get("description").and_then(|v| v.as_str()),
-                assignee_ids.as_deref(),
-                p.get("start_date").and_then(|v| v.as_str()),
-                p.get("target_date").and_then(|v| v.as_str()),
-                p.get("priority").and_then(|v| v.as_str()),
-                p.get("state_group").and_then(|v| v.as_str()),
-            )
-            .await?;
-            Ok(None)
-        }
-        offline::MutationKind::Delete => {
-            client.delete_work_item(&m.project_id, &m.target_id).await?;
-            Ok(None)
-        }
+        offline::MutationKind::UpdatePriority
+        | offline::MutationKind::UpdateState
+        | offline::MutationKind::UpdateFields
+        | offline::MutationKind::Delete => match client.get_work_item(&m.project_id, &m.target_id).await {
+            Ok(detail) => {
+                match offline::detect_conflict(m.base_updated_at.as_deref(), detail.updated_at.as_deref()) {
+                    Some(reason) => Ok(ReplayOutcome::Conflict(reason, Some(detail))),
+                    None => {
+                        apply_mutation(client, m).await?;
+                        Ok(ReplayOutcome::Applied(None))
+                    }
+                }
+            }
+            Err(e) if plane_api::is_not_found_error(&e) => {
+                if m.kind == offline::MutationKind::Delete {
+                    // 이미 지워져 있다 — 원하던 결과가 이미 달성됐으니 충돌이 아니다.
+                    Ok(ReplayOutcome::Applied(None))
+                } else {
+                    Ok(ReplayOutcome::Conflict(offline::ConflictReason::TargetDeleted, None))
+                }
+            }
+            Err(e) => Err(e),
+        },
     }
 }
 
@@ -684,6 +743,7 @@ pub fn run() {
 
             app.manage(assign_watch::StateLock::default());
             app.manage(offline::QueueLock::default());
+            app.manage(offline::ConflictLock::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
@@ -717,7 +777,10 @@ pub fn run() {
             commands::get_pending_assignments,
             commands::acknowledge_assignment,
             check_updates_manual,
-            commands::get_offline_status
+            commands::get_offline_status,
+            commands::get_conflicts,
+            commands::resolve_conflict,
+            commands::open_conflict_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

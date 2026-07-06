@@ -109,6 +109,7 @@ kbd {
 .chip.empty:hover { color: var(--accent); }
 .chip.info { cursor: default; color: var(--muted); }
 .chip.info:hover { border-color: var(--border); }
+.chip.sel { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .field-popover {
   position: absolute; top: 100%; left: 18px; right: 18px; margin-top: 4px;
   max-height: 200px; overflow-y: auto;

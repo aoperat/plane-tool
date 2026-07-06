@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>동기화 충돌</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <div class="editmodal" id="conflictRoot">
+      <div class="em-head">
+        <strong class="em-title">동기화 충돌</strong>
+        <button type="button" class="em-close" id="cfClose">✕</button>
+      </div>
+      <div id="cfEmpty" class="em-loading" hidden>해결할 충돌이 없습니다.</div>
+      <div id="cfList"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
