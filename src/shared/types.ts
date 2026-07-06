@@ -46,3 +46,25 @@ export interface PendingAssignment {
   priority: string; target_date: string | null;
   assigner_name: string; detected_at_ms: number;
 }
+export interface ConflictFields {
+  name: string | null;
+  description: string | null;
+  assignee_ids: string[] | null;
+  start_date: string | null;
+  target_date: string | null;
+  priority: string | null;
+  state_group: string | null;
+}
+export type ConflictKind = "CreateIssue" | "UpdatePriority" | "UpdateState" | "UpdateFields" | "Delete";
+export type ConflictReason = "ServerUpdated" | "TargetDeleted";
+export interface Conflict {
+  id: string;
+  kind: ConflictKind;
+  project_id: string;
+  target_id: string;
+  item_name: string;
+  reason: ConflictReason;
+  local_fields: ConflictFields;
+  server_fields: ConflictFields | null;
+  detected_at_ms: number;
+}
