@@ -360,9 +360,30 @@ pub async fn update_work_item_state(
     state_id: String,
 ) -> Result<(), String> {
     let (client, _s) = client(&app)?;
-    client
-        .update_work_item(&project_id, &item_id, serde_json::json!({ "state": state_id }))
-        .await
+    let body = serde_json::json!({ "state": state_id });
+    match client.update_work_item(&project_id, &item_id, body.clone()).await {
+        Ok(()) => Ok(()),
+        Err(e) if plane_api::is_network_error(&e) => {
+            // 목록 캐시는 state_group(문자열)을 저장하므로, 표시용으로만
+            // 캐시된 states 목록에서 이 state_id에 해당하는 그룹명을 찾는다
+            // — 못 찾아도 큐잉 자체는 그대로 진행한다(재생 시 실제 id로 처리).
+            let group = crate::offline::load_cache(&app)
+                .and_then(|c| c.data.states.iter().find(|s| s.id == state_id).map(|s| s.group.clone()));
+            crate::offline::queue_and_patch(
+                &app,
+                crate::offline::MutationKind::UpdateState,
+                &project_id,
+                &item_id,
+                body,
+                move |dto| {
+                    if let Some(g) = group {
+                        dto.state_group = g;
+                    }
+                },
+            )
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
