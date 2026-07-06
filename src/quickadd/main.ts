@@ -341,20 +341,34 @@ function toggleAssignee(id: string | null) {
   renderAssigneePopoverItems();
 }
 
+// Mouse click picks a single assignee and closes the popover; Ctrl+click toggles the
+// entry within the multi-select and leaves the popover open (mirrors the Space/Enter
+// keyboard contract below).
+function handleAssigneeItemClick(e: MouseEvent, id: string | null) {
+  if (e.ctrlKey) {
+    toggleAssignee(id);
+    return;
+  }
+  assigneeIds = id === null ? [] : [id];
+  renderChips();
+  closePopover();
+  titleEl.focus();
+}
+
 function renderAssigneePopoverItems() {
   fieldPopover.innerHTML = "";
   const selfItem = document.createElement("div");
   selfItem.className = "dd-item" + (assigneeIds.length === 0 ? " sel" : "");
   selfItem.textContent = "나 (기본값)";
   selfItem.dataset.id = "";
-  selfItem.onclick = () => toggleAssignee(null);
+  selfItem.onclick = (e) => handleAssigneeItemClick(e, null);
   fieldPopover.appendChild(selfItem);
   for (const m of members) {
     const item = document.createElement("div");
     item.className = "dd-item" + (assigneeIds.includes(m.id) ? " sel" : "");
     item.textContent = m.display_name;
     item.dataset.id = m.id;
-    item.onclick = () => toggleAssignee(m.id);
+    item.onclick = (e) => handleAssigneeItemClick(e, m.id);
     fieldPopover.appendChild(item);
   }
   initKeyboardFocus(fieldPopover);
