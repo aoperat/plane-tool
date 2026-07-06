@@ -122,6 +122,7 @@ mod tests {
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
             completed_at: None, created_at: None,
             created_by: created_by.map(str::to_string),
+            updated_at: None,
         }
     }
 

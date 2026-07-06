@@ -283,7 +283,7 @@ mod tests {
             target_date: None, start_date: None, state_group: group.into(),
             project_id: "p1".into(),
             assignee_ids: assignees.iter().map(|s| s.to_string()).collect(),
-            completed_at: None, created_at: None, created_by: None,
+            completed_at: None, created_at: None, created_by: None, updated_at: None,
         };
         let items = vec![
             mk("a", "started", &["me"]),

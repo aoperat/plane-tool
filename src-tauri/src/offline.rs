@@ -215,7 +215,7 @@ mod tests {
         WorkItemDto {
             id: id.into(), name: "n".into(), priority: "none".into(),
             target_date: None, start_date: None, state_group: "backlog".into(),
-            project_id: "p1".into(), completed_at: None, created_at: None,
+            project_id: "p1".into(), completed_at: None, created_at: None, updated_at: None,
         }
     }
 

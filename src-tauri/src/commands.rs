@@ -41,6 +41,7 @@ pub struct WorkItemDto {
     pub project_id: String,
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -88,7 +89,7 @@ pub fn assemble_sidebar(
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
             start_date: w.start_date,
             state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
-            created_at: w.created_at,
+            created_at: w.created_at, updated_at: w.updated_at,
         })
         .collect();
     let projects = projects
@@ -315,6 +316,7 @@ pub async fn create_issue(
                 project_id: project_id.clone(),
                 completed_at: None,
                 created_at: None,
+                updated_at: None,
             };
             crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
@@ -831,6 +833,7 @@ mod tests {
             completed_at: completed_at.map(|s| s.to_string()),
             created_at: None,
             created_by: None,
+            updated_at: None,
         }
     }
 
@@ -872,6 +875,15 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
         let completed = data.assigned.iter().find(|i| i.id == "b").unwrap();
         assert_eq!(completed.completed_at.as_deref(), Some("2026-07-01T09:00:00Z"));
+    }
+
+    #[test]
+    fn assemble_sidebar_carries_updated_at_into_work_item_dto() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let mut item = wi("a", "started", &["me"], "p1");
+        item.updated_at = Some("2026-07-01T10:00:00Z".into());
+        let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
+        assert_eq!(data.assigned[0].updated_at.as_deref(), Some("2026-07-01T10:00:00Z"));
     }
 
     #[test]
