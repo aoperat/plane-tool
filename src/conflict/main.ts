@@ -234,6 +234,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") win.hide();
 });
 win.listen("conflicts-open", load);
+win.listen("offline-conflicts-changed", load);
 
 async function loadTheme() {
   const s = await getSettings();
