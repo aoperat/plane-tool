@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod idle;
 pub mod monitors;
+pub mod offline;
 pub mod openai;
 pub mod plane_api;
 
@@ -286,7 +287,7 @@ fn spawn_assign_watcher(app: tauri::AppHandle) {
     });
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
