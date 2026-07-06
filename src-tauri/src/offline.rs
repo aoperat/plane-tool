@@ -4,7 +4,7 @@
 //! 구조와 영속 상태, 순수 판정 로직만 둔다 (assign_watch.rs와 같은 구조).
 
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::commands::{SidebarData, WorkItemDto};
@@ -12,6 +12,13 @@ use crate::commands::{SidebarData, WorkItemDto};
 const STORE_FILE: &str = "offline.json";
 const CACHE_KEY: &str = "cache";
 const QUEUE_KEY: &str = "queue";
+
+/// pending-queue.json은 백그라운드 재생(`replay_queue`, lib.rs)과 쓰기
+/// 커맨드(각 `queue_*` 헬퍼)가 둘 다 read-modify-write 한다 — 이 락을 잡은
+/// 채로만 load_queue→save_queue 구간을 실행할 것 (assign_watch::StateLock과
+/// 같은 패턴).
+#[derive(Default)]
+pub struct QueueLock(pub tokio::sync::Mutex<()>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MutationKind {
@@ -134,7 +141,7 @@ fn emit_queue_changed(app: &tauri::AppHandle, pending: usize) {
 /// `patch`는 캐시 스냅샷에 있는 해당 항목(WorkItemDto)에 적용할 변경.
 /// 캐시가 아직 없거나(첫 실행부터 오프라인) 항목을 못 찾으면 조용히
 /// 건너뛴다 — 큐잉 자체는 캐시 유무와 무관하게 항상 성공해야 한다.
-pub fn queue_and_patch(
+pub async fn queue_and_patch(
     app: &tauri::AppHandle,
     kind: MutationKind,
     project_id: &str,
@@ -142,6 +149,8 @@ pub fn queue_and_patch(
     payload: serde_json::Value,
     patch: impl FnOnce(&mut WorkItemDto),
 ) -> Result<(), String> {
+    let lock = app.state::<QueueLock>();
+    let _guard = lock.0.lock().await;
     let now = crate::now_ms();
     let mut queue = load_queue(app);
     push_mutation(&mut queue, kind, project_id, target_id, payload, now);
@@ -157,12 +166,14 @@ pub fn queue_and_patch(
 
 /// `create_issue`가 오프라인일 때: 큐에 생성 요청을 적재하고, 임시 id를 붙인
 /// `placeholder`를 캐시 목록에 즉시 추가해 화면에 보이게 한다. 임시 id를 돌려준다.
-pub fn queue_create_and_insert(
+pub async fn queue_create_and_insert(
     app: &tauri::AppHandle,
     project_id: &str,
     payload: serde_json::Value,
     mut placeholder: WorkItemDto,
 ) -> Result<String, String> {
+    let lock = app.state::<QueueLock>();
+    let _guard = lock.0.lock().await;
     let now = crate::now_ms();
     let mut queue = load_queue(app);
     let local_id = format!("local-{now}-{}", queue.items.len());
@@ -180,7 +191,9 @@ pub fn queue_create_and_insert(
 
 /// `delete_work_item`이 오프라인일 때: 큐에 삭제 요청을 적재하고 캐시
 /// 목록에서 즉시 제거한다.
-pub fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, target_id: &str) -> Result<(), String> {
+pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, target_id: &str) -> Result<(), String> {
+    let lock = app.state::<QueueLock>();
+    let _guard = lock.0.lock().await;
     let now = crate::now_ms();
     let mut queue = load_queue(app);
     push_mutation(&mut queue, MutationKind::Delete, project_id, target_id, serde_json::Value::Null, now);

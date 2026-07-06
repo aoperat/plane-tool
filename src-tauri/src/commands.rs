@@ -316,7 +316,7 @@ pub async fn create_issue(
                 completed_at: None,
                 created_at: None,
             };
-            crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder)?;
+            crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
             Ok(())
         }
@@ -392,6 +392,7 @@ pub async fn update_work_item_priority(
                 body,
                 move |dto| dto.priority = p,
             )
+            .await
         }
         Err(e) => Err(e),
     }
@@ -426,6 +427,7 @@ pub async fn update_work_item_state(
                     }
                 },
             )
+            .await
         }
         Err(e) => Err(e),
     }
@@ -523,6 +525,7 @@ pub async fn update_work_item_fields(
                     if let Some(sg) = state_group_p { dto.state_group = sg; }
                 },
             )
+            .await
         }
         Err(e) => Err(e),
     }
@@ -537,7 +540,7 @@ pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
-            crate::offline::queue_delete_and_remove(&app, &project_id, &item_id)?;
+            crate::offline::queue_delete_and_remove(&app, &project_id, &item_id).await?;
             let _ = app.emit_to("sidebar", "refresh-sidebar", ());
             Ok(())
         }

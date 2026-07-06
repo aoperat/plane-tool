@@ -443,6 +443,11 @@ async fn replay_queue(app: &tauri::AppHandle) {
         return;
     }
     let Some(token) = config::get_token() else { return };
+    // 쓰기 커맨드(각 queue_* 헬퍼)와 read-modify-write 구간이 겹치면 재생이
+    // 끝에 한 번만 하는 save_queue가 그 사이 큐잉된 새 항목을 덮어써 조용히
+    // 유실시킨다 — assign_watch::StateLock과 같은 패턴으로 직렬화한다.
+    let lock = app.state::<offline::QueueLock>();
+    let _guard = lock.0.lock().await;
     let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
 
     while !queue.items.is_empty() {
@@ -651,6 +656,7 @@ pub fn run() {
             }
 
             app.manage(assign_watch::StateLock::default());
+            app.manage(offline::QueueLock::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
