@@ -252,6 +252,17 @@ async fn error_with_body(resp: reqwest::Response) -> Result<reqwest::Response, S
     Err(msg)
 }
 
+/// True when `err` (a String produced by this client's methods) reflects a
+/// network-transport failure (server unreachable, timeout, DNS, TLS) rather
+/// than a server-side rejection. `error_with_body` always formats HTTP error
+/// responses as `"HTTP {status} (...)"`; every other error string in this
+/// file comes from `reqwest`'s own `Display`, which never starts with that
+/// prefix. Used by the offline queue to decide "queue for later" vs
+/// "show the user a real error right now".
+pub fn is_network_error(err: &str) -> bool {
+    !err.starts_with("HTTP ")
+}
+
 /// Seconds to wait before retrying a 429 response: honors the server's `Retry-After` header when
 /// present, otherwise falls back to exponential backoff (1s, 2s, 4s, ...) keyed on retry attempt.
 fn retry_after_seconds(headers: &reqwest::header::HeaderMap, attempt: u32) -> u64 {
@@ -1133,5 +1144,11 @@ mod tests {
 
         let items = client_for(&server).await.list_work_items("p1").await.unwrap();
         assert_eq!(items[0].created_by.as_deref(), Some("pm-id"));
+    }
+
+    #[test]
+    fn is_network_error_distinguishes_http_status_from_transport_failure() {
+        assert!(!is_network_error("HTTP 400 Bad Request (http://x): oops"));
+        assert!(is_network_error("error sending request for url (http://x/): connection refused"));
     }
 }
