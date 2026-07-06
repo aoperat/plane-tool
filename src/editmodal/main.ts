@@ -270,14 +270,21 @@ async function loadItem(pid: string, iid: string) {
   win.setAlwaysOnTop(true).catch((err) => {
     console.error("setAlwaysOnTop failed:", err);
   });
+  closePopover();
+  emDeleteConfirm.hidden = true;
+  // closeModal()은 창을 숨기기만 해서 같은 항목을 다시 열 때 원본 데이터가 메모리에
+  // 그대로 남아있다 — 재요청 없이 그대로 보여준다.
+  if (original && pid === projectId && iid === itemId) {
+    emTitleInput.focus();
+    resizeToFit();
+    return;
+  }
   const requestId = ++loadRequestId;
   projectId = pid;
   itemId = iid;
   original = null;
   members = [];
   membersLoadedForProject = null;
-  closePopover();
-  emDeleteConfirm.hidden = true;
   emError.hidden = true;
   emTitleInput.classList.remove("error");
   emForm.hidden = true;
