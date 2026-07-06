@@ -262,7 +262,7 @@ pub async fn create_issue(
         state_id: &state_id,
         description_html: description_html.as_deref(),
     };
-    client.create_work_item(&project_id, &item).await?;
+    let _new_id = client.create_work_item(&project_id, &item).await?;
     config::set_last_project(&app, &project_id)?;
     Ok(())
 }
