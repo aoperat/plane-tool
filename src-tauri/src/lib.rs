@@ -520,6 +520,20 @@ pub fn run() {
                 show_window(app.handle(), "settings");
             }
 
+            // 설정 창은 유일하게 decorations:true라 네이티브 닫기(X) 버튼이 있다 —
+            // 기본 동작대로 두면 창이 파괴되어, 이후 open_settings의
+            // get_webview_window("settings")가 None을 반환해 앱을 재시작하기
+            // 전까지 설정 창을 다시 열 수 없었다. 닫기 요청을 가로채 숨기기만 한다.
+            if let Some(settings_win) = app.get_webview_window("settings") {
+                let hide_target = settings_win.clone();
+                settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = hide_target.hide();
+                    }
+                });
+            }
+
             app.manage(assign_watch::StateLock::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
