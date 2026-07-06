@@ -405,6 +405,135 @@ async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(),
     Ok(())
 }
 
+/// 오프라인 재연결 감지 폴링 간격. 할당 알림(assign_notify_enabled)이 꺼져
+/// 있어도 오프라인 큐 동기화는 항상 동작해야 하므로 assign_tick과는 별도
+/// 루프를 둔다.
+const OFFLINE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
+
+fn spawn_offline_watcher(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut was_offline = false;
+        loop {
+            tokio::time::sleep(OFFLINE_POLL_INTERVAL).await;
+            let s = config::load_settings(&app);
+            if s.base_url.is_empty() || s.workspace.is_empty() {
+                continue;
+            }
+            let Some(token) = config::get_token() else { continue };
+            let probe = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
+            let is_online = probe.current_user().await.is_ok();
+            if offline::is_recovery_transition(was_offline, is_online) {
+                replay_queue(&app).await;
+            }
+            was_offline = !is_online;
+        }
+    });
+}
+
+/// 큐를 순서대로 재생한다. 네트워크 오류를 다시 만나거나(아직 오프라인)
+/// 그 외 오류(검증 오류 등, Phase 2에서 다룰 충돌 포함)를 만나면 그 항목과
+/// 이후 항목을 큐에 남긴 채 멈춘다.
+async fn replay_queue(app: &tauri::AppHandle) {
+    let mut queue = offline::load_queue(app);
+    if queue.items.is_empty() {
+        return;
+    }
+    let s = config::load_settings(app);
+    if s.base_url.is_empty() || s.workspace.is_empty() {
+        return;
+    }
+    let Some(token) = config::get_token() else { return };
+    let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
+
+    while !queue.items.is_empty() {
+        let m = queue.items[0].clone();
+        match replay_one(&client, &m).await {
+            Ok(Some(real_id)) => {
+                offline::remap_target_id(&mut queue, &m.target_id, &real_id);
+                if let Some(mut snapshot) = offline::load_cache(app) {
+                    offline::remap_cached_item_id(&mut snapshot.data.assigned, &m.target_id, &real_id);
+                    let _ = offline::save_cache_snapshot(app, &snapshot);
+                }
+                queue.items.remove(0);
+            }
+            Ok(None) => {
+                queue.items.remove(0);
+            }
+            Err(e) if plane_api::is_network_error(&e) => {
+                eprintln!("offline replay stopped: still offline: {e}");
+                break;
+            }
+            Err(e) => {
+                eprintln!("offline replay stopped: mutation {} failed: {e}", m.id);
+                break;
+            }
+        }
+    }
+    let _ = offline::save_queue(app, &queue);
+    let _ = app.emit_to(
+        "sidebar",
+        "offline-queue-changed",
+        serde_json::json!({ "pending": queue.items.len() }),
+    );
+    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+}
+
+/// 큐 항목 하나를 재생. `CreateIssue`가 성공하면 실제 서버 id를
+/// `Some(..)`으로 돌려줘 호출자가 이후 항목들의 target_id를 치환하게 한다.
+async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutation) -> Result<Option<String>, String> {
+    match m.kind {
+        offline::MutationKind::CreateIssue => {
+            let p = &m.payload;
+            let assignee_ids: Vec<String> = p
+                .get("assignee_ids")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                .unwrap_or_default();
+            let new_id = commands::try_create_issue_online(
+                client,
+                &m.project_id,
+                p.get("name").and_then(|v| v.as_str()).unwrap_or_default(),
+                &assignee_ids,
+                p.get("start_date").and_then(|v| v.as_str()),
+                p.get("target_date").and_then(|v| v.as_str()),
+                p.get("priority").and_then(|v| v.as_str()).unwrap_or("none"),
+                p.get("state_group").and_then(|v| v.as_str()).unwrap_or_default(),
+                p.get("description").and_then(|v| v.as_str()),
+            )
+            .await?;
+            Ok(Some(new_id))
+        }
+        offline::MutationKind::UpdatePriority | offline::MutationKind::UpdateState => {
+            client.update_work_item(&m.project_id, &m.target_id, m.payload.clone()).await?;
+            Ok(None)
+        }
+        offline::MutationKind::UpdateFields => {
+            let p = &m.payload;
+            let assignee_ids: Option<Vec<String>> = p.get("assignee_ids").and_then(|v| v.as_array()).map(|a| {
+                a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+            });
+            commands::try_update_fields_online(
+                client,
+                &m.project_id,
+                &m.target_id,
+                p.get("name").and_then(|v| v.as_str()),
+                p.get("description").and_then(|v| v.as_str()),
+                assignee_ids.as_deref(),
+                p.get("start_date").and_then(|v| v.as_str()),
+                p.get("target_date").and_then(|v| v.as_str()),
+                p.get("priority").and_then(|v| v.as_str()),
+                p.get("state_group").and_then(|v| v.as_str()),
+            )
+            .await?;
+            Ok(None)
+        }
+        offline::MutationKind::Delete => {
+            client.delete_work_item(&m.project_id, &m.target_id).await?;
+            Ok(None)
+        }
+    }
+}
+
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
@@ -526,6 +655,7 @@ pub fn run() {
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
             spawn_assign_watcher(app.handle().clone());
+            spawn_offline_watcher(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
             // dismissed with Esc or its shortcut. The Sidebar auto-hides on
             // focus loss instead (see sidebar/main.ts's tauri://blur listener),
