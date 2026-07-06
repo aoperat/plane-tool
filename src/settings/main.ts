@@ -190,6 +190,19 @@ document.getElementById("save")!.onclick = async () => {
   }
 };
 
+const setTabs = [...document.querySelectorAll<HTMLButtonElement>(".set-tab")];
+const setPanels = [...document.querySelectorAll<HTMLElement>(".set-panel")];
+setTabs.forEach((tab) => {
+  tab.onclick = () => {
+    for (const t of setTabs) {
+      const active = t === tab;
+      t.classList.toggle("active", active);
+      t.setAttribute("aria-selected", String(active));
+    }
+    for (const panel of setPanels) panel.hidden = panel.dataset.panel !== tab.dataset.tab;
+  };
+});
+
 document.getElementById("setClose")!.onclick = () => {
   getCurrentWindow().hide();
 };

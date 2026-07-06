@@ -345,12 +345,27 @@ kbd {
 }
 .set-close:hover, .set-close:focus-visible { background: var(--panel); color: var(--text); outline: none; }
 .set-close svg { width: 13px; height: 13px; }
+.set-tabs {
+  display: flex; gap: 2px; flex: none;
+  padding: 8px 16px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.set-tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font-size: 12.5px; font-weight: 600; font-family: inherit;
+  cursor: pointer; padding: 8px 10px; margin-bottom: -1px;
+}
+.set-tab:hover { color: var(--text); }
+.set-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .settings {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 20px 28px 24px;
   background: var(--panel);
   color: var(--text);
 }
+.set-panel[hidden] { display: none; }
+.set-panel h2:first-child { margin-top: 0; }
 .settings h2 {
   margin: 0 0 20px;
   font-size: 16px;
