@@ -230,13 +230,18 @@ pub async fn queue_and_patch(
     let lock = app.state::<QueueLock>();
     let _guard = lock.0.lock().await;
     let now = crate::now_ms();
+    let mut snapshot = load_cache(app);
+    let base_updated_at = snapshot
+        .as_ref()
+        .and_then(|s| s.data.assigned.iter().find(|d| d.id == target_id))
+        .and_then(|d| d.updated_at.clone());
     let mut queue = load_queue(app);
-    push_mutation(&mut queue, kind, project_id, target_id, payload, now);
+    push_mutation(&mut queue, kind, project_id, target_id, payload, base_updated_at, now);
     let pending = queue.items.len();
     save_queue(app, &queue)?;
-    if let Some(mut snapshot) = load_cache(app) {
-        patch_cached_item(&mut snapshot.data.assigned, target_id, patch);
-        save_cache_snapshot(app, &snapshot)?;
+    if let Some(snap) = snapshot.as_mut() {
+        patch_cached_item(&mut snap.data.assigned, target_id, patch);
+        save_cache_snapshot(app, snap)?;
     }
     emit_queue_changed(app, pending);
     Ok(())
@@ -255,7 +260,7 @@ pub async fn queue_create_and_insert(
     let now = crate::now_ms();
     let mut queue = load_queue(app);
     let local_id = format!("local-{now}-{}", queue.items.len());
-    push_mutation(&mut queue, MutationKind::CreateIssue, project_id, &local_id, payload, now);
+    push_mutation(&mut queue, MutationKind::CreateIssue, project_id, &local_id, payload, None, now);
     let pending = queue.items.len();
     save_queue(app, &queue)?;
     if let Some(mut snapshot) = load_cache(app) {
@@ -273,13 +278,18 @@ pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, t
     let lock = app.state::<QueueLock>();
     let _guard = lock.0.lock().await;
     let now = crate::now_ms();
+    let mut snapshot = load_cache(app);
+    let base_updated_at = snapshot
+        .as_ref()
+        .and_then(|s| s.data.assigned.iter().find(|d| d.id == target_id))
+        .and_then(|d| d.updated_at.clone());
     let mut queue = load_queue(app);
-    push_mutation(&mut queue, MutationKind::Delete, project_id, target_id, serde_json::Value::Null, now);
+    push_mutation(&mut queue, MutationKind::Delete, project_id, target_id, serde_json::Value::Null, base_updated_at, now);
     let pending = queue.items.len();
     save_queue(app, &queue)?;
-    if let Some(mut snapshot) = load_cache(app) {
-        remove_cached_item(&mut snapshot.data.assigned, target_id);
-        save_cache_snapshot(app, &snapshot)?;
+    if let Some(snap) = snapshot.as_mut() {
+        remove_cached_item(&mut snap.data.assigned, target_id);
+        save_cache_snapshot(app, snap)?;
     }
     emit_queue_changed(app, pending);
     Ok(())
