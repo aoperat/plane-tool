@@ -1,6 +1,6 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { getConflicts, getSettings, resolveConflict } from "../shared/ipc";
-import { priorityIcon, priorityLabel, stateIcon, stateLabel } from "../shared/planeIcons";
+import { priorityLabel, stateLabel } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import type { Conflict, ConflictFields } from "../shared/types";
 import "../shared/app.css";
