@@ -157,6 +157,33 @@ function dateInputRow(label: string, value: string | null, onPick: (v: string | 
   return row;
 }
 
+/** Appends a preset list + manual date-input row for one date field
+ *  ("시작일" / "마감일") to a sidebar date popover. */
+function buildDateFieldSection(
+  pop: HTMLElement,
+  label: string,
+  field: "start_date" | "target_date",
+  it: WorkItem,
+  allItems: WorkItem[],
+  projects: Project[],
+) {
+  for (const preset of DATE_PRESETS) {
+    const opt = document.createElement("div");
+    opt.className = "pop-item";
+    opt.textContent = label + ": " + preset.label;
+    opt.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      applyDateChange(it, allItems, projects, field, resolveDatePreset(preset.key));
+    };
+    pop.appendChild(opt);
+  }
+  pop.appendChild(dateInputRow(label, it[field], (v) => {
+    closePopover();
+    applyDateChange(it, allItems, projects, field, v);
+  }));
+}
+
 function openSidebarDatePopover(anchor: HTMLElement, it: WorkItem, allItems: WorkItem[], projects: Project[]) {
   closePopover();
   const pop = document.createElement("div");
@@ -165,30 +192,13 @@ function openSidebarDatePopover(anchor: HTMLElement, it: WorkItem, allItems: Wor
   pop.style.width = "200px";
   pop.onclick = (e) => e.stopPropagation();
 
-  for (const preset of DATE_PRESETS) {
-    const opt = document.createElement("div");
-    opt.className = "pop-item";
-    opt.textContent = "마감일: " + preset.label;
-    opt.onclick = (e) => {
-      e.stopPropagation();
-      closePopover();
-      applyDateChange(it, allItems, projects, "target_date", resolveDatePreset(preset.key));
-    };
-    pop.appendChild(opt);
-  }
+  buildDateFieldSection(pop, "시작일", "start_date", it, allItems, projects);
 
   const divider = document.createElement("div");
   divider.className = "popover-divider";
   pop.appendChild(divider);
 
-  pop.appendChild(dateInputRow("시작일", it.start_date, (v) => {
-    closePopover();
-    applyDateChange(it, allItems, projects, "start_date", v);
-  }));
-  pop.appendChild(dateInputRow("마감일", it.target_date, (v) => {
-    closePopover();
-    applyDateChange(it, allItems, projects, "target_date", v);
-  }));
+  buildDateFieldSection(pop, "마감일", "target_date", it, allItems, projects);
 
   const rect = anchor.getBoundingClientRect();
   attachPopover(pop, rect.left, rect.bottom + 4);
