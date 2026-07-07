@@ -242,6 +242,8 @@ kbd {
 .hbtn:hover { background: var(--panel-2); color: var(--text); }
 .hbtn.active { color: var(--accent); background: var(--accent-soft); }
 .hbtn svg { width: 15px; height: 15px; display: block; }
+/* `display: grid` above beats the UA's [hidden] { display: none } — restate it. */
+.hbtn[hidden] { display: none; }
 
 .sb-section { padding: 14px 14px 6px; }
 .sb-section .h {

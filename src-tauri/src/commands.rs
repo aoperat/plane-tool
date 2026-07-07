@@ -553,11 +553,18 @@ pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, String> {
     let (client, _s) = client(&app)?;
-    let projects = client.list_projects().await?;
-    Ok(projects
-        .into_iter()
-        .map(|p| ProjectDto { id: p.id, name: p.name, identifier: p.identifier })
-        .collect())
+    match client.list_projects().await {
+        Ok(projects) => Ok(projects
+            .into_iter()
+            .map(|p| ProjectDto { id: p.id, name: p.name, identifier: p.identifier })
+            .collect()),
+        Err(e) if plane_api::is_network_error(&e) => {
+            let snapshot = crate::offline::load_cache(&app)
+                .ok_or_else(|| "오프라인 상태이며 아직 캐시된 데이터가 없습니다".to_string())?;
+            Ok(snapshot.data.projects)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
