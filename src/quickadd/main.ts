@@ -532,16 +532,24 @@ attachWheelCycle(chipPriority, () => PRIORITY_ORDER.length, (delta) => {
   const i = PRIORITY_ORDER.indexOf(priority);
   priority = PRIORITY_ORDER[(i + delta + PRIORITY_ORDER.length) % PRIORITY_ORDER.length];
   renderChips();
+  if (openPopover === "priority") openPriorityPopover();
 });
 
 attachWheelCycle(chipState, () => STATE_ORDER.length, (delta) => {
   const i = STATE_ORDER.indexOf(stateGroup);
   stateGroup = STATE_ORDER[(i + delta + STATE_ORDER.length) % STATE_ORDER.length];
   renderChips();
+  if (openPopover === "state") openStatePopover();
 });
 
-attachWheelCycle(chipStart, () => 2, (delta) => shiftDateField("start", delta));
-attachWheelCycle(chipDue, () => 2, (delta) => shiftDateField("due", delta));
+attachWheelCycle(chipStart, () => 2, (delta) => {
+  shiftDateField("start", delta);
+  if (openPopover === "start") openDatePopover("start");
+});
+attachWheelCycle(chipDue, () => 2, (delta) => {
+  shiftDateField("due", delta);
+  if (openPopover === "due") openDatePopover("due");
+});
 
 // Single-select cycle — matches a plain (non-Ctrl) click. Empty assigneeIds means
 // "defaults to me", so start the cycle from the "me" row when nothing is picked yet.
@@ -552,6 +560,7 @@ attachWheelCycle(chipAssignee, () => members.length, (delta) => {
   const next = members[((i === -1 ? meIndex : i) + delta + members.length) % members.length];
   assigneeIds = next.is_me ? [] : [next.id];
   renderChips();
+  if (openPopover === "assignee") openAssigneePopover();
 });
 
 // DOM order of the field chips, used for ArrowLeft/ArrowRight navigation between them.
