@@ -603,7 +603,12 @@ pub async fn get_work_item(app: tauri::AppHandle, project_id: String, item_id: S
 }
 
 #[tauri::command]
-pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: String) {
+pub fn open_edit_modal(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+    snapshot: Option<WorkItemDto>,
+) {
     if let Some(win) = app.get_webview_window("editmodal") {
         let _ = win.show();
         let _ = win.set_focus();
@@ -611,7 +616,7 @@ pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: Strin
     let _ = app.emit_to(
         "editmodal",
         "load-item",
-        serde_json::json!({ "projectId": project_id, "itemId": item_id }),
+        serde_json::json!({ "projectId": project_id, "itemId": item_id, "snapshot": snapshot }),
     );
 }
 
