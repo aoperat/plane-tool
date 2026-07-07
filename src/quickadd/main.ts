@@ -532,16 +532,18 @@ chipDue.addEventListener("keydown", fieldPopoverKeydown);
 chipPriority.addEventListener("keydown", fieldPopoverKeydown);
 chipState.addEventListener("keydown", fieldPopoverKeydown);
 
+// Clamped, not wrapped: priority/state are ordered scales (없음..긴급, 백로그..취소), not
+// cyclic lists, so wheel-up stops at the last entry instead of rolling back to the first.
 attachWheelCycle(chipPriority, () => PRIORITY_ORDER.length, (delta) => {
   const i = PRIORITY_ORDER.indexOf(priority);
-  priority = PRIORITY_ORDER[(i + delta + PRIORITY_ORDER.length) % PRIORITY_ORDER.length];
+  priority = PRIORITY_ORDER[Math.max(0, Math.min(PRIORITY_ORDER.length - 1, i + delta))];
   renderChips();
   if (openPopover === "priority") openPriorityPopover();
 });
 
 attachWheelCycle(chipState, () => STATE_ORDER.length, (delta) => {
   const i = STATE_ORDER.indexOf(stateGroup);
-  stateGroup = STATE_ORDER[(i + delta + STATE_ORDER.length) % STATE_ORDER.length];
+  stateGroup = STATE_ORDER[Math.max(0, Math.min(STATE_ORDER.length - 1, i + delta))];
   renderChips();
   if (openPopover === "state") openStatePopover();
 });
