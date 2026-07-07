@@ -49,7 +49,7 @@ let startChoice: DateChoice = "today";
 let startCustomDate = ""; // ISO yyyy-mm-dd, used when startChoice === "custom"
 let dueChoice: DateChoice = "today";
 let dueCustomDate = "";
-let priority: Priority = "none";
+let priority: Priority = "medium";
 let stateGroup: StateGroup = "unstarted";
 
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
@@ -587,7 +587,7 @@ function resetFields() {
   startCustomDate = "";
   dueChoice = "today";
   dueCustomDate = "";
-  priority = "none";
+  priority = "medium";
   stateGroup = "unstarted";
   descriptionEl.value = "";
   setDescVisible(false);
