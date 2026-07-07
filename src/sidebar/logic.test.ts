@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -278,6 +278,58 @@ describe("groupProgress", () => {
   });
   it("returns zeros for an empty group", () => {
     expect(groupProgress([])).toEqual({ done: 0, total: 0 });
+  });
+});
+
+describe("filterBySearch", () => {
+  it("returns items unchanged when query is empty", () => {
+    const items = [wi("a", "p1"), wi("b", "p1")];
+    expect(filterBySearch(items, [pr("p1")], "")).toBe(items);
+  });
+
+  it("matches items by title, case-insensitively", () => {
+    const items = [wiSort("a", { name: "Fix Login" }), wiSort("b", { name: "Other" })];
+    expect(filterBySearch(items, [pr("p1")], "login").map((i) => i.id)).toEqual(["a"]);
+  });
+
+  it("matches every item under a project whose name matches, even if the item's own title doesn't", () => {
+    const items = [wi("a", "p1"), wi("b", "p1"), wi("c", "p2")];
+    const projects = [pr("p1", "웹 클라이언트"), pr("p2", "백엔드")];
+    expect(filterBySearch(items, projects, "웹").map((i) => i.id)).toEqual(["a", "b"]);
+  });
+
+  it("matches an item whose title matches even when its project name doesn't", () => {
+    const items = [wiSort("a", { name: "웹 관련 아님" }), wi("b", "p2")];
+    const projects = [pr("p1", "다른 프로젝트"), pr("p2", "다른 프로젝트")];
+    expect(filterBySearch(items, projects, "웹").map((i) => i.id)).toEqual(["a"]);
+  });
+
+  it("returns an empty array when nothing matches", () => {
+    expect(filterBySearch([wi("a", "p1")], [pr("p1")], "nope")).toEqual([]);
+  });
+});
+
+describe("filterByStateGroup", () => {
+  it("returns items unchanged when group is null", () => {
+    const items = [wi("a", "p1", "started")];
+    expect(filterByStateGroup(items, null)).toBe(items);
+  });
+
+  it("keeps only items in the given state group", () => {
+    const items = [wi("a", "p1", "started"), wi("b", "p1", "backlog")];
+    expect(filterByStateGroup(items, "backlog").map((i) => i.id)).toEqual(["b"]);
+  });
+});
+
+describe("filterByPriority", () => {
+  it("returns items unchanged when priority is null", () => {
+    const items = [wiSort("a", { priority: "high" })];
+    expect(filterByPriority(items, null)).toBe(items);
+  });
+
+  it("keeps only items with the given priority", () => {
+    const items = [wiSort("a", { priority: "urgent" }), wiSort("b", { priority: "low" })];
+    expect(filterByPriority(items, "urgent").map((i) => i.id)).toEqual(["a"]);
   });
 });
 

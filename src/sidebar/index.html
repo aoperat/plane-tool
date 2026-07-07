@@ -12,9 +12,21 @@
         <div class="t">Quick Dock</div>
         <span id="user" class="u"></span>
         <span id="briefingBtn" class="hbtn" title="AI 브리핑"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5l1.4 3.6 3.6 1.4-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4z"/><path d="M12.8 10.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/></svg></span>
-        <span id="pin" class="hbtn" title="고정 — 다른 창이 활성화돼도 사이드바를 열어둡니다"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.5 2l4.5 4.5-2.2.7-2.4 2.4.3 3.4-2.1-2.1L4 14.5 1.5 12l3.6-3.6L3 6.4l3.4.3 2.4-2.4z" stroke-linejoin="round"/></svg></span>
+        <span id="searchToggle" class="hbtn" title="검색 (Ctrl+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M13.2 13.2 10.3 10.3"/></svg></span>
         <span id="conflictBadge" class="hbtn" title="동기화 충돌" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 14.5 13h-13z" stroke-linejoin="round"/><path d="M8 6v3.5" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".6" fill="currentColor" stroke="none"/></svg><span id="conflictCount" class="count"></span></span>
         <span id="moreMenu" class="hbtn" title="더보기"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg></span>
+      </div>
+      <div class="sb-search-bar" id="searchBar" hidden>
+        <div class="sb-search-row">
+          <span class="sicon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M13.2 13.2 10.3 10.3"/></svg></span>
+          <input id="searchInput" class="sb-search-input" placeholder="제목 또는 프로젝트명으로 검색" autocomplete="off" />
+          <span id="searchCount" class="sb-search-count"></span>
+          <span id="searchClear" class="sb-search-clear" title="닫기 (Esc)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></span>
+        </div>
+        <div class="sb-filter-row">
+          <button type="button" id="statusFilterChip" class="sb-filter-chip">상태: 전체</button>
+          <button type="button" id="priorityFilterChip" class="sb-filter-chip">우선순위: 전체</button>
+        </div>
       </div>
       <div class="scroll">
         <div class="sb-section">
@@ -27,6 +39,10 @@
             </span>
           </div>
           <div id="tasks"></div>
+          <div id="emptyState" class="sb-empty" hidden>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.6"/><path d="M13.2 13.2 10.3 10.3" stroke-linecap="round"/></svg>
+            <span id="emptyText">일치하는 작업이 없습니다</span>
+          </div>
         </div>
       </div>
       <div class="sb-foot">

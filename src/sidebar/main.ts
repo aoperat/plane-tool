@@ -6,7 +6,7 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -24,13 +24,23 @@ const win = getCurrentWindow();
 const tasksEl = document.getElementById("tasks")!;
 const taskCount = document.getElementById("taskCount")!;
 const synced = document.getElementById("synced")!;
-const pinEl = document.getElementById("pin")!;
 const inboxEl = document.getElementById("inbox")!;
+const emptyStateEl = document.getElementById("emptyState")!;
+const searchToggle = document.getElementById("searchToggle")!;
+const searchBar = document.getElementById("searchBar")!;
+const searchInput = document.getElementById("searchInput") as HTMLInputElement;
+const searchClearEl = document.getElementById("searchClear")!;
+const searchCountEl = document.getElementById("searchCount")!;
+const statusFilterChip = document.getElementById("statusFilterChip")!;
+const priorityFilterChip = document.getElementById("priorityFilterChip")!;
 let baseUrl = "";
 let workspace = "";
 let states: ProjectState[] = [];
 let openPopover: HTMLElement | null = null;
 let pinned = false;
+let searchQuery = "";
+let statusFilter: string | null = null;
+let priorityFilter: string | null = null;
 // 유휴 자동 열림 보호: true인 동안은 blur 자동 숨김을 무시한다. 사용자가
 // 자리에 없을 때 열린 사이드바는 키보드/마우스 입력 없이는 닫히면 안 되고,
 // 무인 상태에서는 화면 잠금·알림·다른 앱 활성화 등이 얼마든지 blur를
@@ -78,14 +88,6 @@ hideDoneEl.onclick = () => {
   renderTasks(lastItems, lastProjects);
 };
 
-pinEl.onclick = () => {
-  pinned = !pinned;
-  pinEl.classList.toggle("active", pinned);
-  pinEl.title = pinned
-    ? "고정됨 — 클릭하면 다른 창 활성화 시 자동으로 닫힙니다"
-    : "고정 — 다른 창이 활성화돼도 사이드바를 열어둡니다";
-};
-
 const STATE_GROUPS = ["backlog", "unstarted", "started", "completed", "cancelled"] as const;
 const STATE_LABELS: Record<string, string> = {
   backlog: "백로그", unstarted: "시작 전", started: "진행 중", completed: "완료", cancelled: "취소",
@@ -93,6 +95,56 @@ const STATE_LABELS: Record<string, string> = {
 const PRIORITIES = ["urgent", "high", "medium", "low", "none"] as const;
 const PRIORITY_LABELS: Record<string, string> = {
   urgent: "긴급", high: "높음", medium: "보통", low: "낮음", none: "없음",
+};
+
+// ---- 검색 줄: 헤더 밑에 붙였다 뗐다 하며, 닫으면 검색어·필터를 모두 초기화한다 ----
+function openSearch() {
+  searchBar.hidden = false;
+  searchToggle.classList.add("active");
+  searchInput.focus();
+}
+
+function closeSearch() {
+  searchBar.hidden = true;
+  searchToggle.classList.remove("active");
+  searchQuery = "";
+  searchInput.value = "";
+  statusFilter = null;
+  statusFilterChip.textContent = "상태: 전체";
+  statusFilterChip.classList.remove("active");
+  priorityFilter = null;
+  priorityFilterChip.textContent = "우선순위: 전체";
+  priorityFilterChip.classList.remove("active");
+  renderTasks(lastItems, lastProjects);
+}
+
+searchToggle.onclick = () => { searchBar.hidden ? openSearch() : closeSearch(); };
+searchClearEl.onclick = closeSearch;
+searchInput.addEventListener("input", () => {
+  searchQuery = searchInput.value;
+  renderTasks(lastItems, lastProjects);
+});
+
+statusFilterChip.onclick = (e) => {
+  e.stopPropagation();
+  const options = [{ value: null, label: "전체" }, ...STATE_GROUPS.map((g) => ({ value: g as string, label: STATE_LABELS[g] }))];
+  openFilterPopover(statusFilterChip, options, statusFilter, (value) => {
+    statusFilter = value;
+    statusFilterChip.textContent = `상태: ${value ? STATE_LABELS[value] : "전체"}`;
+    statusFilterChip.classList.toggle("active", value !== null);
+    renderTasks(lastItems, lastProjects);
+  });
+};
+
+priorityFilterChip.onclick = (e) => {
+  e.stopPropagation();
+  const options = [{ value: null, label: "전체" }, ...PRIORITIES.map((p) => ({ value: p as string, label: PRIORITY_LABELS[p] }))];
+  openFilterPopover(priorityFilterChip, options, priorityFilter, (value) => {
+    priorityFilter = value;
+    priorityFilterChip.textContent = `우선순위: ${value ? PRIORITY_LABELS[value] : "전체"}`;
+    priorityFilterChip.classList.toggle("active", value !== null);
+    renderTasks(lastItems, lastProjects);
+  });
 };
 
 const PLUS_ICON =
@@ -255,6 +307,33 @@ function openPriorityPopover(anchor: HTMLElement, item: WorkItem, onPicked: (pri
       onPicked(p);
     };
     pop.appendChild(opt);
+  }
+  const rect = anchor.getBoundingClientRect();
+  attachPopover(pop, rect.left, rect.bottom + 4);
+}
+
+/** Generic single-select list popover for the search bar's state/priority filter chips
+ *  (as opposed to openStatePopover/openPriorityPopover above, which edit one work item). */
+function openFilterPopover(
+  anchor: HTMLElement,
+  options: Array<{ value: string | null; label: string }>,
+  current: string | null,
+  onPicked: (value: string | null) => void,
+) {
+  closePopover();
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.position = "fixed";
+  for (const opt of options) {
+    const item = document.createElement("div");
+    item.className = "pop-item" + (opt.value === current ? " sel" : "");
+    item.textContent = opt.label;
+    item.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      onPicked(opt.value);
+    };
+    pop.appendChild(item);
   }
   const rect = anchor.getBoundingClientRect();
   attachPopover(pop, rect.left, rect.bottom + 4);
@@ -508,9 +587,20 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
 function renderTasks(items: WorkItem[], projects: Project[]) {
   lastItems = items;
   lastProjects = projects;
+  // 헤더의 개수는 검색/필터와 무관하게 항상 할당된 작업 총합을 보여준다 —
+  // 검색·필터는 목록의 "범위"를 좁히는 것이지 표시 설정이 아니므로, 그 결과
+  // 개수는 검색 줄 자체의 searchCountEl에 따로 보여준다.
   taskCount.textContent = String(items.length);
   tasksEl.innerHTML = "";
-  const groups = groupItemsByProject(items, projects);
+
+  let filtered = filterBySearch(items, projects, searchQuery);
+  filtered = filterByStateGroup(filtered, statusFilter);
+  filtered = filterByPriority(filtered, priorityFilter);
+  const isFiltering = searchQuery.trim() !== "" || statusFilter !== null || priorityFilter !== null;
+  searchCountEl.textContent = isFiltering ? `${filtered.length}개 결과` : "";
+
+  const groups = groupItemsByProject(filtered, projects);
+  emptyStateEl.hidden = !isFiltering || groups.length > 0;
   groups.forEach(({ project, items: groupItems }, i) => {
     const collapsed = collapsedGroups.has(project.id);
 
@@ -903,6 +993,19 @@ function openMoreMenu() {
   pop.style.position = "fixed";
   pop.style.width = MORE_MENU_WIDTH + "px";
 
+  const pinItem = document.createElement("div");
+  pinItem.className = "pop-item" + (pinned ? " sel" : "");
+  pinItem.textContent = "고정";
+  pinItem.title = pinned
+    ? "고정됨 — 클릭하면 다른 창 활성화 시 자동으로 닫힙니다"
+    : "고정 — 다른 창이 활성화돼도 사이드바를 열어둡니다";
+  pinItem.onclick = (e) => {
+    e.stopPropagation();
+    closePopover();
+    pinned = !pinned;
+  };
+  pop.appendChild(pinItem);
+
   appendPopItem(pop, "업데이트 확인", () => runUpdateCheck());
   appendPopItem(pop, "릴리즈 노트", () => openReleaseNotes());
   appendPopItem(pop, "설정", () => openSettings());
@@ -943,9 +1046,14 @@ document.addEventListener("keydown", (e) => {
       closePopover();
     } else if (!notesPanel.hidden) {
       closeReleaseNotes();
+    } else if (!searchBar.hidden) {
+      closeSearch();
     } else {
       hideSidebar();
     }
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    openSearch();
   }
 });
 win.listen("tauri://focus", refreshIfStale);

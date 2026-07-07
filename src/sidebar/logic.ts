@@ -154,6 +154,31 @@ export function groupProgress(items: WorkItem[]): { done: number; total: number 
   return { done, total: items.length };
 }
 
+/** True when `item`'s own name matches `query`, or its project's name does (case-insensitive
+ *  substring). A matching project name pulls in every item under that project, not just ones
+ *  whose own title also matches — searching a project surfaces its whole backlog. */
+export function filterBySearch(items: WorkItem[], projects: Project[], query: string): WorkItem[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  const projectNameById = new Map(projects.map((p) => [p.id, p.name.toLowerCase()]));
+  return items.filter((it) => {
+    if (it.name.toLowerCase().includes(q)) return true;
+    return (projectNameById.get(it.project_id) ?? "").includes(q);
+  });
+}
+
+/** Keeps only items in the given state group; `null` returns `items` unchanged. */
+export function filterByStateGroup(items: WorkItem[], group: string | null): WorkItem[] {
+  if (!group) return items;
+  return items.filter((it) => it.state_group === group);
+}
+
+/** Keeps only items with the given priority; `null` returns `items` unchanged. */
+export function filterByPriority(items: WorkItem[], priority: string | null): WorkItem[] {
+  if (!priority) return items;
+  return items.filter((it) => it.priority === priority);
+}
+
 /** unix ms 타임스탬프를 "방금 전"/"N분 전"/"N시간 전"/"N일 전"으로. */
 export function formatRelativeTime(thenMs: number, nowMs: number): string {
   const diff = nowMs - thenMs;
