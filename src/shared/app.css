@@ -96,6 +96,7 @@ kbd {
 .chip-desc-toggle.active {
   color: var(--accent); background: var(--accent-soft); border-color: rgba(79,124,255,0.45);
 }
+.chip:disabled { opacity: .5; cursor: default; }
 .chip .muted { color: var(--muted-2); }
 .chip .avatar {
   width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
@@ -539,6 +540,7 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .em-btn-primary { background: var(--accent); color: #fff; border: none; }
 .em-btn-primary:hover { opacity: 0.85; }
 .em-btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.em-btn:disabled { opacity: .55; cursor: default; }
 
 /* sidebar row hover "open in browser" icon */
 .row-browser-btn { margin-left: auto; opacity: 0; transition: opacity .1s; }

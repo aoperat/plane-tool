@@ -9,7 +9,7 @@ import {
   CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
-import type { Member, WorkItemDetail } from "../shared/types";
+import type { Member, WorkItem, WorkItemDetail } from "../shared/types";
 import "../shared/app.css";
 
 const win = getCurrentWindow();
@@ -25,7 +25,7 @@ const emChipStart = document.getElementById("emChipStart")!;
 const emChipDue = document.getElementById("emChipDue")!;
 const emChipState = document.getElementById("emChipState")!;
 const emChipPriority = document.getElementById("emChipPriority")!;
-const emChipDesc = document.getElementById("emChipDesc")!;
+const emChipDesc = document.getElementById("emChipDesc") as HTMLButtonElement;
 const emFieldPopover = document.getElementById("emFieldPopover")!;
 const emError = document.getElementById("emError")!;
 const emDelete = document.getElementById("emDelete")!;
@@ -33,13 +33,15 @@ const emDeleteConfirm = document.getElementById("emDeleteConfirm")!;
 const emDeleteConfirmYes = document.getElementById("emDeleteConfirmYes")!;
 const emDeleteConfirmNo = document.getElementById("emDeleteConfirmNo")!;
 const emCancel = document.getElementById("emCancel")!;
-const emSave = document.getElementById("emSave")!;
+const emSave = document.getElementById("emSave") as HTMLButtonElement;
 
 let baseUrl = "";
 let workspace = "";
 let projectId = "";
 let itemId = "";
 let original: WorkItemDetail | null = null;
+let snapshotOriginal: WorkItem | null = null;
+let detailFetchPromise: Promise<WorkItemDetail> | null = null;
 let members: Member[] = [];
 let membersLoadedForProject: string | null = null;
 
@@ -333,7 +335,36 @@ emChipDesc.onclick = () => {
   setDescVisible(!descVisible);
 };
 
-async function loadItem(pid: string, iid: string) {
+function snapshotToDetail(snapshot: WorkItem): WorkItemDetail {
+  return {
+    id: snapshot.id, name: snapshot.name, description: "",
+    assignee_ids: snapshot.assignee_ids,
+    start_date: snapshot.start_date, target_date: snapshot.target_date,
+    priority: snapshot.priority, state_group: snapshot.state_group,
+    project_id: snapshot.project_id,
+  };
+}
+
+// description을 제외한 필드만 폼에 채운다 — description은 호출부에서 별도로 다룬다.
+function applyFieldsToForm(fields: Pick<WorkItemDetail,
+  "name" | "assignee_ids" | "start_date" | "target_date" | "priority" | "state_group">) {
+  emTitleInput.value = fields.name;
+  assigneeIds = [...fields.assignee_ids];
+  startChoice = "custom";
+  startCustomDate = fields.start_date ?? "";
+  dueChoice = "custom";
+  dueCustomDate = fields.target_date ?? "";
+  priority = fields.priority as Priority;
+  stateGroup = fields.state_group as StateGroup;
+  renderChips();
+}
+
+function setDescriptionLoading(loading: boolean) {
+  emChipDesc.disabled = loading;
+  if (loading) emChipDesc.title = "설명 불러오는 중…";
+}
+
+async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   // Re-assert always-on-top every time an item is loaded, mirroring the
   // sidebar's showSidebar() — openInBrowser() drops it so the browser window can
   // surface above the modal, and nothing else restores it afterward.
@@ -353,42 +384,63 @@ async function loadItem(pid: string, iid: string) {
   projectId = pid;
   itemId = iid;
   original = null;
+  snapshotOriginal = snapshot ?? null;
+  detailFetchPromise = null;
   members = [];
   membersLoadedForProject = null;
   emError.hidden = true;
   emTitleInput.classList.remove("error");
-  emForm.hidden = true;
-  emLoading.hidden = false;
-  emLoading.textContent = "불러오는 중…";
-  resizeToFit();
+
+  if (snapshot) {
+    // 이미 동기화로 받아둔 값이 있다 — 전체 스피너 없이 즉시 편집 가능한 폼을 보여준다.
+    applyFieldsToForm(snapshot);
+    emDescription.value = "";
+    setDescVisible(false, false);
+    setDescriptionLoading(true);
+    emForm.hidden = false;
+    emLoading.hidden = true;
+    resizeToFit();
+    emTitleInput.focus();
+  } else {
+    emForm.hidden = true;
+    emLoading.hidden = false;
+    emLoading.textContent = "불러오는 중…";
+    resizeToFit();
+  }
+
+  const fetchPromise = getWorkItem(pid, iid);
+  if (snapshot) detailFetchPromise = fetchPromise;
+
   try {
-    const detail = await getWorkItem(pid, iid);
+    const detail = await fetchPromise;
     if (requestId !== loadRequestId) return;
     original = detail;
-    emTitleInput.value = detail.name;
+    if (!snapshot) {
+      // 스냅샷이 있었다면 이미 채워둔 폼 값(사용자가 편집 중일 수 있음)은 덮어쓰지
+      // 않는다 — description만 이 fetch로 채운다.
+      applyFieldsToForm(detail);
+    }
     emDescription.value = detail.description;
+    setDescriptionLoading(false);
     // Auto-show an existing description — hiding it would read as "deleted".
     setDescVisible(detail.description !== "", false);
-    assigneeIds = [...detail.assignee_ids];
-    // Always initialize as "custom" showing the loaded date literally — the
-    // preset chips (오늘/내일/다음 주) remain clickable if the user wants to
-    // switch to a relative date, but there's no "existing value" concept for
-    // presets, unlike QuickAdd's always-fresh "오늘" default.
-    startChoice = "custom";
-    startCustomDate = detail.start_date ?? "";
-    dueChoice = "custom";
-    dueCustomDate = detail.target_date ?? "";
-    priority = detail.priority as Priority;
-    stateGroup = detail.state_group as StateGroup;
-    renderChips();
     emLoading.hidden = true;
     emForm.hidden = false;
     resizeToFit();
-    emTitleInput.focus();
+    if (!snapshot) emTitleInput.focus();
   } catch (err) {
-    emLoading.textContent = "불러오기 실패: " + err;
-    console.error("getWorkItem failed:", err);
-    resizeToFit();
+    if (requestId !== loadRequestId) return;
+    if (snapshot) {
+      // 오프라인 등으로 최신 데이터를 못 가져왔다 — 스냅샷을 기준값으로 확정하고
+      // 계속 편집 가능하게 둔다(설명은 빈 값으로 취급).
+      original = snapshotToDetail(snapshot);
+      setDescriptionLoading(false);
+      console.error("getWorkItem background refresh failed:", err);
+    } else {
+      emLoading.textContent = "불러오기 실패: " + err;
+      console.error("getWorkItem failed:", err);
+      resizeToFit();
+    }
   }
 }
 
@@ -498,8 +550,8 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-win.listen<{ projectId: string; itemId: string }>("load-item", (event) => {
-  loadItem(event.payload.projectId, event.payload.itemId);
+win.listen<{ projectId: string; itemId: string; snapshot?: WorkItem }>("load-item", (event) => {
+  loadItem(event.payload.projectId, event.payload.itemId, event.payload.snapshot);
 });
 
 async function loadSettings() {
