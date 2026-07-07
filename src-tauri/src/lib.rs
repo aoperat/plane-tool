@@ -726,6 +726,7 @@ pub fn run() {
             if cfg.base_url.is_empty() {
                 show_window(app.handle(), "settings");
             }
+            config::seed_openai_key_default();
 
             // 설정 창은 유일하게 decorations:true라 네이티브 닫기(X) 버튼이 있다 —
             // 기본 동작대로 두면 창이 파괴되어, 이후 open_settings의

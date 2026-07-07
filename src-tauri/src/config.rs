@@ -126,6 +126,19 @@ pub fn set_openai_key(key: &str) -> Result<(), String> {
     entry.set_password(key).map_err(|e| e.to_string())
 }
 
+/// 빌드 타임에 심어진 기본 OpenAI 키(`OPENAI_API_KEY_DEFAULT`, build.rs 참고)로
+/// 키링을 채운다 — 이미 사용자가 직접 넣은 키가 있으면 건드리지 않는다.
+pub fn seed_openai_key_default() {
+    if get_openai_key().is_some() {
+        return;
+    }
+    if let Some(key) = option_env!("OPENAI_API_KEY_DEFAULT") {
+        if !key.is_empty() {
+            let _ = set_openai_key(key);
+        }
+    }
+}
+
 const BRIEFING_CACHE_KEY: &str = "briefing_cache";
 
 /// 마지막 브리핑 캐시. 같은 날 다시 열면 API를 다시 부르지 않기 위한 것 —
