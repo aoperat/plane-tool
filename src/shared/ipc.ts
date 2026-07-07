@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -94,8 +94,8 @@ export const updateWorkItemFields = (project_id: string, item_id: string, fields
     stateGroup: fields.state_group,
   });
 
-export const openEditModal = (project_id: string, item_id: string) =>
-  invoke<void>("open_edit_modal", { projectId: project_id, itemId: item_id });
+export const openEditModal = (project_id: string, item_id: string, snapshot?: WorkItem) =>
+  invoke<void>("open_edit_modal", { projectId: project_id, itemId: item_id, snapshot });
 
 export const openSettings = () => invoke<void>("open_settings");
 
