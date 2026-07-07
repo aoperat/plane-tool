@@ -5,3 +5,4 @@ src-tauri/gen/
 .superpowers/
 icon-source.png
 .omc/
+.worktrees/
