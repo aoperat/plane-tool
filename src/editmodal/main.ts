@@ -376,6 +376,7 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   });
   closePopover();
   emDeleteConfirm.hidden = true;
+  closeSaveConflict();
   // closeModal()은 창을 숨기기만 해서 같은 항목을 다시 열 때 원본 데이터가 메모리에
   // 그대로 남아있다 — 재요청 없이 그대로 보여준다.
   if (original && pid === projectId && iid === itemId) {
@@ -450,6 +451,7 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
 function closeModal() {
   closePopover();
   emDeleteConfirm.hidden = true;
+  closeSaveConflict();
   win.hide();
 }
 
@@ -478,21 +480,41 @@ function hasConflictWithSnapshot(fetched: WorkItemDetail, snapshot: WorkItem): b
   return JSON.stringify(fetchedAssignees) !== JSON.stringify(snapshotAssignees);
 }
 
+// Set while a confirmSaveConflict() promise is pending, so a force-close (modal close,
+// loadItem for a different item, or Escape) can still resolve it instead of leaking a
+// forever-pending save() call — see closeSaveConflict().
+let pendingSaveConflictResolve: ((proceed: boolean) => void) | null = null;
+
 function confirmSaveConflict(): Promise<boolean> {
   return new Promise((resolve) => {
     emSaveConfirm.hidden = false;
     resizeToFit();
+    pendingSaveConflictResolve = resolve;
     emSaveConfirmYes.onclick = () => {
+      pendingSaveConflictResolve = null;
       emSaveConfirm.hidden = true;
       resizeToFit();
       resolve(true);
     };
     emSaveConfirmNo.onclick = () => {
+      pendingSaveConflictResolve = null;
       emSaveConfirm.hidden = true;
       resizeToFit();
       resolve(false);
     };
   });
+}
+
+// Force-closes the save-conflict popup from anywhere other than its own Yes/No
+// buttons (closeModal, loadItem, Escape) — treats an abandoned popup as "cancel"
+// so any pending confirmSaveConflict() promise still resolves.
+function closeSaveConflict() {
+  if (pendingSaveConflictResolve) {
+    const resolve = pendingSaveConflictResolve;
+    pendingSaveConflictResolve = null;
+    resolve(false);
+  }
+  emSaveConfirm.hidden = true;
 }
 
 async function save() {
@@ -585,6 +607,11 @@ document.addEventListener("keydown", (e) => {
     }
     if (!emDeleteConfirm.hidden) {
       emDeleteConfirm.hidden = true;
+      resizeToFit();
+      return;
+    }
+    if (!emSaveConfirm.hidden) {
+      closeSaveConflict();
       resizeToFit();
       return;
     }
