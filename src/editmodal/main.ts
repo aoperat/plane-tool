@@ -32,6 +32,9 @@ const emDelete = document.getElementById("emDelete")!;
 const emDeleteConfirm = document.getElementById("emDeleteConfirm")!;
 const emDeleteConfirmYes = document.getElementById("emDeleteConfirmYes")!;
 const emDeleteConfirmNo = document.getElementById("emDeleteConfirmNo")!;
+const emSaveConfirm = document.getElementById("emSaveConfirm")!;
+const emSaveConfirmYes = document.getElementById("emSaveConfirmYes")!;
+const emSaveConfirmNo = document.getElementById("emSaveConfirmNo")!;
 const emCancel = document.getElementById("emCancel")!;
 const emSave = document.getElementById("emSave") as HTMLButtonElement;
 
@@ -464,8 +467,52 @@ async function openInBrowser() {
   }
 }
 
+function hasConflictWithSnapshot(fetched: WorkItemDetail, snapshot: WorkItem): boolean {
+  if (fetched.name !== snapshot.name) return true;
+  if ((fetched.start_date ?? "") !== (snapshot.start_date ?? "")) return true;
+  if ((fetched.target_date ?? "") !== (snapshot.target_date ?? "")) return true;
+  if (fetched.priority !== snapshot.priority) return true;
+  if (fetched.state_group !== snapshot.state_group) return true;
+  const fetchedAssignees = [...fetched.assignee_ids].sort();
+  const snapshotAssignees = [...snapshot.assignee_ids].sort();
+  return JSON.stringify(fetchedAssignees) !== JSON.stringify(snapshotAssignees);
+}
+
+function confirmSaveConflict(): Promise<boolean> {
+  return new Promise((resolve) => {
+    emSaveConfirm.hidden = false;
+    resizeToFit();
+    emSaveConfirmYes.onclick = () => {
+      emSaveConfirm.hidden = true;
+      resizeToFit();
+      resolve(true);
+    };
+    emSaveConfirmNo.onclick = () => {
+      emSaveConfirm.hidden = true;
+      resizeToFit();
+      resolve(false);
+    };
+  });
+}
+
 async function save() {
+  if (detailFetchPromise && !original) {
+    emSave.disabled = true;
+    try {
+      await detailFetchPromise;
+    } catch {
+      // 실패 시 loadItem의 catch가 이미 original을 스냅샷 기준으로 채워둔다.
+    } finally {
+      emSave.disabled = false;
+    }
+  }
   if (!original) return;
+
+  if (snapshotOriginal && hasConflictWithSnapshot(original, snapshotOriginal)) {
+    const proceed = await confirmSaveConflict();
+    if (!proceed) return;
+  }
+
   const name = emTitleInput.value.trim();
   if (!name) {
     emTitleInput.classList.add("error");
