@@ -5,6 +5,7 @@ export interface WorkItem {
   id: string; name: string; priority: string;
   target_date: string | null; start_date: string | null;
   state_group: string; project_id: string;
+  assignee_ids: string[];
   completed_at: string | null;
   created_at: string | null;
 }

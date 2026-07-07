@@ -96,6 +96,7 @@ kbd {
 .chip-desc-toggle.active {
   color: var(--accent); background: var(--accent-soft); border-color: rgba(79,124,255,0.45);
 }
+.chip:disabled { opacity: .5; cursor: default; }
 .chip .muted { color: var(--muted-2); }
 .chip .avatar {
   width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
@@ -534,11 +535,13 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .em-delete { background: transparent; border: none; color: var(--red); font-size: 12.5px; cursor: pointer; padding: 6px 4px; font-family: inherit; }
 .em-delete:hover { text-decoration: underline; }
 .em-delete-confirm { position: absolute; bottom: 100%; left: 18px; margin-bottom: 6px; width: 170px; }
+.em-save-confirm { position: absolute; bottom: 100%; right: 18px; margin-bottom: 6px; width: 210px; }
 .em-foot-right { margin-left: auto; display: flex; gap: 8px; }
 .em-btn { padding: 7px 16px; border-radius: 8px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
 .em-btn-primary { background: var(--accent); color: #fff; border: none; }
 .em-btn-primary:hover { opacity: 0.85; }
 .em-btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.em-btn:disabled { opacity: .55; cursor: default; }
 
 /* sidebar row hover "open in browser" icon */
 .row-browser-btn { margin-left: auto; opacity: 0; transition: opacity .1s; }

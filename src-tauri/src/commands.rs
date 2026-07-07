@@ -39,6 +39,7 @@ pub struct WorkItemDto {
     pub start_date: Option<String>,
     pub state_group: String,
     pub project_id: String,
+    pub assignee_ids: Vec<String>,
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -88,7 +89,9 @@ pub fn assemble_sidebar(
         .map(|w| WorkItemDto {
             id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
             start_date: w.start_date,
-            state_group: w.state_group, project_id: w.project_id, completed_at: w.completed_at,
+            state_group: w.state_group, project_id: w.project_id,
+            assignee_ids: w.assignee_ids,
+            completed_at: w.completed_at,
             created_at: w.created_at, updated_at: w.updated_at,
         })
         .collect();
@@ -314,6 +317,7 @@ pub async fn create_issue(
                 start_date: start_date.clone(),
                 state_group: state_group.clone(),
                 project_id: project_id.clone(),
+                assignee_ids: assignee_ids.clone(),
                 completed_at: None,
                 created_at: None,
                 updated_at: None,
@@ -599,7 +603,12 @@ pub async fn get_work_item(app: tauri::AppHandle, project_id: String, item_id: S
 }
 
 #[tauri::command]
-pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: String) {
+pub fn open_edit_modal(
+    app: tauri::AppHandle,
+    project_id: String,
+    item_id: String,
+    snapshot: Option<WorkItemDto>,
+) {
     if let Some(win) = app.get_webview_window("editmodal") {
         let _ = win.show();
         let _ = win.set_focus();
@@ -607,7 +616,7 @@ pub fn open_edit_modal(app: tauri::AppHandle, project_id: String, item_id: Strin
     let _ = app.emit_to(
         "editmodal",
         "load-item",
-        serde_json::json!({ "projectId": project_id, "itemId": item_id }),
+        serde_json::json!({ "projectId": project_id, "itemId": item_id, "snapshot": snapshot }),
     );
 }
 
@@ -1034,6 +1043,14 @@ mod tests {
         item.updated_at = Some("2026-07-01T10:00:00Z".into());
         let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
         assert_eq!(data.assigned[0].updated_at.as_deref(), Some("2026-07-01T10:00:00Z"));
+    }
+
+    #[test]
+    fn assemble_sidebar_carries_assignee_ids_into_work_item_dto() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let item = wi("a", "started", &["me", "other"], "p1");
+        let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
+        assert_eq!(data.assigned[0].assignee_ids, vec!["me".to_string(), "other".to_string()]);
     }
 
     #[test]

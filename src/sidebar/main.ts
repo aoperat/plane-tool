@@ -574,7 +574,7 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   }
   el.appendChild(chips);
 
-  el.onclick = () => openEditModal(it.project_id, it.id);
+  el.onclick = () => openEditModal(it.project_id, it.id, it);
   el.oncontextmenu = (e) => {
     e.preventDefault();
     e.stopPropagation();

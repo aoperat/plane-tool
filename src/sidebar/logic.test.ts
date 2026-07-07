@@ -3,10 +3,10 @@ import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, completed_at: null, created_at: null };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, assignee_ids: [], completed_at: null, created_at: null };
 }
 function wiCompleted(id: string, project_id: string, completed_at: string | null): WorkItem {
-  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group: "completed", project_id, completed_at, created_at: null };
+  return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group: "completed", project_id, assignee_ids: [], completed_at, created_at: null };
 }
 function wiSort(id: string, over: Partial<WorkItem>): WorkItem {
   return { ...wi(id, "p1"), ...over };
