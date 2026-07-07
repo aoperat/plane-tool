@@ -24,7 +24,8 @@ Let mouse wheel scrolling over a field chip (담당자/시작일/마감일/우�
 | 우선순위 | `PRIORITY_ORDER` | wrap at both ends |
 | 진행상태 | `STATE_ORDER` | wrap at both ends |
 | 시작일/마감일 | `shiftIsoDate(current, ±1)` | reuses QuickAdd's existing `shiftDateField(kind, delta)` (already used by the PageUp/PageDown shortcut); the same function is added to EditModal, which doesn't have it yet. Keeps the existing start/due-date-crossing guard. |
-| 담당자 | `members` array | single-select cycle only — matches a plain click, not the Ctrl+click multi-select behavior |
+| 담당자 (QuickAdd) | `members` array | single-select cycle only — matches a plain click, not the Ctrl+click multi-select behavior |
+| 담당자 (EditModal) | `members` array | EditModal's assignee popover is toggle-based multi-select (every click adds/removes a member, no "single pick" click). Wheel-cycling would silently collapse an existing multi-assignee issue down to one person, so the wheel listener is only active while `assigneeIds.length <= 1`. With 2+ assignees already set, wheel does nothing — must open the popover and toggle by hand. |
 
 ## Implementation sketch
 
@@ -61,6 +62,7 @@ attachWheelCycle(chipPriority, () => PRIORITY_ORDER.length, (delta) => {
 attachWheelCycle(chipStart, () => 2, (delta) => shiftDateField("start", delta));
 attachWheelCycle(chipDue, () => 2, (delta) => shiftDateField("due", delta));
 
+// quickadd/main.ts assignee — single-select cycle, empty assigneeIds defaults to "me"
 attachWheelCycle(chipAssignee, () => members.length, (delta) => {
   const meIndex = members.findIndex((m) => m.is_me);
   const currentId = assigneeIds[0] ?? members[meIndex]?.id;
@@ -69,9 +71,25 @@ attachWheelCycle(chipAssignee, () => members.length, (delta) => {
   assigneeIds = next.is_me ? [] : [next.id];
   renderChips();
 });
+
+// editmodal/main.ts assignee — only cycles while 0 or 1 assignees are set (guards
+// against silently collapsing a real multi-assignee issue down to one person).
+// Cycle order is [null ("담당자 없음"), ...members], matching renderAssigneePopoverItems.
+attachWheelCycle(
+  emChipAssignee,
+  () => (assigneeIds.length <= 1 ? members.length + 1 : 0),
+  (delta) => {
+    const options: (string | null)[] = [null, ...members.map((m) => m.id)];
+    const i = options.indexOf(assigneeIds[0] ?? null);
+    assigneeIds = options[(i + delta + options.length) % options.length] === null
+      ? []
+      : [options[(i + delta + options.length) % options.length] as string];
+    renderChips();
+  },
+);
 ```
 
-(Date chips pass a constant `2` for `getLength` — they always have "a next/previous day" to step to, so the no-op guard never needs to trigger for them.)
+(Date chips pass a constant `2` for `getLength` — they always have "a next/previous day" to step to, so the no-op guard never needs to trigger for them. EditModal's assignee `getLength` returns `0` once 2+ assignees are set, which `attachWheelCycle`'s `getLength() <= 1` no-op guard treats as disabled.)
 
 ## Out of scope
 
