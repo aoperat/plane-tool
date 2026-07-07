@@ -2,7 +2,8 @@ import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { deleteWorkItem, getSettings, getWorkItem, listMembers, updateWorkItemFields, type UpdateWorkItemFields } from "../shared/ipc";
 import { buildIssueUrl } from "../sidebar/logic";
-import { DATE_PRESETS, resolveDatePreset, type DatePresetKey } from "../shared/datePresets";
+import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
+import { attachWheelCycle } from "../shared/wheelCycle";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
@@ -88,6 +89,33 @@ function dateChoiceLabel(choice: DateChoice, custom: string): string {
 
 function resolveDateChoice(choice: DateChoice, custom: string): string {
   return choice === "custom" ? custom : resolveDatePreset(choice);
+}
+
+// ISO yyyy-mm-dd strings compare correctly with plain string ordering, so the
+// clamps below don't need Date parsing.
+function shiftDateField(kind: "start" | "due", delta: number) {
+  if (kind === "start") {
+    const current = resolveDateChoice(startChoice, startCustomDate);
+    const next = shiftIsoDate(current, delta);
+    startCustomDate = next;
+    startChoice = "custom";
+    const due = resolveDateChoice(dueChoice, dueCustomDate);
+    if (next > due) {
+      dueCustomDate = next;
+      dueChoice = "custom";
+    }
+  } else {
+    const current = resolveDateChoice(dueChoice, dueCustomDate);
+    const next = shiftIsoDate(current, delta);
+    dueCustomDate = next;
+    dueChoice = "custom";
+    const start = resolveDateChoice(startChoice, startCustomDate);
+    if (start > next) {
+      startCustomDate = next;
+      startChoice = "custom";
+    }
+  }
+  renderChips();
 }
 
 function renderAssigneeChip() {
@@ -257,6 +285,48 @@ emChipStart.onclick = () => { openPopover === "start" ? closePopover() : openDat
 emChipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopover("due"); };
 emChipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
 emChipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
+
+attachWheelCycle(emChipPriority, () => PRIORITY_ORDER.length, (delta) => {
+  const i = PRIORITY_ORDER.indexOf(priority);
+  priority = PRIORITY_ORDER[(i + delta + PRIORITY_ORDER.length) % PRIORITY_ORDER.length];
+  renderChips();
+  if (openPopover === "priority") openPriorityPopover();
+});
+
+attachWheelCycle(emChipState, () => STATE_ORDER.length, (delta) => {
+  const i = STATE_ORDER.indexOf(stateGroup);
+  stateGroup = STATE_ORDER[(i + delta + STATE_ORDER.length) % STATE_ORDER.length];
+  renderChips();
+  if (openPopover === "state") openStatePopover();
+});
+
+attachWheelCycle(emChipStart, () => 2, (delta) => {
+  shiftDateField("start", delta);
+  if (openPopover === "start") openDatePopover("start");
+});
+attachWheelCycle(emChipDue, () => 2, (delta) => {
+  shiftDateField("due", delta);
+  if (openPopover === "due") openDatePopover("due");
+});
+
+// EditModal's assignee popover is toggle-based multi-select (every click adds/removes a
+// member — there's no "single pick" click like QuickAdd's). Wheel-cycling would silently
+// collapse a real multi-assignee issue down to one person, so it's only active while 0 or
+// 1 assignees are currently set. Cycle order is [null ("담당자 없음"), ...members], matching
+// renderAssigneePopoverItems (src/editmodal/main.ts:144-158).
+attachWheelCycle(
+  emChipAssignee,
+  () => (assigneeIds.length <= 1 ? members.length + 1 : 0),
+  (delta) => {
+    const options: (string | null)[] = [null, ...members.map((m) => m.id)];
+    const i = options.indexOf(assigneeIds[0] ?? null);
+    const nextValue = options[(i + delta + options.length) % options.length];
+    assigneeIds = nextValue === null ? [] : [nextValue];
+    renderChips();
+    if (openPopover === "assignee") openAssigneePopover();
+  },
+);
+
 emChipDesc.innerHTML = `${DESCRIPTION_ICON} 설명`;
 emChipDesc.onclick = () => {
   if (openPopover) closePopover();
