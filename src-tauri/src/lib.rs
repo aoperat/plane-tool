@@ -772,6 +772,7 @@ pub fn run() {
             commands::open_edit_modal,
             commands::open_settings,
             commands::show_quickadd_for_project,
+            commands::set_last_project,
             commands::fetch_release_notes,
             commands::generate_briefing,
             commands::open_briefing,

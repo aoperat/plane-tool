@@ -1,5 +1,5 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { createIssue, listProjects, listMembers, getSettings } from "../shared/ipc";
+import { createIssue, listProjects, listMembers, getSettings, setLastProject } from "../shared/ipc";
 import { colorForId } from "../shared/color";
 import type { Project, Member } from "../shared/types";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
@@ -202,6 +202,10 @@ function renderDropdown() {
       renderChips();
       setDropdownOpen(false);
       titleEl.focus();
+      // Persist immediately — otherwise a focus-triggered load() (window re-summoned
+      // after switching away and back) resolves last_project_id back to the project
+      // that was selected before this in-window switch.
+      setLastProject(p.id).catch((err) => console.error("setLastProject failed:", err));
     };
     dropdown.appendChild(item);
   }

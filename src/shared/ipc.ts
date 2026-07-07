@@ -102,6 +102,9 @@ export const openSettings = () => invoke<void>("open_settings");
 export const showQuickaddForProject = (project_id: string) =>
   invoke<void>("show_quickadd_for_project", { projectId: project_id });
 
+export const setLastProject = (project_id: string) =>
+  invoke<void>("set_last_project", { projectId: project_id });
+
 /** Resolves to a display message when already up to date; null when an
  *  update dialog was opened instead. */
 export const checkUpdatesManual = () => invoke<string | null>("check_updates_manual");

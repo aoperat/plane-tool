@@ -637,6 +637,15 @@ pub fn show_quickadd_for_project(app: tauri::AppHandle, project_id: String) -> R
     Ok(())
 }
 
+// QuickAdd's own project dropdown needs the same persist-on-select behavior as
+// show_quickadd_for_project above — otherwise a focus-triggered load() (window
+// re-summoned after alt-tabbing away) resolves last_project_id back to the
+// project that was selected before the in-window switch.
+#[tauri::command]
+pub fn set_last_project(app: tauri::AppHandle, project_id: String) -> Result<(), String> {
+    config::set_last_project(&app, &project_id)
+}
+
 #[derive(Serialize)]
 pub struct ReleaseNoteDto {
     pub version: String,
