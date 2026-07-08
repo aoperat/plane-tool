@@ -635,9 +635,12 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
     const assigneeChip = document.createElement("span");
     assigneeChip.className = "chip sm";
     assigneeChip.title = "담당자";
-    assigneeChip.innerHTML =
-      `<span class="avatar" style="background:${colorForId(firstId)}">${name.slice(0, 1)}</span>` +
-      name + (restIds.length > 0 ? ` +${restIds.length}` : "");
+    const avatarEl = document.createElement("span");
+    avatarEl.className = "avatar";
+    avatarEl.style.background = colorForId(firstId);
+    avatarEl.textContent = name.slice(0, 1);
+    assigneeChip.appendChild(avatarEl);
+    assigneeChip.appendChild(document.createTextNode(name + (restIds.length > 0 ? ` +${restIds.length}` : "")));
     chips.appendChild(assigneeChip);
   }
   el.appendChild(chips);
