@@ -1,7 +1,8 @@
 # 할당 인지 시스템 & 맡긴 작업 창 — 설계 스펙
 
 - 날짜: 2026-07-03
-- 상태: 사용자 승인 대기
+- 상태: **Part B는 폐기 — [`2026-07-08-sidebar-delegated-tab-design.md`](2026-07-08-sidebar-delegated-tab-design.md)로 대체됨.**
+  Part A(할당 인지 알림)는 별도 스펙으로 분리되기 전까지 승인 대기 상태 유지.
 - 목업: `docs/superpowers/mockups/2026-07-03-assignment-awareness-mockup.html`
 
 ## 목적
@@ -55,7 +56,12 @@
 - 토스트의 "확인" 액션 버튼도 같은 경로를 탄다.
 - 마커 문자열은 상수로 공유해(작성·판정 양쪽) 오타로 어긋나지 않게 한다.
 
-## Part B — 맡긴 작업 창 (맡긴 사람)
+## Part B — 맡긴 작업 창 (맡긴 사람) — ⚠️ 폐기됨
+
+> 별도 창 대신 사이드바 탭으로 단순화. 확인(✓)·지연·정체 판정, 리마인드
+> 댓글 기능은 범위에서 제외. 현재 유효한 설계는
+> [`2026-07-08-sidebar-delegated-tab-design.md`](2026-07-08-sidebar-delegated-tab-design.md)
+> 참고.
 
 ### 창
 
