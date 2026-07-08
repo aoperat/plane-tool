@@ -16,8 +16,8 @@ export interface WorkItemDetail {
   priority: string; state_group: string; project_id: string;
 }
 export interface SidebarData {
-  projects: Project[]; assigned: WorkItem[]; states: ProjectState[];
-  is_cached: boolean; cached_at_ms: number | null;
+  projects: Project[]; assigned: WorkItem[]; delegated: WorkItem[]; delegated_members: Member[];
+  states: ProjectState[]; is_cached: boolean; cached_at_ms: number | null;
 }
 export interface OfflineStatus { pending: number; }
 export interface ReleaseNote { version: string; date: string; notes: string; }
