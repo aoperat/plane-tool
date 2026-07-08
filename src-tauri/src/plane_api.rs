@@ -166,6 +166,22 @@ fn completed_within(item: &WorkItem, after: &str, before: &str) -> bool {
         .is_some_and(|day| day >= after && day <= before)
 }
 
+/// "내가 할당한 작업" 탭의 필터. `created_by == user_id` AND 내가 담당자에
+/// 없음. Plane API에는 "누가 할당했는가"를 나타내는 필드가 없으므로, 이는
+/// "작업을 만든 사람이 그 자리에서 담당자를 지정한다"는 근사치다 — 남이
+/// 만든 작업을 내가 나중에 제3자에게 재할당한 경우는 잡히지 않는다.
+/// 완료 항목의 날짜창은 여기서 적용하지 않는다 — 프론트엔드의 "오늘만
+/// 보기" 토글이 API 재호출 없이 동작해야 하므로, 그 필터링은
+/// `filterVisibleToday`(TS)가 맡는다.
+pub fn filter_delegated_visible(items: Vec<WorkItem>, user_id: &str) -> Vec<WorkItem> {
+    items
+        .into_iter()
+        .filter(|i| i.created_by.as_deref() == Some(user_id))
+        .filter(|i| !i.assignee_ids.iter().any(|a| a == user_id))
+        .filter(|i| i.state_group != "cancelled")
+        .collect()
+}
+
 #[derive(Deserialize)]
 struct Paginated<T> { results: Vec<T> }
 
@@ -564,6 +580,37 @@ mod tests {
             created_by: None,
             updated_at: None,
         }
+    }
+
+    fn wi_created_by(id: &str, group: &str, assignees: &[&str], created_by: Option<&str>) -> WorkItem {
+        let mut item = wi(id, group, assignees);
+        item.created_by = created_by.map(|s| s.to_string());
+        item
+    }
+
+    #[test]
+    fn filter_delegated_keeps_my_created_items_not_assigned_to_me() {
+        let items = vec![
+            wi_created_by("a", "started", &["other"], Some("me")), // keep: created by me, assigned to other
+            wi_created_by("b", "started", &["me"], Some("me")),    // drop: assigned to me too
+            wi_created_by("c", "started", &["other"], Some("someone_else")), // drop: not created by me
+            wi_created_by("d", "started", &["other"], None),       // drop: no created_by
+            wi_created_by("e", "cancelled", &["other"], Some("me")), // drop: cancelled
+            wi_created_by("f", "started", &["a", "b"], Some("me")), // keep: multiple assignees, none is me
+        ];
+        let kept = filter_delegated_visible(items, "me");
+        let ids: Vec<_> = kept.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "f"]);
+    }
+
+    #[test]
+    fn filter_delegated_ignores_completed_date_entirely() {
+        // 날짜창은 프론트엔드가 적용한다 — 백엔드는 완료 여부/날짜와 무관하게 다 넘긴다.
+        let items = vec![
+            wi_created_by("old", "completed", &["other"], Some("me")),
+        ];
+        let kept = filter_delegated_visible(items, "me");
+        assert_eq!(kept.len(), 1);
     }
 
     #[test]
