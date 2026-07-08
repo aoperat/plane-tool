@@ -480,7 +480,9 @@ function openDeleteConfirm(it: WorkItem, x: number, y: number) {
 
 function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
   const el = document.createElement("div");
-  el.className = "task" + (it.state_group === "completed" ? " completed" : "");
+  el.className = "task"
+    + (it.state_group === "completed" ? " completed" : "")
+    + (it.state_group === "started" ? " in-progress" : "");
 
   const top = document.createElement("div");
   top.className = "task-top";
