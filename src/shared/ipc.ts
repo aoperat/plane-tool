@@ -18,6 +18,7 @@ export const saveSettings = (
   morningBriefingTime?: string,
   assignNotifyEnabled?: boolean,
   assignRemindHours?: number,
+  showDelegatedTab?: boolean,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -35,7 +36,10 @@ export const saveSettings = (
     morningBriefingTime,
     assignNotifyEnabled,
     assignRemindHours,
+    showDelegatedTab,
   });
+export const verifyDelegatedTabPassword = (password: string) =>
+  invoke<boolean>("verify_delegated_tab_password", { password });
 export const createIssue = (
   project_id: string,
   name: string,

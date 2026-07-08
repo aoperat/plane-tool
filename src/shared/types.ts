@@ -30,6 +30,7 @@ export interface SettingsDto {
   has_openai_key: boolean; briefing_model: string;
   morning_briefing_enabled: boolean; morning_briefing_time: string;
   assign_notify_enabled: boolean; assign_remind_hours: number;
+  show_delegated_tab: boolean;
 }
 export interface BriefingItem {
   id: string; name: string; project_id: string; project_identifier: string;
