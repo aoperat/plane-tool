@@ -1,6 +1,6 @@
 use crate::config;
 use tauri::{Emitter, Manager};
-use crate::plane_api::{self, filter_assigned_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 
@@ -27,7 +27,7 @@ pub struct SettingsDto {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProjectDto { pub id: String, pub name: String, pub identifier: String }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MemberDto { pub id: String, pub display_name: String, pub is_me: bool }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,6 +65,14 @@ pub struct StateDto { pub id: String, pub group: String, pub project_id: String,
 pub struct SidebarData {
     pub projects: Vec<ProjectDto>,
     pub assigned: Vec<WorkItemDto>,
+    /// 내가 만들었지만 담당자가 아닌 작업("내가 할당한 작업" 탭). 완료
+    /// 항목의 날짜창은 적용되지 않은 전체 목록 — 필터링은 프론트엔드가 한다.
+    #[serde(default)]
+    pub delegated: Vec<WorkItemDto>,
+    /// `delegated`에 속한 작업들의 담당자 이름 해결용. 프로젝트 간 중복은
+    /// id 기준으로 제거되어 있다.
+    #[serde(default)]
+    pub delegated_members: Vec<MemberDto>,
     pub states: Vec<StateDto>,
     /// 캐시(오프라인 폴백)에서 온 응답이면 true. 실시간 fetch 결과는 항상
     /// false. `skip`은 쓰지 않는다 — Tauri IPC 직렬화도 serde를 거치므로
@@ -84,16 +92,13 @@ pub fn assemble_sidebar(
     completed_after: &str,
     completed_before: &str,
 ) -> SidebarData {
+    let delegated = filter_delegated_visible(items.clone(), user_id)
+        .into_iter()
+        .map(work_item_to_dto)
+        .collect();
     let assigned = filter_assigned_visible(items, user_id, completed_after, completed_before)
         .into_iter()
-        .map(|w| WorkItemDto {
-            id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
-            start_date: w.start_date,
-            state_group: w.state_group, project_id: w.project_id,
-            assignee_ids: w.assignee_ids,
-            completed_at: w.completed_at,
-            created_at: w.created_at, updated_at: w.updated_at,
-        })
+        .map(work_item_to_dto)
         .collect();
     let projects = projects
         .into_iter()
@@ -103,7 +108,22 @@ pub fn assemble_sidebar(
         .into_iter()
         .map(|s| StateDto { id: s.id, group: s.group, project_id: s.project_id, default: s.default })
         .collect();
-    SidebarData { projects, assigned, states, is_cached: false, cached_at_ms: None }
+    SidebarData {
+        projects, assigned, delegated,
+        delegated_members: Vec::new(), // fetch_sidebar_data_online이 채운다 (Task 3)
+        states, is_cached: false, cached_at_ms: None,
+    }
+}
+
+fn work_item_to_dto(w: WorkItem) -> WorkItemDto {
+    WorkItemDto {
+        id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
+        start_date: w.start_date,
+        state_group: w.state_group, project_id: w.project_id,
+        assignee_ids: w.assignee_ids,
+        completed_at: w.completed_at,
+        created_at: w.created_at, updated_at: w.updated_at,
+    }
 }
 
 /// 캐시에서 돌려주는 응답임을 표시한다 — 실시간 fetch 결과에는 호출하지 않는다.
@@ -1162,5 +1182,20 @@ mod tests {
         mark_from_cache(&mut data, 12345);
         assert!(data.is_cached);
         assert_eq!(data.cached_at_ms, Some(12345));
+    }
+
+    #[test]
+    fn assemble_sidebar_fills_delegated_from_created_by() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let mut mine_for_other = wi("a", "started", &["other"], "p1");
+        mine_for_other.created_by = Some("me".into());
+        let mut mine_for_me = wi("b", "started", &["me"], "p1");
+        mine_for_me.created_by = Some("me".into());
+        let mut not_mine = wi("c", "started", &["other"], "p1");
+        not_mine.created_by = Some("someone_else".into());
+        let items = vec![mine_for_other, mine_for_me, not_mine];
+        let data = assemble_sidebar("me", projects, items, vec![], "2026-06-30", "2026-07-02");
+        let ids: Vec<_> = data.delegated.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["a"]);
     }
 }
