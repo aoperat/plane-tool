@@ -16,6 +16,10 @@
         <span id="conflictBadge" class="hbtn" title="동기화 충돌" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 14.5 13h-13z" stroke-linejoin="round"/><path d="M8 6v3.5" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".6" fill="currentColor" stroke="none"/></svg><span id="conflictCount" class="count"></span></span>
         <span id="moreMenu" class="hbtn" title="더보기"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg></span>
       </div>
+      <div class="sb-tabs" id="sbTabs">
+        <button type="button" class="sb-tab active" data-tab="assigned">담당 작업 <span class="count" id="assignedTabCount">0</span></button>
+        <button type="button" class="sb-tab" data-tab="delegated">내가 할당한 작업 <span class="count" id="delegatedTabCount">0</span></button>
+      </div>
       <div class="sb-search-bar" id="searchBar" hidden>
         <div class="sb-search-row">
           <span class="sicon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M13.2 13.2 10.3 10.3"/></svg></span>
@@ -32,8 +36,9 @@
         <div class="sb-section">
           <div id="inbox" class="inbox-sec" hidden></div>
           <div class="h">
-            <span>나에게 할당된 작업</span>
+            <span id="sectionTitle">나에게 할당된 작업</span>
             <span class="h-tools">
+              <span id="showAllDelegated" class="h-toggle" hidden></span>
               <span id="hideDone" class="h-toggle"></span>
               <span id="taskCount" class="count">0</span>
             </span>

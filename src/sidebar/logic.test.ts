@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -363,5 +363,17 @@ describe("offlineStatusText", () => {
   });
   it("falls back to normal synced message when online and nothing pending", () => {
     expect(offlineStatusText(false, null, 0, 1000)).toBe("동기화 완료");
+  });
+});
+
+describe("resolveAssigneeName", () => {
+  it("returns the mapped display name when the id is known", () => {
+    const names = new Map([["u1", "재석"]]);
+    expect(resolveAssigneeName(names, "u1")).toBe("재석");
+  });
+
+  it("falls back to 알 수 없음 when the id isn't in the map", () => {
+    const names = new Map([["u1", "재석"]]);
+    expect(resolveAssigneeName(names, "missing")).toBe("알 수 없음");
   });
 });

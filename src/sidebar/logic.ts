@@ -206,3 +206,9 @@ export function offlineStatusText(
   }
   return "동기화 완료";
 }
+
+/** `delegated_members`로 만든 id→이름 맵에서 담당자 이름을 찾는다. 맵에
+ *  없는 id(예: 멤버가 프로젝트에서 제외된 경우)는 "알 수 없음"으로 폴백한다. */
+export function resolveAssigneeName(names: Map<string, string>, id: string): string {
+  return names.get(id) ?? "알 수 없음";
+}

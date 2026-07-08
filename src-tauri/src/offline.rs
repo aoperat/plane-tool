@@ -129,6 +129,22 @@ pub fn patch_cached_item(items: &mut [WorkItemDto], target_id: &str, patch: impl
     }
 }
 
+/// `assigned`/`delegated`는 서로 배타적이므로(같은 항목이 두 목록에 동시에
+/// 있을 수 없음), 먼저 찾은 목록에만 patch를 적용한다 — `patch`가 `FnOnce`라
+/// 두 번 호출할 수 없다.
+pub fn patch_cached_item_in_either(
+    assigned: &mut [WorkItemDto],
+    delegated: &mut [WorkItemDto],
+    target_id: &str,
+    patch: impl FnOnce(&mut WorkItemDto),
+) {
+    if let Some(dto) = assigned.iter_mut().find(|d| d.id == target_id) {
+        patch(dto);
+    } else if let Some(dto) = delegated.iter_mut().find(|d| d.id == target_id) {
+        patch(dto);
+    }
+}
+
 pub fn remove_cached_item(items: &mut Vec<WorkItemDto>, target_id: &str) {
     items.retain(|d| d.id != target_id);
 }
@@ -238,14 +254,17 @@ pub async fn queue_and_patch(
     let mut snapshot = load_cache(app);
     let base_updated_at = snapshot
         .as_ref()
-        .and_then(|s| s.data.assigned.iter().find(|d| d.id == target_id))
+        .and_then(|s| {
+            s.data.assigned.iter().find(|d| d.id == target_id)
+                .or_else(|| s.data.delegated.iter().find(|d| d.id == target_id))
+        })
         .and_then(|d| d.updated_at.clone());
     let mut queue = load_queue(app);
     push_mutation(&mut queue, kind, project_id, target_id, payload, base_updated_at, now);
     let pending = queue.items.len();
     save_queue(app, &queue)?;
     if let Some(snap) = snapshot.as_mut() {
-        patch_cached_item(&mut snap.data.assigned, target_id, patch);
+        patch_cached_item_in_either(&mut snap.data.assigned, &mut snap.data.delegated, target_id, patch);
         save_cache_snapshot(app, snap)?;
     }
     emit_queue_changed(app, pending);
@@ -286,7 +305,10 @@ pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, t
     let mut snapshot = load_cache(app);
     let base_updated_at = snapshot
         .as_ref()
-        .and_then(|s| s.data.assigned.iter().find(|d| d.id == target_id))
+        .and_then(|s| {
+            s.data.assigned.iter().find(|d| d.id == target_id)
+                .or_else(|| s.data.delegated.iter().find(|d| d.id == target_id))
+        })
         .and_then(|d| d.updated_at.clone());
     let mut queue = load_queue(app);
     push_mutation(&mut queue, MutationKind::Delete, project_id, target_id, serde_json::Value::Null, base_updated_at, now);
@@ -294,6 +316,7 @@ pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, t
     save_queue(app, &queue)?;
     if let Some(snap) = snapshot.as_mut() {
         remove_cached_item(&mut snap.data.assigned, target_id);
+        remove_cached_item(&mut snap.data.delegated, target_id);
         save_cache_snapshot(app, snap)?;
     }
     emit_queue_changed(app, pending);
@@ -420,6 +443,35 @@ mod tests {
         patch_cached_item(&mut items, "b", |d| d.priority = "urgent".into());
         assert_eq!(items[0].priority, "none");
         assert_eq!(items[1].priority, "urgent");
+    }
+
+    #[test]
+    fn patch_cached_item_in_either_patches_assigned_when_present_there() {
+        let mut assigned = vec![dto("a"), dto("b")];
+        let mut delegated = vec![dto("c")];
+        patch_cached_item_in_either(&mut assigned, &mut delegated, "b", |d| d.priority = "urgent".into());
+        assert_eq!(assigned[0].priority, "none");
+        assert_eq!(assigned[1].priority, "urgent");
+        assert_eq!(delegated[0].priority, "none");
+    }
+
+    #[test]
+    fn patch_cached_item_in_either_falls_through_to_delegated() {
+        let mut assigned = vec![dto("a")];
+        let mut delegated = vec![dto("b"), dto("c")];
+        patch_cached_item_in_either(&mut assigned, &mut delegated, "c", |d| d.priority = "urgent".into());
+        assert_eq!(assigned[0].priority, "none");
+        assert_eq!(delegated[0].priority, "none");
+        assert_eq!(delegated[1].priority, "urgent");
+    }
+
+    #[test]
+    fn patch_cached_item_in_either_is_a_noop_when_id_in_neither() {
+        let mut assigned = vec![dto("a")];
+        let mut delegated = vec![dto("b")];
+        patch_cached_item_in_either(&mut assigned, &mut delegated, "missing", |d| d.priority = "urgent".into());
+        assert_eq!(assigned[0].priority, "none");
+        assert_eq!(delegated[0].priority, "none");
     }
 
     #[test]
