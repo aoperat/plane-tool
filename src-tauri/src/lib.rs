@@ -760,6 +760,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
+            commands::verify_delegated_tab_password,
             commands::create_issue,
             commands::fetch_sidebar_data,
             commands::list_projects,

@@ -23,6 +23,7 @@ pub struct SettingsDto {
     pub morning_briefing_time: String,
     pub assign_notify_enabled: bool,
     pub assign_remind_hours: u32,
+    pub show_delegated_tab: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -198,6 +199,7 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         morning_briefing_time: s.morning_briefing_time,
         assign_notify_enabled: s.assign_notify_enabled,
         assign_remind_hours: s.assign_remind_hours,
+        show_delegated_tab: s.show_delegated_tab,
     }
 }
 
@@ -219,6 +221,7 @@ pub fn save_settings(
     morning_briefing_time: Option<String>,
     assign_notify_enabled: Option<bool>,
     assign_remind_hours: Option<u32>,
+    show_delegated_tab: Option<bool>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -245,6 +248,7 @@ pub fn save_settings(
     }
     if let Some(v) = assign_notify_enabled { s.assign_notify_enabled = v; }
     if let Some(v) = assign_remind_hours { if v >= 1 { s.assign_remind_hours = v; } }
+    if let Some(v) = show_delegated_tab { s.show_delegated_tab = v; }
     // 재시작 없이 즉시 반영. 등록에 실패하면(다른 앱이 선점 등) 아무것도
     // 저장하지 않고 에러를 돌려줘서 설정 파일과 실제 등록 상태를 일치시킨다.
     if shortcuts_changed {
@@ -262,6 +266,17 @@ pub fn save_settings(
         }
     }
     Ok(())
+}
+
+/// "내가 할당한 작업" 탭을 켤 때 요구하는 비밀번호. 진짜 보안이 아니라
+/// 가벼운 프라이버시 잠금이다 — 이 상수는 앱 바이너리를 디컴파일하면
+/// 누구나 알아낼 수 있다. 목적은 즉흥적으로 체크박스를 켜는 것을 막는
+/// 정도.
+const DELEGATED_TAB_PASSWORD: &str = "16006937";
+
+#[tauri::command]
+pub fn verify_delegated_tab_password(password: String) -> bool {
+    password == DELEGATED_TAB_PASSWORD
 }
 
 pub(crate) async fn try_create_issue_online(
@@ -1228,5 +1243,14 @@ mod tests {
         let data = assemble_sidebar("me", projects, items, vec![], "2026-06-30", "2026-07-02");
         let ids: Vec<_> = data.delegated.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["a"]);
+    }
+
+    #[test]
+    fn verify_delegated_tab_password_accepts_only_the_exact_password() {
+        assert!(verify_delegated_tab_password("16006937".to_string()));
+        assert!(!verify_delegated_tab_password("".to_string()));
+        assert!(!verify_delegated_tab_password("16006938".to_string()));
+        assert!(!verify_delegated_tab_password(" 16006937".to_string()));
+        assert!(!verify_delegated_tab_password("16006937 ".to_string()));
     }
 }
