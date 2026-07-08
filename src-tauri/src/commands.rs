@@ -1,8 +1,9 @@
 use crate::config;
 use tauri::{Emitter, Manager};
-use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, plain_text_to_description_html, resolve_state_id, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, plain_text_to_description_html, resolve_state_id, Member, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
+use std::collections::HashSet;
 
 #[derive(Serialize)]
 pub struct SettingsDto {
@@ -394,7 +395,37 @@ async fn fetch_sidebar_data_online(
             Err(_) => continue, // skip a project that fails; keep the rest
         }
     }
-    Ok(assemble_sidebar(&user.id, projects, all_items, all_states, completed_after, completed_before))
+    let mut data = assemble_sidebar(&user.id, projects, all_items, all_states, completed_after, completed_before);
+    data.delegated_members = fetch_delegated_members(client, &data.delegated, &user.id).await;
+    Ok(data)
+}
+
+/// `delegated`에 등장하는 프로젝트에 한해서만(전체 프로젝트가 아니라)
+/// 멤버 목록을 조회해 이름을 해결한다 — 위임 작업이 없으면 추가 API 호출도
+/// 없다. 같은 사용자가 여러 프로젝트에 걸쳐 나오면 id 기준으로 dedupe한다.
+/// 멤버 조회가 실패한 프로젝트는 조용히 건너뛴다(items/states 루프와 같은
+/// 관례) — 실패해도 프론트엔드가 "알 수 없음"으로 폴백하므로 안전하다.
+async fn fetch_delegated_members(
+    client: &PlaneClient,
+    delegated: &[WorkItemDto],
+    my_id: &str,
+) -> Vec<MemberDto> {
+    let project_ids: HashSet<&str> = delegated.iter().map(|i| i.project_id.as_str()).collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<MemberDto> = Vec::new();
+    for pid in project_ids {
+        let members: Vec<Member> = match client.list_members(pid).await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        for m in members {
+            if seen.insert(m.id.clone()) {
+                let is_me = m.id == my_id;
+                out.push(MemberDto { id: m.id, display_name: m.display_name, is_me });
+            }
+        }
+    }
+    out
 }
 
 #[tauri::command]
