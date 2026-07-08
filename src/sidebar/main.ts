@@ -6,7 +6,7 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -52,6 +52,15 @@ let lastRefreshAt = 0;
 const collapsedGroups = new Set<string>();
 let lastItems: WorkItem[] = [];
 let lastProjects: Project[] = [];
+let lastSidebarData: SidebarData | null = null;
+let delegatedMemberNames = new Map<string, string>();
+
+const ACTIVE_TAB_KEY = "sidebarActiveTab";
+type SidebarTab = "assigned" | "delegated";
+let activeTab: SidebarTab = localStorage.getItem(ACTIVE_TAB_KEY) === "delegated" ? "delegated" : "assigned";
+
+const DELEGATED_SHOW_ALL_KEY = "delegatedShowAll";
+let delegatedShowAll = localStorage.getItem(DELEGATED_SHOW_ALL_KEY) === "1";
 let pendingCount = 0;
 let conflictCount = 0;
 const conflictBadgeEl = document.getElementById("conflictBadge")!;
@@ -86,6 +95,54 @@ hideDoneEl.onclick = () => {
   localStorage.setItem(HIDE_DONE_KEY, hideCompleted ? "1" : "0");
   syncHideDoneButton();
   renderTasks(lastItems, lastProjects);
+};
+
+const sectionTitleEl = document.getElementById("sectionTitle")!;
+const showAllDelegatedEl = document.getElementById("showAllDelegated")!;
+const assignedTabCountEl = document.getElementById("assignedTabCount")!;
+const delegatedTabCountEl = document.getElementById("delegatedTabCount")!;
+const tabEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".sb-tab"));
+// localStorage에서 복원된 activeTab이 "delegated"일 수 있으므로, HTML의 기본
+// active 클래스(assigned)를 실제 상태와 맞춘다 — 안 하면 재시작 직후 목록은
+// 위임 탭인데 탭 버튼은 담당 작업이 활성으로 보이는 불일치가 생긴다.
+tabEls.forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
+
+function syncShowAllDelegatedButton() {
+  showAllDelegatedEl.hidden = activeTab !== "delegated";
+  showAllDelegatedEl.classList.toggle("active", delegatedShowAll);
+  showAllDelegatedEl.innerHTML = delegatedShowAll ? `${EYE_OFF_ICON}<span>전체보기</span>` : `${EYE_ICON}<span>오늘만</span>`;
+  showAllDelegatedEl.title = delegatedShowAll ? "클릭하면 오늘 근처 항목만 봅니다" : "클릭하면 기한과 무관하게 전체를 봅니다";
+}
+
+// 탭/토글 전환은 이미 받은 SidebarData를 재필터링할 뿐, fetchSidebarData를
+// 다시 부르지 않는다 — 오프라인에서도 즉시 전환되고 서버 부하도 없다.
+function renderActiveTabView() {
+  if (!lastSidebarData) return;
+  sectionTitleEl.textContent = activeTab === "assigned" ? "나에게 할당된 작업" : "내가 할당한 작업";
+  syncShowAllDelegatedButton();
+  const items = activeTab === "assigned"
+    ? filterVisibleToday(lastSidebarData.assigned)
+    : delegatedShowAll
+      ? lastSidebarData.delegated
+      : filterVisibleToday(lastSidebarData.delegated);
+  renderTasks(items, lastSidebarData.projects);
+}
+
+tabEls.forEach((btn) => {
+  btn.onclick = () => {
+    const tab = btn.dataset.tab as SidebarTab;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+    tabEls.forEach((b) => b.classList.toggle("active", b === btn));
+    renderActiveTabView();
+  };
+});
+
+showAllDelegatedEl.onclick = () => {
+  delegatedShowAll = !delegatedShowAll;
+  localStorage.setItem(DELEGATED_SHOW_ALL_KEY, delegatedShowAll ? "1" : "0");
+  renderActiveTabView();
 };
 
 const STATE_GROUPS = ["backlog", "unstarted", "started", "completed", "cancelled"] as const;
@@ -572,6 +629,17 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
     };
     chips.appendChild(dateChip);
   }
+  if (activeTab === "delegated" && it.assignee_ids.length > 0) {
+    const [firstId, ...restIds] = it.assignee_ids;
+    const name = resolveAssigneeName(delegatedMemberNames, firstId);
+    const assigneeChip = document.createElement("span");
+    assigneeChip.className = "chip sm";
+    assigneeChip.title = "담당자";
+    assigneeChip.innerHTML =
+      `<span class="avatar" style="background:${colorForId(firstId)}">${name.slice(0, 1)}</span>` +
+      name + (restIds.length > 0 ? ` +${restIds.length}` : "");
+    chips.appendChild(assigneeChip);
+  }
   el.appendChild(chips);
 
   el.onclick = () => openEditModal(it.project_id, it.id, it);
@@ -844,7 +912,11 @@ async function runRefresh() {
     const today = resolveDatePreset("today");
     const data: SidebarData = await fetchSidebarData(shiftIsoDate(today, -1), shiftIsoDate(today, 1));
     states = data.states;
-    renderTasks(filterVisibleToday(data.assigned), data.projects);
+    lastSidebarData = data;
+    delegatedMemberNames = new Map(data.delegated_members.map((m) => [m.id, m.display_name]));
+    assignedTabCountEl.textContent = String(filterVisibleToday(data.assigned).length);
+    delegatedTabCountEl.textContent = String(data.delegated.length);
+    renderActiveTabView();
     synced.textContent = offlineStatusText(data.is_cached, data.cached_at_ms, pendingCount, Date.now());
     refreshInbox();
   } catch (e) {
