@@ -45,6 +45,12 @@ pub struct Settings {
     /// 미확인 할당 재알림 주기(시간).
     #[serde(default = "default_assign_remind_hours")]
     pub assign_remind_hours: u32,
+    /// "내가 할당한 작업" 탭을 사이드바에 보여줄지 (기본 꺼짐). 켤 때는
+    /// `commands::verify_delegated_tab_password`로 비밀번호를 확인한다.
+    /// 진짜 보안 기능이 아니라 가벼운 프라이버시 잠금이다 — 비밀번호는
+    /// 앱 바이너리에 상수로 박혀 있어 디컴파일하면 알아낼 수 있다.
+    #[serde(default)]
+    pub show_delegated_tab: bool,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
@@ -78,6 +84,7 @@ impl Default for Settings {
             morning_briefing_time: default_morning_briefing_time(),
             assign_notify_enabled: default_assign_notify_enabled(),
             assign_remind_hours: default_assign_remind_hours(),
+            show_delegated_tab: false,
         }
     }
 }
@@ -192,6 +199,7 @@ mod tests {
             morning_briefing_time: "08:30".into(),
             assign_notify_enabled: false,
             assign_remind_hours: 6,
+            show_delegated_tab: true,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
@@ -294,5 +302,23 @@ mod tests {
         let s: Settings = serde_json::from_str(old_json).unwrap();
         assert!(s.assign_notify_enabled);
         assert_eq!(s.assign_remind_hours, 2);
+    }
+
+    #[test]
+    fn settings_default_hides_delegated_tab() {
+        let s = Settings::default();
+        assert!(!s.show_delegated_tab);
+    }
+
+    #[test]
+    fn settings_without_show_delegated_tab_field_gets_default_false() {
+        // 이 기능 이전에 저장된 설정 파일 — 기본값(꺼짐)으로 채워져야 한다.
+        let old_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null
+        }"#;
+        let s: Settings = serde_json::from_str(old_json).unwrap();
+        assert!(!s.show_delegated_tab);
     }
 }
