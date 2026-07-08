@@ -102,6 +102,10 @@ const showAllDelegatedEl = document.getElementById("showAllDelegated")!;
 const assignedTabCountEl = document.getElementById("assignedTabCount")!;
 const delegatedTabCountEl = document.getElementById("delegatedTabCount")!;
 const tabEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".sb-tab"));
+const sbTabsEl = document.getElementById("sbTabs")!;
+// 설정 확인 전까지는 기본으로 숨긴다 — show_delegated_tab의 기본값이
+// 꺼짐이므로, 첫 로드 시 탭 바가 잠깐 보였다 사라지는 깜빡임을 막는다.
+sbTabsEl.hidden = true;
 // localStorage에서 복원된 activeTab이 "delegated"일 수 있으므로, HTML의 기본
 // active 클래스(assigned)를 실제 상태와 맞춘다 — 안 하면 재시작 직후 목록은
 // 위임 탭인데 탭 버튼은 담당 작업이 활성으로 보이는 불일치가 생긴다.
@@ -910,6 +914,8 @@ async function runRefresh() {
   synced.textContent = "동기화 중…";
   try {
     const s = await getSettings();
+    sbTabsEl.hidden = !s.show_delegated_tab;
+    if (!s.show_delegated_tab) activeTab = "assigned";
     baseUrl = s.base_url;
     workspace = s.workspace;
     themePref = s.theme;
