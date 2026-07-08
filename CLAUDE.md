@@ -1,5 +1,10 @@
 # Plane Quick Dock — agent 작업 규칙
 
+## 참고 경로
+
+- Plane 소스 코드: `C:\WorkSpaces\plane` — API로 직접 확인할 수 없는 동작(예:
+  work-report 같은 내부 엔드포인트 로직)을 구현할 때 실제 소스에서 검증한다.
+
 ## CHANGELOG 기록 규칙
 
 - 사용자에게 보이는 변경(기능 추가/변경/버그 수정)을 커밋할 때는 **같은 커밋에**

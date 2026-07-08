@@ -3,6 +3,16 @@ use serde::Deserialize;
 /// Part B(맡긴 작업 창)가 이 문자열로 확인 여부를 판정한다 — 절대 바꾸지 말 것.
 pub const ACK_COMMENT_TEXT: &str = "🔔 할당을 확인했습니다 (Quick Dock)";
 
+/// `list_work_items`가 프로젝트당 한 번에 가져오는 작업 개수. Plane 공개 v1 API는
+/// 담당자/상태로 서버사이드 필터링을 지원하지 않아(내부 전용 API만 지원, 세션 쿠키
+/// 인증 필요 — API Key로는 못 씀) 프로젝트의 전체 작업을 가져온 뒤 클라이언트에서
+/// 거른다. 응답은 기본적으로 `-created_at`(최신순)이고 cursor 페이지네이션은
+/// 따라가지 않으므로, 한 프로젝트의 전체 작업 수(완료/취소 포함)가 이 값을 넘으면
+/// 가장 오래된 작업부터 조용히 누락된다. 실측상 서버의 실제 최대치는 1000(공개
+/// 문서엔 100이라 적혀 있으나 실제 코드 기준)이라 필요하면 최대 1000까지 올릴 수
+/// 있다 — 참고: `C:\WorkSpaces\plane`(자체 호스팅 서버 소스) 및 CLAUDE.md.
+pub const WORK_ITEMS_PER_PAGE: u32 = 500;
+
 #[derive(Debug, Clone)]
 pub struct Project { pub id: String, pub name: String, pub identifier: String }
 
@@ -373,9 +383,10 @@ impl PlaneClient {
 
     pub async fn list_work_items(&self, project_id: &str) -> Result<Vec<WorkItem>, String> {
         let url = format!(
-            "{}/projects/{}/work-items/?expand=assignees,state&per_page=100",
+            "{}/projects/{}/work-items/?expand=assignees,state&per_page={}",
             self.ws_base(),
-            project_id
+            project_id,
+            WORK_ITEMS_PER_PAGE
         );
         let page: Paginated<RawWorkItem> =
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;

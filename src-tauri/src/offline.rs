@@ -8,7 +8,6 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::commands::{SidebarData, StateDto, WorkItemDto};
-use crate::plane_api::WorkItemDetail;
 
 const STORE_FILE: &str = "offline.json";
 const CACHE_KEY: &str = "cache";
@@ -301,10 +300,6 @@ pub async fn queue_delete_and_remove(app: &tauri::AppHandle, project_id: &str, t
     Ok(())
 }
 
-fn local_fields_from_payload(kind: &MutationKind, payload: &serde_json::Value) -> ConflictFields {
-    local_fields_from_payload_with_states(kind, payload, &[])
-}
-
 /// `UpdateState`의 페이로드는 이미 해석된 state id만 담고 있어(`{"state": "<id>"}`),
 /// 표시용 그룹 라벨을 얻으려면 캐시된 states 목록에서 역으로 찾아야 한다.
 /// 못 찾으면(캐시가 없거나 상태가 지워졌으면) id를 그대로 보여준다 — 드문
@@ -384,6 +379,7 @@ pub fn build_conflict_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plane_api::WorkItemDetail;
 
     fn dto(id: &str) -> WorkItemDto {
         WorkItemDto {
@@ -532,7 +528,7 @@ mod tests {
     #[test]
     fn local_fields_from_payload_reads_only_the_touched_field_for_single_field_kinds() {
         let payload = serde_json::json!({ "priority": "high" });
-        let fields = local_fields_from_payload(&MutationKind::UpdatePriority, &payload);
+        let fields = local_fields_from_payload_with_states(&MutationKind::UpdatePriority, &payload, &[]);
         assert_eq!(fields.priority.as_deref(), Some("high"));
         assert_eq!(fields.name, None);
     }
@@ -551,7 +547,7 @@ mod tests {
             "name": "새 제목", "priority": "urgent", "state_group": "started",
             "description": null, "assignee_ids": null, "start_date": null, "target_date": null,
         });
-        let fields = local_fields_from_payload(&MutationKind::UpdateFields, &payload);
+        let fields = local_fields_from_payload_with_states(&MutationKind::UpdateFields, &payload, &[]);
         assert_eq!(fields.name.as_deref(), Some("새 제목"));
         assert_eq!(fields.priority.as_deref(), Some("urgent"));
         assert_eq!(fields.state_group.as_deref(), Some("started"));
