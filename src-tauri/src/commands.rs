@@ -4,6 +4,11 @@ use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, 
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 use std::collections::HashSet;
+use futures::stream::{self, StreamExt};
+
+/// 사이드바 동기화 시 프로젝트별로 동시에 날릴 요청 개수. 너무 높이면 Plane
+/// 서버의 rate limit(429)에 걸리기 쉬워지므로 적당한 값으로 고정한다.
+const SYNC_CONCURRENCY: usize = 6;
 
 #[derive(Serialize)]
 pub struct SettingsDto {
@@ -291,7 +296,7 @@ pub(crate) async fn try_create_issue_online(
     description: Option<&str>,
 ) -> Result<String, String> {
     let assignees = if assignee_ids.is_empty() {
-        let user = client.current_user().await?;
+        let user = client.current_user_cached().await?;
         vec![user.id]
     } else {
         assignee_ids.to_vec()
@@ -337,6 +342,10 @@ pub async fn create_issue(
     match result {
         Ok(_new_id) => {
             config::set_last_project(&app, &project_id)?;
+            // 새 항목은 서버가 id 등을 부여하므로 로컬 패치로는 표현할 수 없어
+            // 전체 재동기화를 요청한다 — 생성은 드물어서 rate limit에 부담이 없고,
+            // 포커스 갱신 쿨다운이 길어진 뒤에도 새 항목이 바로 보이게 한다.
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
@@ -360,6 +369,9 @@ pub async fn create_issue(
             };
             crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
+            // 오프라인 새로고침은 방금 placeholder가 삽입된 캐시를 그대로
+            // 돌려주므로, 여기서도 새 항목이 즉시 보인다.
+            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
             Ok(())
         }
         Err(e) => Err(e),
@@ -396,19 +408,26 @@ async fn fetch_sidebar_data_online(
     completed_after: &str,
     completed_before: &str,
 ) -> Result<SidebarData, String> {
-    let user = client.current_user().await?;
+    let user = client.current_user_cached().await?;
     let projects = client.list_projects().await?;
+
+    // 프로젝트당 work-items/states를 동시에, 프로젝트 간에도 최대
+    // SYNC_CONCURRENCY개까지 동시에 보낸다 — 예전에는 프로젝트 수만큼
+    // 순차로 기다렸다(N+1). 한쪽이 실패해도 다른 쪽은 그대로 쓴다.
+    let per_project: Vec<(Vec<WorkItem>, Vec<ProjectState>)> = stream::iter(projects.clone())
+        .map(move |p| async move {
+            let (items, states) = tokio::join!(client.list_work_items(&p.id), client.list_states(&p.id));
+            (items.unwrap_or_default(), states.unwrap_or_default())
+        })
+        .buffer_unordered(SYNC_CONCURRENCY)
+        .collect()
+        .await;
+
     let mut all_items: Vec<WorkItem> = Vec::new();
     let mut all_states: Vec<ProjectState> = Vec::new();
-    for p in &projects {
-        match client.list_work_items(&p.id).await {
-            Ok(mut items) => all_items.append(&mut items),
-            Err(_) => continue, // skip a project that fails; keep the rest
-        }
-        match client.list_states(&p.id).await {
-            Ok(mut states) => all_states.append(&mut states),
-            Err(_) => continue, // skip a project that fails; keep the rest
-        }
+    for (mut items, mut states) in per_project {
+        all_items.append(&mut items);
+        all_states.append(&mut states);
     }
     let mut data = assemble_sidebar(&user.id, projects, all_items, all_states, completed_after, completed_before);
     data.delegated_members = fetch_delegated_members(client, &data.delegated, &user.id).await;
@@ -425,14 +444,16 @@ async fn fetch_delegated_members(
     delegated: &[WorkItemDto],
     my_id: &str,
 ) -> Vec<MemberDto> {
-    let project_ids: HashSet<&str> = delegated.iter().map(|i| i.project_id.as_str()).collect();
+    let project_ids: HashSet<String> = delegated.iter().map(|i| i.project_id.clone()).collect();
+    let per_project: Vec<Vec<Member>> = stream::iter(project_ids)
+        .map(move |pid| async move { client.list_members(&pid).await.unwrap_or_default() })
+        .buffer_unordered(SYNC_CONCURRENCY)
+        .collect()
+        .await;
+
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<MemberDto> = Vec::new();
-    for pid in project_ids {
-        let members: Vec<Member> = match client.list_members(pid).await {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
+    for members in per_project {
         for m in members {
             if seen.insert(m.id.clone()) {
                 let is_me = m.id == my_id;
@@ -567,9 +588,18 @@ pub async fn update_work_item_fields(
         state_group.as_deref(),
     )
     .await;
+    // 성공 시 전체 재동기화(refresh-sidebar) 대신 바뀐 필드만 알린다 —
+    // 사이드바가 로컬 데이터를 패치해 즉시 반영하므로, 수정할 때마다
+    // 프로젝트별 N+1 재조회 묶음이 나가 rate limit을 갉아먹는 일이 없다.
+    let changed = serde_json::json!({
+        "project_id": project_id, "item_id": item_id,
+        "name": name, "assignee_ids": assignee_ids,
+        "start_date": start_date, "target_date": target_date,
+        "priority": priority, "state_group": state_group,
+    });
     match result {
         Ok(()) => {
-            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            let _ = app.emit_to("sidebar", "item-updated", changed);
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
@@ -597,7 +627,11 @@ pub async fn update_work_item_fields(
                     if let Some(sg) = state_group_p { dto.state_group = sg; }
                 },
             )
-            .await
+            .await?;
+            // 오프라인 큐잉도 화면 반영은 동일하게 — 캐시는 위에서 패치됐고,
+            // 열려 있는 사이드바에는 이 이벤트가 즉시 반영한다.
+            let _ = app.emit_to("sidebar", "item-updated", changed);
+            Ok(())
         }
         Err(e) => Err(e),
     }
@@ -606,14 +640,16 @@ pub async fn update_work_item_fields(
 #[tauri::command]
 pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id: String) -> Result<(), String> {
     let (client, _s) = client(&app)?;
+    // 삭제도 전체 재동기화 대신 해당 항목 제거만 알린다 (item-updated와 같은 이유).
+    let removed = serde_json::json!({ "project_id": project_id, "item_id": item_id });
     match client.delete_work_item(&project_id, &item_id).await {
         Ok(()) => {
-            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            let _ = app.emit_to("sidebar", "item-deleted", removed);
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
             crate::offline::queue_delete_and_remove(&app, &project_id, &item_id).await?;
-            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            let _ = app.emit_to("sidebar", "item-deleted", removed);
             Ok(())
         }
         Err(e) => Err(e),
@@ -641,7 +677,7 @@ pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<ProjectDto>, Str
 pub async fn list_members(app: tauri::AppHandle, project_id: String) -> Result<Vec<MemberDto>, String> {
     let (client, _s) = client(&app)?;
     let members = client.list_members(&project_id).await?;
-    let user = client.current_user().await?;
+    let user = client.current_user_cached().await?;
     Ok(members
         .into_iter()
         .map(|m| {
@@ -785,7 +821,7 @@ pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<cra
         }
     }
     let (client, s) = client(&app)?;
-    let user = client.current_user().await?;
+    let user = client.current_user_cached().await?;
     let projects = client.list_projects().await?;
     let mut all_items: Vec<WorkItem> = Vec::new();
     for p in &projects {

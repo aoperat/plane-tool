@@ -2956,6 +2956,7 @@ name = "plane-quick-dock"
 version = "0.1.11"
 dependencies = [
  "chrono",
+ "futures",
  "keyring",
  "reqwest 0.12.28",
  "serde",

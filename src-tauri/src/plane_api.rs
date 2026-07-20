@@ -382,6 +382,24 @@ impl PlaneClient {
         Ok(CurrentUser { id: raw.id, display_name: raw.display_name })
     }
 
+    /// `current_user`의 캐시 버전. 같은 토큰이 가리키는 사용자는 변하지
+    /// 않으므로 (base_url, api_key)당 최초 1회만 서버에 묻는다 — `/users/me/`는
+    /// 동기화·할당 감지·빠른 추가 등 거의 모든 흐름의 첫 요청이라, 매번
+    /// 재조회하면 Plane의 API 키당 분당 요청 한도를 그 호출들만으로 갉아먹는다.
+    /// 연결 상태 확인이 목적인 곳(오프라인 프로브)은 이걸 쓰면 안 된다.
+    pub async fn current_user_cached(&self) -> Result<CurrentUser, String> {
+        static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, CurrentUser>>> =
+            std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(Default::default);
+        let key = format!("{}\n{}", self.base_url, self.api_key);
+        if let Some(user) = cache.lock().unwrap().get(&key) {
+            return Ok(user.clone());
+        }
+        let user = self.current_user().await?;
+        cache.lock().unwrap().insert(key, user.clone());
+        Ok(user)
+    }
+
     /// Returns only the projects the authenticated user is a member of. Plane's
     /// `/projects/` endpoint lists every project in the workspace regardless of
     /// project-level membership, flagging each with `is_member`, so we filter here.
@@ -1024,6 +1042,28 @@ mod tests {
         let user = client_for(&server).await.current_user().await.unwrap();
         assert_eq!(user.id, "me");
         assert_eq!(user.display_name, "Aoperat");
+    }
+
+    #[tokio::test]
+    async fn current_user_cached_hits_the_server_only_once() {
+        let server = MockServer::start().await;
+        // expect(1): 두 번째 호출이 서버로 다시 나가면 wiremock 검증이 실패한다.
+        // 캐시 키에 base_url이 들어가므로 (MockServer는 테스트마다 포트가 다름)
+        // 병렬로 도는 다른 테스트와 캐시가 섞이지 않는다.
+        Mock::given(method("GET"))
+            .and(path("/api/v1/users/me/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "me", "display_name": "Aoperat"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let first = client.current_user_cached().await.unwrap();
+        let second = client.current_user_cached().await.unwrap();
+        assert_eq!(first.id, "me");
+        assert_eq!(second.id, "me");
     }
 
     #[test]

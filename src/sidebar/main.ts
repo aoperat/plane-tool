@@ -16,9 +16,12 @@ import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
 // Every window focus (including re-showing the sidebar on toggle) re-fetches the full sidebar
-// data set, which itself is an N+1 request per project — a cooldown keeps rapid re-focusing
-// (fast toggle spam, alt-tab cycling) from bursting past the Plane server's rate limit.
-const REFRESH_COOLDOWN_MS = 3000;
+// data set, which itself is an N+1 request per project — a cooldown keeps re-focusing from
+// bursting past the Plane server's rate limit (60 req/min per API key). Local edits don't
+// need this refresh anymore (item-updated/item-deleted patch in place), and new items force
+// their own refresh via the backend's refresh-sidebar event, so a long cooldown only delays
+// picking up changes other people made on the server.
+const REFRESH_COOLDOWN_MS = 60_000;
 
 const win = getCurrentWindow();
 const tasksEl = document.getElementById("tasks")!;
@@ -135,6 +138,57 @@ function renderActiveTabView() {
       ? lastSidebarData.delegated
       : filterVisibleToday(lastSidebarData.delegated);
   renderTasks(items, lastSidebarData.projects);
+}
+
+/** 탭 카운트와 현재 탭 목록을 lastSidebarData 기준으로 다시 그린다 —
+ *  전체 fetch(runRefresh)와 로컬 패치(item-updated/item-deleted)가 공유한다. */
+function renderFromLastData() {
+  if (!lastSidebarData) return;
+  assignedTabCountEl.textContent = String(filterVisibleToday(lastSidebarData.assigned).length);
+  delegatedTabCountEl.textContent = String(lastSidebarData.delegated.length);
+  renderActiveTabView();
+}
+
+// 백엔드가 수정/삭제 성공 시 보내는 로컬 패치 이벤트의 payload. 전체
+// 재동기화 대신 이미 받아둔 데이터에 변경분만 반영한다 — 서버 요청이 없다.
+type ItemChange = {
+  project_id: string;
+  item_id: string;
+  name: string | null;
+  assignee_ids: string[] | null;
+  start_date: string | null;
+  target_date: string | null;
+  priority: string | null;
+  state_group: string | null;
+};
+
+function applyItemChange(c: ItemChange) {
+  if (!lastSidebarData) return;
+  // 담당자 변경으로 항목이 내 목록에서 빠지거나 탭 간 이동해야 하는 경우는
+  // 여기서 판별할 수 없다(내 user id를 모름) — 다음 전체 새로고침이 맞춘다.
+  for (const list of [lastSidebarData.assigned, lastSidebarData.delegated]) {
+    const it = list.find((i) => i.id === c.item_id);
+    if (!it) continue;
+    if (c.name != null) it.name = c.name;
+    if (c.priority != null) it.priority = c.priority;
+    if (c.assignee_ids != null) it.assignee_ids = c.assignee_ids;
+    if (c.start_date != null) it.start_date = c.start_date === "" ? null : c.start_date;
+    if (c.target_date != null) it.target_date = c.target_date === "" ? null : c.target_date;
+    if (c.state_group != null && c.state_group !== it.state_group) {
+      it.state_group = c.state_group;
+      // 서버는 완료 전환 시 completed_at을 채운다 — 로컬에도 채워야
+      // filterVisibleToday가 "오늘 완료"로 인정해 목록에서 사라지지 않는다.
+      it.completed_at = c.state_group === "completed" ? new Date().toISOString() : null;
+    }
+  }
+  renderFromLastData();
+}
+
+function removeItemLocally(itemId: string) {
+  if (!lastSidebarData) return;
+  lastSidebarData.assigned = lastSidebarData.assigned.filter((i) => i.id !== itemId);
+  lastSidebarData.delegated = lastSidebarData.delegated.filter((i) => i.id !== itemId);
+  renderFromLastData();
 }
 
 tabEls.forEach((btn) => {
@@ -931,9 +985,7 @@ async function runRefresh() {
     states = data.states;
     lastSidebarData = data;
     delegatedMemberNames = new Map(data.delegated_members.map((m) => [m.id, m.display_name]));
-    assignedTabCountEl.textContent = String(filterVisibleToday(data.assigned).length);
-    delegatedTabCountEl.textContent = String(data.delegated.length);
-    renderActiveTabView();
+    renderFromLastData();
     synced.textContent = offlineStatusText(data.is_cached, data.cached_at_ms, pendingCount, Date.now());
     refreshInbox();
   } catch (e) {
@@ -1147,6 +1199,8 @@ document.addEventListener("keydown", (e) => {
 });
 win.listen("tauri://focus", refreshIfStale);
 win.listen("refresh-sidebar", refresh);
+win.listen("item-updated", (e) => applyItemChange(e.payload as ItemChange));
+win.listen("item-deleted", (e) => removeItemLocally((e.payload as { item_id: string }).item_id));
 win.listen("assignments-updated", refreshInbox);
 win.listen("offline-queue-changed", (e) => {
   pendingCount = (e.payload as { pending: number }).pending;

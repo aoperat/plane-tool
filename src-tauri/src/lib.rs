@@ -300,7 +300,7 @@ async fn assign_tick(app: &tauri::AppHandle, s: &config::Settings) -> Result<(),
     }
     let Some(token) = config::get_token() else { return Ok(()) };
     let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
-    let me = client.current_user().await?.id;
+    let me = client.current_user_cached().await?.id;
 
     // 나에게 할당된 미완료 작업 전체 (프로젝트별 N+1 — 사이드바와 같은 패턴)
     // 사이드바(fetch_sidebar_data)와 달리 여기서는 프로젝트 하나가 실패해도
@@ -420,6 +420,14 @@ fn spawn_offline_watcher(app: tauri::AppHandle) {
                 continue;
             }
             let Some(token) = config::get_token() else { continue };
+            // 재생할 큐가 없으면 복구를 감지해도 할 일이 없다 — 네트워크 프로브
+            // 자체를 건너뛰어 상시 3회/분의 서버 호출을 없앤다. was_offline을
+            // true로 되돌려 두면, 이후 큐가 생겼을 때 첫 성공 프로브가 곧바로
+            // "복구 전환"으로 판정되어 재생이 시작된다.
+            if offline::load_queue(&app).items.is_empty() {
+                was_offline = true;
+                continue;
+            }
             let probe = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
             let is_online = probe.current_user().await.is_ok();
             if offline::is_recovery_transition(was_offline, is_online) {
