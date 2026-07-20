@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사이드바 프로젝트/작업 표면 구분 목업</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+    background: #22252c; color: #e6e8ec;
+    padding: 28px; min-height: 100vh;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+  .sub { font-size: 12.5px; color: #9aa1ac; margin-bottom: 24px; line-height: 1.6; }
+  .row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 34px; }
+  .variant-title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .variant-desc { font-size: 12px; color: #9aa1ac; margin-bottom: 14px; max-width: 700px; line-height: 1.65; }
+  .panel-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .panel-label { font-size: 11px; color: #9aa1ac; letter-spacing: .05em; text-transform: uppercase; }
+
+  /* ---------- 사이드바 공통 (app.css 미러) ---------- */
+  .sb {
+    width: 300px; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--sb-bg);
+    color: var(--text); font-size: 13px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .sb-head {
+    display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+    border-bottom: 1px solid var(--border); background: var(--head-bg);
+    font-weight: 600; font-size: 13px;
+  }
+  .sb-head .u { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+  .sec-h {
+    padding: 12px 14px 6px; font-size: 11px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted); display: flex; gap: 6px;
+  }
+  .sec-h .count { color: var(--muted); }
+  .sb-body { padding: 0 8px 8px; }
+
+  /* 프로젝트 그룹 헤더 */
+  .grp {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 8px; border-radius: 7px; cursor: default;
+    background: var(--grp-bg);
+  }
+  .grp + .grp-body { margin-top: 2px; }
+  .grp .chev { color: var(--muted); font-size: 10px; width: 10px; text-align: center; }
+  .grp .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .grp .name { font-size: 12px; font-weight: 700; color: var(--grp-name, var(--text)); }
+  .grp .ident {
+    font-size: 9.5px; font-weight: 700; color: var(--muted-2); letter-spacing: .05em;
+    padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
+  }
+  .grp .prog { margin-left: auto; font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .ring { width: 14px; height: 14px; }
+  .with-gap { margin-top: 10px; }
+
+  /* 작업 카드 */
+  .grp-body { display: flex; flex-direction: column; gap: var(--task-gap, 0px); padding: var(--body-pad, 0); }
+  .task {
+    display: flex; flex-direction: column; gap: 7px; padding: 9px 10px;
+    border-radius: 8px; cursor: pointer; position: relative;
+    background: var(--task-bg); border: 1px solid var(--task-border, transparent);
+  }
+  .task:hover { background: var(--task-hover); }
+  .task.completed { opacity: .5; }
+  .task.completed .name { text-decoration: line-through; color: var(--muted); }
+  .task-top { display: flex; align-items: flex-start; gap: 9px; }
+  .task-state {
+    width: 16px; height: 16px; border-radius: 50%; flex: none; margin-top: 4px;
+    display: grid; place-items: center;
+  }
+  .task .name { font-size: 13px; line-height: 1.4; padding-top: 2px; flex: 1; }
+  .task-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 25px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--chip-bg); border: 1px solid var(--border); border-radius: 6px;
+    font-size: 10.5px; color: var(--muted); padding: 2px 7px;
+  }
+  .chip.empty { border-style: dashed; color: var(--muted-2); background: transparent; }
+  .sb-foot {
+    padding: 9px 14px; border-top: 1px solid var(--border);
+    font-size: 11.5px; color: var(--muted); background: var(--head-bg);
+  }
+
+  /* ---------- 테마 토큰 ---------- */
+  .dark {
+    --text: #e6e8ec; --muted: #8a909c; --muted-2: #5c626d;
+    --border: #2a2e37; --chip-bg: #1c1f26;
+  }
+  .light {
+    --text: #1c1f26; --muted: #6b7280; --muted-2: #9aa1ac;
+    --border: #dfe2e7; --chip-bg: #eef0f3;
+    box-shadow: 0 8px 30px rgba(0,0,0,.12);
+  }
+
+  /* ===== 현재 상태 (비교용) ===== */
+  .dark.now  { --sb-bg: #16181d; --head-bg: #16181d; --grp-bg: transparent; --task-bg: transparent; --task-hover: #1c1f26; }
+  .light.now { --sb-bg: #ffffff; --head-bg: #ffffff; --grp-bg: transparent; --task-bg: transparent; --task-hover: #eef0f3; }
+
+  /* ===== A안: 작업 카드 승격 =====
+     사이드바 바탕(프로젝트 층)은 지금보다 살짝 가라앉히고,
+     작업 카드는 다크에서 더 밝은 표면 + 테두리, 라이트에서는
+     회색 바탕 위 흰 카드로 띄운다. */
+  .dark.va {
+    --sb-bg: #131519;           /* 바탕: panel보다 한 단계 어둡게 */
+    --head-bg: #16181d;
+    --grp-bg: transparent;
+    --task-bg: #1d2027;         /* 작업: 바탕보다 확실히 밝게 */
+    --task-border: #2b2f39;
+    --task-hover: #242834;
+    --task-gap: 4px; --body-pad: 0 0 2px 0;
+  }
+  .light.va {
+    --sb-bg: #eef0f3;           /* 바탕: 회색 컬럼 */
+    --head-bg: #f7f8fa;
+    --grp-bg: transparent;
+    --task-bg: #ffffff;         /* 작업: 흰 카드 */
+    --task-border: #e2e5ea;
+    --task-hover: #f7f8fa;
+    --task-gap: 4px; --body-pad: 0 0 2px 0;
+  }
+
+  /* ===== B안: 프로젝트 헤더 침강 =====
+     작업 영역은 지금 그대로(패널 색) 두고, 프로젝트 헤더만
+     다크에서 더 어두운 띠 / 라이트에서 회색 띠로 가라앉힌다. */
+  .dark.vb {
+    --sb-bg: #16181d; --head-bg: #16181d;
+    --grp-bg: #101216;          /* 프로젝트 띠: 패널보다 어둡게 */
+    --grp-name: #b9bec8;
+    --task-bg: transparent; --task-hover: #1c1f26;
+  }
+  .light.vb {
+    --sb-bg: #ffffff; --head-bg: #ffffff;
+    --grp-bg: #e9ecf0;          /* 프로젝트 띠: 회색 */
+    --grp-name: #3d434d;
+    --task-bg: transparent; --task-hover: #eef0f3;
+  }
+
+  .note {
+    font-size: 12px; color: #9aa1ac; line-height: 1.7; max-width: 700px;
+    background: #1a1d23; border: 1px solid #2a2e37; border-radius: 10px;
+    padding: 14px 16px; margin-top: 4px;
+  }
+  .note b { color: #e6e8ec; }
+  code { background: #14161a; border: 1px solid #2a2e37; border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<h1>사이드바 — 프로젝트 / 작업 표면 구분 목업</h1>
+<p class="sub">
+  요구사항: 다크 모드에서는 <b>작업이 프로젝트보다 밝게</b>, 라이트 모드에서는 <b>작업이 조금 어둡게(또는 바탕이 어둡고 작업이 떠 보이게)</b> —
+  프로젝트 층과 할 일 층이 한눈에 구분되도록. 아래 두 방향을 다크/라이트로 비교.
+</p>
+
+<!-- ================= 현재 ================= -->
+<div class="variant-title">현재 상태 (비교 기준)</div>
+<p class="variant-desc">프로젝트 헤더와 작업이 같은 패널 표면 위에 있어, hover 전에는 들여쓰기와 글자 크기로만 구분된다.</p>
+<div class="row">
+  <div class="panel-wrap"><span class="panel-label">Dark · 현재</span><div class="sb dark now" id="p1"></div></div>
+  <div class="panel-wrap"><span class="panel-label">Light · 현재</span><div class="sb light now" id="p2"></div></div>
+</div>
+
+<!-- ================= A안 ================= -->
+<div class="variant-title">A안 — 작업 카드 승격 (권장)</div>
+<p class="variant-desc">
+  사이드바 바탕을 반 단계 가라앉히고 작업을 카드로 띄운다. 다크: 바탕 <code>#131519</code> 위에 작업 <code>#1d2027</code>(+테두리) —
+  작업이 또렷하게 밝다. 라이트: 회색 바탕 <code>#eef0f3</code> 위에 흰 카드 — 작업 주변이 어두워져 같은 위계가 생긴다.
+  프로젝트 헤더는 바탕에 남아 자연스럽게 "구역 이름표"로 읽힌다.
+</p>
+<div class="row">
+  <div class="panel-wrap"><span class="panel-label">Dark · A안</span><div class="sb dark va" id="p3"></div></div>
+  <div class="panel-wrap"><span class="panel-label">Light · A안</span><div class="sb light va" id="p4"></div></div>
+</div>
+
+<!-- ================= B안 ================= -->
+<div class="variant-title">B안 — 프로젝트 헤더 침강</div>
+<p class="variant-desc">
+  작업 영역은 지금 그대로 두고 프로젝트 헤더만 가라앉은 띠로 만든다. 다크: 헤더 띠 <code>#101216</code> — 상대적으로 작업 영역이 밝아 보인다.
+  라이트: 헤더 띠 <code>#e9ecf0</code> — 작업 영역(흰색)과 구분. 변경 범위가 가장 작지만 A안보다 층 대비는 약하다.
+</p>
+<div class="row">
+  <div class="panel-wrap"><span class="panel-label">Dark · B안</span><div class="sb dark vb" id="p5"></div></div>
+  <div class="panel-wrap"><span class="panel-label">Light · B안</span><div class="sb light vb" id="p6"></div></div>
+</div>
+
+<div class="note">
+  <b>구현 메모</b> — 실제 반영 시 <code>src/shared/app.css</code>에 표면 토큰 2개만 추가하면 된다:
+  <code>--surface-list</code>(사이드바 바탕)와 <code>--surface-task</code>(작업 카드).
+  A안은 <code>.sb-body</code> 배경을 <code>--surface-list</code>로, <code>.task</code>에 배경/테두리를 주고
+  기존 hover(<code>--panel-2</code>)를 카드 hover 색으로 교체. 진행 중 카드의 border-beam 효과(<code>.task.in-progress::before</code>)는
+  카드 테두리가 생겨도 그대로 동작한다. B안은 <code>.grp</code> 배경만 바꾸면 끝(단, sticky 헤더라 스크롤 시 띠가 위에 붙는 점은 동일).
+</div>
+
+<script>
+  const GREEN = "#2ecc71", GREEN_L = "#1f9d55";
+  const ringSvg = (frac, light) => {
+    const C = 2 * Math.PI * 6;
+    const green = light ? GREEN_L : GREEN;
+    const track = light ? "#dfe2e7" : "#2a2e37";
+    const arc = frac > 0 ? `<circle cx="8" cy="8" r="6" fill="none" stroke="${green}" stroke-width="2.4" stroke-dasharray="${(frac*C).toFixed(2)} ${C.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>` : "";
+    return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="${track}" stroke-width="2.4"/>${arc}</svg>`;
+  };
+  const stateDot = (kind, light) => {
+    const green = light ? GREEN_L : GREEN;
+    if (kind === "done") return `<span class="task-state" style="background:${green}22;color:${green}">✓</span>`;
+    if (kind === "prog") return `<span class="task-state" style="border:2px solid #f5a623"></span>`;
+    return `<span class="task-state" style="border:2px dashed var(--muted-2)"></span>`;
+  };
+  const task = (kind, name, chips, light) => `
+    <div class="task ${kind === "done" ? "completed" : ""}">
+      <div class="task-top">${stateDot(kind, light)}<div class="name">${name}</div></div>
+      ${chips ? `<div class="task-chips">${chips}</div>` : ""}
+    </div>`;
+  const chip = (txt, empty) => `<span class="chip ${empty ? "empty" : ""}">${txt}</span>`;
+
+  const sidebar = (light) => `
+    <div class="sb-head">Plane Quick Dock <span class="u">idino.sol1</span></div>
+    <div class="sec-h">나에게 할당된 작업 <span class="count">5</span></div>
+    <div class="sb-body">
+      <div class="grp">
+        <span class="chev">▾</span><span class="dot" style="background:#5b8def"></span>
+        <span class="name">Web 리뉴얼</span><span class="ident">WEB</span>
+        <span class="prog">${ringSvg(1/3, light)} 1/3</span>
+      </div>
+      <div class="grp-body">
+        ${task("prog", "결제 페이지 검증 로직 정리", chip("🔥 높음") + chip("📅 ~ 07-22"), light)}
+        ${task("todo", "온보딩 배너 문구 교체", chip("＋ 마감일", true), light)}
+        ${task("done", "로그인 오류 토스트 수정", "", light)}
+      </div>
+      <div class="grp with-gap">
+        <span class="chev">▾</span><span class="dot" style="background:#e2564f"></span>
+        <span class="name">사내 도구</span><span class="ident">OPS</span>
+        <span class="prog">${ringSvg(0, light)} 0/2</span>
+      </div>
+      <div class="grp-body">
+        ${task("prog", "배포 스크립트 알림 붙이기", chip("📅 07-20 ~ 07-24"), light)}
+        ${task("todo", "주간 리포트 자동화 검토", chip("보통"), light)}
+      </div>
+    </div>
+    <div class="sb-foot">동기화 완료</div>`;
+
+  for (const id of ["p1", "p3", "p5"]) document.getElementById(id).innerHTML = sidebar(false);
+  for (const id of ["p2", "p4", "p6"]) document.getElementById(id).innerHTML = sidebar(true);
+</script>
+</body>
+</html>
