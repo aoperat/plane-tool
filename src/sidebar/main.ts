@@ -6,7 +6,8 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, visibleTabItems } from "./logic";
+import type { SidebarTab } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -59,7 +60,6 @@ let lastSidebarData: SidebarData | null = null;
 let delegatedMemberNames = new Map<string, string>();
 
 const ACTIVE_TAB_KEY = "sidebarActiveTab";
-type SidebarTab = "assigned" | "delegated";
 let activeTab: SidebarTab = localStorage.getItem(ACTIVE_TAB_KEY) === "delegated" ? "delegated" : "assigned";
 
 const DELEGATED_SHOW_ALL_KEY = "delegatedShowAll";
@@ -74,34 +74,13 @@ function renderConflictBadge() {
   conflictCountEl.textContent = String(conflictCount);
 }
 
-// View preference, persisted in the webview's localStorage (no backend setting needed).
+// View preferences, persisted in the webview's localStorage (no backend setting
+// needed). Both are toggled from the more-menu's 보기 설정 section — see openMoreMenu.
 const HIDE_DONE_KEY = "hideCompleted";
 let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
-const hideDoneEl = document.getElementById("hideDone")!;
-
-const EYE_ICON =
-  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>`;
-const EYE_OFF_ICON =
-  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 2.5l11 11"/></svg>`;
-
-// The button states its *current* mode (icon + label), not the action —
-// an action-labeled toggle reads ambiguously in both directions.
-function syncHideDoneButton() {
-  hideDoneEl.classList.toggle("active", hideCompleted);
-  hideDoneEl.innerHTML = hideCompleted ? `${EYE_OFF_ICON}<span>완료 숨김</span>` : `${EYE_ICON}<span>완료 표시</span>`;
-  hideDoneEl.title = hideCompleted ? "클릭하면 완료된 항목을 다시 표시합니다" : "클릭하면 완료된 항목을 숨깁니다";
-}
-syncHideDoneButton();
-
-hideDoneEl.onclick = () => {
-  hideCompleted = !hideCompleted;
-  localStorage.setItem(HIDE_DONE_KEY, hideCompleted ? "1" : "0");
-  syncHideDoneButton();
-  renderTasks(lastItems, lastProjects);
-};
 
 const sectionTitleEl = document.getElementById("sectionTitle")!;
-const showAllDelegatedEl = document.getElementById("showAllDelegated")!;
+const sectionHeadEl = document.getElementById("sectionHead")!;
 const assignedTabCountEl = document.getElementById("assignedTabCount")!;
 const delegatedTabCountEl = document.getElementById("delegatedTabCount")!;
 const tabEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".sb-tab"));
@@ -119,33 +98,21 @@ function syncTabButtons() {
 // 위임 탭인데 탭 버튼은 담당 작업이 활성으로 보이는 불일치가 생긴다.
 syncTabButtons();
 
-function syncShowAllDelegatedButton() {
-  showAllDelegatedEl.hidden = activeTab !== "delegated";
-  showAllDelegatedEl.classList.toggle("active", delegatedShowAll);
-  showAllDelegatedEl.innerHTML = delegatedShowAll ? `${EYE_OFF_ICON}<span>전체보기</span>` : `${EYE_ICON}<span>오늘만</span>`;
-  showAllDelegatedEl.title = delegatedShowAll ? "클릭하면 오늘 근처 항목만 봅니다" : "클릭하면 기한과 무관하게 전체를 봅니다";
-}
-
 // 탭/토글 전환은 이미 받은 SidebarData를 재필터링할 뿐, fetchSidebarData를
 // 다시 부르지 않는다 — 오프라인에서도 즉시 전환되고 서버 부하도 없다.
 function renderActiveTabView() {
   if (!lastSidebarData) return;
   sectionTitleEl.textContent = activeTab === "assigned" ? "나에게 할당된 작업" : "내가 할당한 작업";
-  syncShowAllDelegatedButton();
-  const items = activeTab === "assigned"
-    ? filterVisibleToday(lastSidebarData.assigned)
-    : delegatedShowAll
-      ? lastSidebarData.delegated
-      : filterVisibleToday(lastSidebarData.delegated);
-  renderTasks(items, lastSidebarData.projects);
+  renderTasks(visibleTabItems(activeTab, lastSidebarData, delegatedShowAll), lastSidebarData.projects);
 }
 
 /** 탭 카운트와 현재 탭 목록을 lastSidebarData 기준으로 다시 그린다 —
- *  전체 fetch(runRefresh)와 로컬 패치(item-updated/item-deleted)가 공유한다. */
+ *  전체 fetch(runRefresh)와 로컬 패치(item-updated/item-deleted)가 공유한다.
+ *  개수는 목록과 같은 visibleTabItems로 세므로 둘이 어긋나지 않는다. */
 function renderFromLastData() {
   if (!lastSidebarData) return;
-  assignedTabCountEl.textContent = String(filterVisibleToday(lastSidebarData.assigned).length);
-  delegatedTabCountEl.textContent = String(lastSidebarData.delegated.length);
+  assignedTabCountEl.textContent = String(visibleTabItems("assigned", lastSidebarData, delegatedShowAll).length);
+  delegatedTabCountEl.textContent = String(visibleTabItems("delegated", lastSidebarData, delegatedShowAll).length);
   renderActiveTabView();
 }
 
@@ -201,12 +168,6 @@ tabEls.forEach((btn) => {
     renderActiveTabView();
   };
 });
-
-showAllDelegatedEl.onclick = () => {
-  delegatedShowAll = !delegatedShowAll;
-  localStorage.setItem(DELEGATED_SHOW_ALL_KEY, delegatedShowAll ? "1" : "0");
-  renderActiveTabView();
-};
 
 const STATE_GROUPS = ["backlog", "unstarted", "started", "completed", "cancelled"] as const;
 const STATE_LABELS: Record<string, string> = {
@@ -974,6 +935,9 @@ async function runRefresh() {
   try {
     const s = await getSettings();
     sbTabsEl.hidden = !s.show_delegated_tab;
+    // 탭이 목록 이름과 개수를 전담한다 — 탭이 보이는 동안 섹션 헤더를 두면
+    // 같은 정보가 두 줄에 반복되므로 숨기고, 탭이 꺼져 있을 때만 되살린다.
+    sectionHeadEl.hidden = s.show_delegated_tab;
     if (!s.show_delegated_tab) activeTab = "assigned";
     syncTabButtons();
     baseUrl = s.base_url;
@@ -1127,12 +1091,55 @@ document.getElementById("notesClose")!.onclick = closeReleaseNotes;
 const MORE_MENU_WIDTH = 170;
 const moreBtn = document.getElementById("moreMenu")!;
 
+/** 켬/끔 상태를 가진 보기 설정 항목. 체크는 "선택"이 아니라 "켜져 있음"을
+ *  뜻하므로 여러 줄이 동시에 체크될 수 있다. 다른 메뉴 항목과 달리 클릭해도
+ *  메뉴를 닫지 않는다 — 보기 설정은 연달아 바꾸는 경우가 많다. */
+function appendPopToggle(pop: HTMLElement, label: string, on: boolean, onToggle: () => void) {
+  const item = document.createElement("div");
+  item.className = "pop-item" + (on ? " on" : "");
+  item.textContent = label;
+  item.onclick = (e) => {
+    e.stopPropagation();
+    onToggle();
+    item.classList.toggle("on");
+  };
+  pop.appendChild(item);
+}
+
+function appendDivider(pop: HTMLElement) {
+  const divider = document.createElement("div");
+  divider.className = "popover-divider";
+  pop.appendChild(divider);
+}
+
 function openMoreMenu() {
   closePopover();
   const pop = document.createElement("div");
   pop.className = "pop";
   pop.style.position = "fixed";
   pop.style.width = MORE_MENU_WIDTH + "px";
+
+  const viewHead = document.createElement("div");
+  viewHead.className = "pop-head";
+  viewHead.textContent = "보기 설정";
+  pop.appendChild(viewHead);
+
+  appendPopToggle(pop, "완료 항목 표시", !hideCompleted, () => {
+    hideCompleted = !hideCompleted;
+    localStorage.setItem(HIDE_DONE_KEY, hideCompleted ? "1" : "0");
+    renderTasks(lastItems, lastProjects);
+  });
+  // 담당 탭은 항상 "오늘" 기준으로 좁혀 보여주므로 이 설정이 없다 —
+  // 기간 전체 보기는 위임 탭에만 있는 선택지다.
+  if (activeTab === "delegated") {
+    appendPopToggle(pop, "기한 무관 전체 보기", delegatedShowAll, () => {
+      delegatedShowAll = !delegatedShowAll;
+      localStorage.setItem(DELEGATED_SHOW_ALL_KEY, delegatedShowAll ? "1" : "0");
+      // 목록뿐 아니라 탭 개수도 이 설정에 따라 달라지므로 둘 다 다시 그린다.
+      renderFromLastData();
+    });
+  }
+  appendDivider(pop);
 
   const pinItem = document.createElement("div");
   pinItem.className = "pop-item" + (pinned ? " sel" : "");
@@ -1152,9 +1159,7 @@ function openMoreMenu() {
   appendPopItem(pop, "설정", () => openSettings());
   appendPopItem(pop, "다크/라이트 전환", () => toggleTheme());
 
-  const divider = document.createElement("div");
-  divider.className = "popover-divider";
-  pop.appendChild(divider);
+  appendDivider(pop);
 
   const ver = document.createElement("div");
   ver.className = "pop-version";

@@ -35,13 +35,11 @@
       <div class="scroll">
         <div class="sb-section">
           <div id="inbox" class="inbox-sec" hidden></div>
-          <div class="h">
+          <!-- 탭 바가 보이는 동안에는 이 줄을 숨긴다 — 탭이 목록 이름과 개수를
+               이미 보여주므로 그대로 두면 같은 정보가 두 줄에 반복된다. -->
+          <div class="h" id="sectionHead">
             <span id="sectionTitle">나에게 할당된 작업</span>
-            <span class="h-tools">
-              <span id="showAllDelegated" class="h-toggle" hidden></span>
-              <span id="hideDone" class="h-toggle"></span>
-              <span id="taskCount" class="count">0</span>
-            </span>
+            <span id="taskCount" class="count">0</span>
           </div>
           <div id="tasks"></div>
           <div id="emptyState" class="sb-empty" hidden>

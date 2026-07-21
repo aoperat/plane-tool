@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId } from "./logic";
+import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, visibleTabItems } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -185,6 +185,30 @@ describe("filterVisibleToday", () => {
     ];
     const visible = filterVisibleToday(items, now);
     expect(visible.map((i) => i.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("visibleTabItems", () => {
+  const now = new Date(2026, 6, 1, 8, 0, 0);
+  const data = {
+    assigned: [
+      wi("a1", "p1", "started"),
+      wiCompleted("a2", "p1", new Date(2026, 5, 30, 1, 0, 0).toISOString()), // 어제 완료
+    ],
+    delegated: [
+      wi("d1", "p1", "started"),
+      wiCompleted("d2", "p1", new Date(2026, 5, 30, 1, 0, 0).toISOString()), // 어제 완료
+    ],
+  };
+
+  it("scopes the assigned tab to today regardless of the delegated setting", () => {
+    expect(visibleTabItems("assigned", data, false, now).map((i) => i.id)).toEqual(["a1"]);
+    expect(visibleTabItems("assigned", data, true, now).map((i) => i.id)).toEqual(["a1"]);
+  });
+
+  it("widens the delegated tab only when 전체 보기 is on", () => {
+    expect(visibleTabItems("delegated", data, false, now).map((i) => i.id)).toEqual(["d1"]);
+    expect(visibleTabItems("delegated", data, true, now).map((i) => i.id)).toEqual(["d1", "d2"]);
   });
 });
 

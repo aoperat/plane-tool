@@ -68,6 +68,22 @@ export function filterVisibleToday(items: WorkItem[], now: Date = new Date()): W
   return items.filter((it) => it.state_group !== "completed" || isCompletedToday(it, now));
 }
 
+export type SidebarTab = "assigned" | "delegated";
+
+/** The items a tab actually shows. Both the tab's count badge and the rendered list go
+ *  through this, so they can't disagree — the delegated count used to ignore the
+ *  "기한 무관 전체 보기" setting and reported more items than the list displayed.
+ *  The assigned tab is always scoped to today; only the delegated tab can widen. */
+export function visibleTabItems(
+  tab: SidebarTab,
+  data: { assigned: WorkItem[]; delegated: WorkItem[] },
+  showAllDelegated: boolean,
+  now: Date = new Date(),
+): WorkItem[] {
+  if (tab === "assigned") return filterVisibleToday(data.assigned, now);
+  return showAllDelegated ? data.delegated : filterVisibleToday(data.delegated, now);
+}
+
 /** Drops completed items when `hide` is on; otherwise returns `items` unchanged.
  *  Applied per group at render time so the progress ring still counts hidden items. */
 export function filterHiddenCompleted(items: WorkItem[], hide: boolean): WorkItem[] {

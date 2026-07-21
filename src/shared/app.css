@@ -271,15 +271,9 @@ kbd {
   margin-bottom: 8px;
 }
 .sb-section .h .count { color: var(--muted); }
-.sb-section .h .h-tools { display: flex; align-items: center; gap: 6px; }
-/* completed-items visibility toggle: shows its current state as icon + label */
-.h-toggle {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
-  border-radius: 5px; cursor: pointer; color: var(--muted); font-size: 10px;
-}
-.h-toggle:hover { background: var(--panel-2); color: var(--text); }
-.h-toggle.active { color: var(--accent); background: var(--accent-soft); }
-.h-toggle svg { width: 12px; height: 12px; flex: none; }
+/* `.h` sets display:flex above, which beats the UA's [hidden] { display: none }
+   — restate it so the row can be hidden while the tab bar is showing. */
+.sb-section .h[hidden] { display: none; }
 
 .sb-tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); }
 /* display:flex above beats the UA's [hidden] { display: none } — restate it. */
@@ -386,6 +380,13 @@ kbd {
 .pop-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text); }
 .pop-item:hover { background: var(--panel-2); }
 .pop-item.sel { background: var(--accent-soft); }
+/* View-setting rows: the check marks "on", not "selected", so several rows can
+   carry it at once — unlike .pop-item.sel, which marks one chosen value. */
+.pop-item.on::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 12px; }
+.pop-head {
+  padding: 5px 8px 3px; font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted-2);
+}
 .pop-msg { padding: 6px 8px; font-size: 12px; color: var(--text); }
 .pop-version { padding: 5px 8px 3px; font-size: 10.5px; color: var(--muted-2); }
 .date-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }

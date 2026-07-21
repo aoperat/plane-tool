@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사이드바 탭/섹션 헤더 중복 정리 목업</title>
+<link rel="stylesheet" href="../../../src/shared/app.css" />
+<style>
+  body { margin: 0; padding: 22px; background: #33363d; font-family: "Segoe UI","Malgun Gothic",system-ui,sans-serif; color: #e6e8ec; }
+  h1 { font-size: 16px; margin: 0 0 6px; }
+  .lead { font-size: 12.5px; color: #9aa1ac; line-height: 1.7; max-width: 900px; margin-bottom: 20px; }
+  .grid { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 320px; }
+  .col > .cap { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .col > .why { font-size: 11.5px; color: #9aa1ac; line-height: 1.6; margin-bottom: 10px; min-height: 58px; }
+  .frame { width: 320px; height: 400px; position: relative; border-radius: 10px; overflow: hidden; }
+  .frame .sidebar { position: absolute; width: 320px; height: 400px; box-shadow: none; }
+  .light { --bg:#f4f5f7; --panel:#fff; --panel-2:#eef0f3; --border:#dfe2e7; --text:#1c1f26;
+    --muted:#6b7280; --muted-2:#9aa1ac; --accent:#3f68e0; --accent-soft:rgba(63,104,224,.12);
+    --accent-ring:rgba(63,104,224,.35); --green:#1f9d55; --amber:#b06a00; --red:#d6414d;
+    --surface-list:#eef0f3; --surface-task:#fff; --surface-task-border:#e2e5ea;
+    --surface-task-hover:#f7f8fa; --surface-grp-hover:#e4e7ec; --surface-chip-on-task:#eef0f3; }
+  .note { font-size: 12px; color: #9aa1ac; line-height: 1.75; max-width: 900px;
+    background: #1a1d23; border: 1px solid #2a2e37; border-radius: 10px; padding: 14px 16px; margin-top: 22px; }
+  .note b { color: #e6e8ec; }
+  .note code { background: #14161a; border: 1px solid #2a2e37; border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  .mark { color: #ffb454; }
+  hr.sep { border: none; border-top: 1px solid #40444d; margin: 26px 0 18px; }
+  h2 { font-size: 13.5px; margin: 0 0 12px; color: #cfd3da; }
+
+  /* --- 목업 전용 레이아웃 변형 (실제 반영 시 app.css로 옮길 규칙) --- */
+  /* B안: 툴을 탭 줄로 병합 */
+  .sb-tabs.with-tools { align-items: center; }
+  .sb-tabs.with-tools .sb-tab { flex: 0 1 auto; padding-left: 4px; padding-right: 4px; }
+  .sb-tabs.with-tools .tab-tools { margin-left: auto; display: flex; gap: 2px; padding-bottom: 4px; }
+  .sb-tabs.with-tools .h-toggle.icon-only { padding: 4px; }
+  .sb-tabs.with-tools .h-toggle.icon-only span { display: none; }
+  /* A안: 제목/개수 없이 툴만 오른쪽 */
+  .sb-section .h.tools-only { justify-content: flex-end; }
+  .scope { font-size: 11px; color: var(--muted-2); text-transform: none; letter-spacing: 0; }
+</style>
+</head>
+<body>
+
+<h1>사이드바 — 탭과 섹션 헤더의 중복 정리</h1>
+<p class="lead">
+  탭을 켜면 같은 정보가 두 줄에 걸쳐 반복된다: 탭은 <b>담당 작업 5</b>, 바로 아래 섹션 헤더는 <b>나에게 할당된 작업 5</b> —
+  <span class="mark">같은 목록을 다른 이름으로 두 번 부르고, 개수도 두 번</span> 보여준다.
+  게다가 "내가 할당한 작업" 탭에서는 탭 개수(전체)와 섹션 개수(<i>오늘만</i> 필터 적용)가 서로 달라질 수 있어 어느 쪽이 맞는지 헷갈린다.
+</p>
+
+<h2>다크 모드</h2>
+<div class="grid" id="dark-grid"></div>
+
+<hr class="sep">
+<h2>라이트 모드</h2>
+<div class="grid light" id="light-grid"></div>
+
+<hr class="sep">
+<h2>탭이 꺼져 있을 때 (설정에서 "할당한 작업 보기" off) — 회귀 확인</h2>
+<p class="lead">탭 바가 없으면 섹션 헤더가 유일한 라벨이므로 <b>제목과 개수가 반드시 남아야 한다</b>. 각 안이 이 상태에서 어떻게 보이는지.</p>
+<div class="grid" id="notabs-grid"></div>
+
+<div class="note">
+  <b>구현 메모</b> —
+  <b>A안</b>: <code>renderActiveTabView()</code>에서 탭 표시 여부에 따라 <code>sectionTitle</code>/<code>taskCount</code>만 숨기고
+  <code>.h</code>에 <code>tools-only</code> 클래스를 토글한다. 마크업 변경 없음, 가장 작은 diff.
+  <b>B안</b>: 토글 두 개(<code>showAllDelegated</code>, <code>hideDone</code>)를 <code>.sb-tabs</code> 안으로 옮기고 아이콘만 남긴다
+  (라벨은 <code>title</code> 툴팁으로). 세로 한 줄을 통째로 회수해 목록이 그만큼 더 보인다. 탭이 꺼지면 이 줄이 통째로 사라지므로
+  <code>.sb-tabs</code>는 <b>항상 렌더</b>하고 탭 버튼만 숨기는 처리가 필요하다.
+  <b>C안</b>: 탭에서 <code>.count</code>만 제거 — 개수는 섹션 헤더가 전담. 변경은 가장 쉽지만 탭만 봐서는 반대편 탭에 몇 건이 있는지 알 수 없다.
+  <br><br>
+  <b>덤으로 고칠 것</b> — 어느 안을 택하든 "내가 할당한 작업"의 개수 기준을 한쪽으로 통일해야 한다.
+  현재 탭 카운트는 <code>lastSidebarData.delegated.length</code>(전체)인데 섹션 카운트는 <i>오늘만</i> 필터가 적용된 값이라 숫자가 어긋난다.
+  <b>화면에 실제로 보이는 개수</b>(필터 적용 후)로 맞추는 쪽을 권한다.
+</div>
+
+<script>
+const EYE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 2.5l11 11"/></svg>`;
+const CAL = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke-linecap="round"/></svg>`;
+const PLUS = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
+const ring = (d,t) => { const C=2*Math.PI*6, f=t?d/t:0;
+  const a = f>0 ? `<circle cx="8" cy="8" r="6" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-dasharray="${(f*C).toFixed(2)} ${C.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>`:"";
+  return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/>${a}</svg>`; };
+const stateSvg = (g) =>
+  g==="completed" ? `<svg viewBox="0 0 16 16" fill="none" stroke="var(--green)" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M5.2 8.2 7.2 10.2 10.9 6.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+: g==="started"   ? `<svg viewBox="0 0 16 16" fill="none" stroke="var(--amber)" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M8 8V3.5A4.5 4.5 0 0 1 8 12.5z" fill="var(--amber)" stroke="none"/></svg>`
+:                   `<svg viewBox="0 0 16 16" fill="none" stroke="var(--muted-2)" stroke-width="1.6" stroke-dasharray="2.4 2.2"><circle cx="8" cy="8" r="6.2"/></svg>`;
+
+const task = (g,name,chips) => `
+  <div class="task ${g==="completed"?"completed":""} ${g==="started"?"in-progress":""}">
+    <div class="task-top"><span class="task-state">${stateSvg(g)}</span><div class="name">${name}</div></div>
+    <div class="task-chips">${chips}</div>
+  </div>`;
+const body = `
+  <div class="grp"><span class="chev">▾</span><span class="dot" style="background:#5b8def"></span>
+    <span class="name">Web 리뉴얼</span><span class="ident">WEB</span>
+    <span class="prog">${ring(1,3)}<span class="txt">1/3</span></span></div>
+  <div class="grp-body">
+    ${task("started","결제 페이지 검증 로직 정리",`<span class="chip sm" style="color:var(--red)">높음</span><span class="chip sm">${CAL} ~ 07-22</span>`)}
+    ${task("unstarted","온보딩 배너 문구 교체",`<span class="chip sm empty">${PLUS} 마감일</span>`)}
+  </div>`;
+
+const TABS = (mode) => {
+  const tools = `
+    <span class="h-toggle ${mode==="B"?"icon-only":""}" title="오늘만 보기">${EYE}<span>오늘만</span></span>
+    <span class="h-toggle ${mode==="B"?"icon-only":""}" title="완료 항목 표시">${EYE}<span>완료 표시</span></span>`;
+  const counts = mode === "C" ? "" : `<span class="count">5</span>`;
+  const counts2 = mode === "C" ? "" : `<span class="count">0</span>`;
+  return `
+  <div class="sb-tabs ${mode==="B"?"with-tools":""}">
+    <button class="sb-tab active">담당 작업 ${counts}</button>
+    <button class="sb-tab">내가 할당한 작업 ${counts2}</button>
+    ${mode==="B" ? `<span class="tab-tools">${tools}</span>` : ""}
+  </div>`;
+};
+
+const SECTION = (mode) => {
+  const tools = `
+    <span class="h-toggle" title="오늘만 보기">${EYE}<span>오늘만</span></span>
+    <span class="h-toggle" title="완료 항목 표시">${EYE}<span>완료 표시</span></span>`;
+  if (mode === "B") return "";                       // 섹션 헤더 줄 자체가 없음
+  if (mode === "A") return `<div class="h tools-only"><span class="h-tools">${tools}</span></div>`;
+  if (mode === "C") return `<div class="h"><span>나에게 할당된 작업</span><span class="h-tools">${tools}<span class="count">5</span></span></div>`;
+  // 현재
+  return `<div class="h"><span>나에게 할당된 작업</span><span class="h-tools">${tools}<span class="count">5</span></span></div>`;
+};
+
+const panel = (mode, withTabs = true) => `
+  <aside class="sidebar" style="position:absolute;width:320px;height:400px;">
+    <div class="sb-head">
+      <div class="logo"><svg viewBox="0 0 16 16" fill="#fff"><circle cx="8" cy="8" r="4"/></svg></div>
+      <div class="t">Quick Dock</div><span class="u">idino.sol1</span>
+    </div>
+    ${withTabs ? TABS(mode) : ""}
+    <div class="scroll"><div class="sb-section">
+      ${withTabs ? SECTION(mode) : `<div class="h"><span>나에게 할당된 작업</span><span class="h-tools">
+          <span class="h-toggle">${EYE}<span>완료 표시</span></span><span class="count">5</span></span></div>`}
+      <div>${body}</div>
+    </div></div>
+    <div class="sb-foot"><span>동기화 완료</span></div>
+  </aside>`;
+
+const VARIANTS = [
+  ["현재 (중복)", "탭 라벨·개수와 섹션 제목·개수가 같은 목록을 두 번 설명한다. 세로 공간도 두 줄을 쓴다.", "now"],
+  ["A안 — 섹션 제목·개수 제거 (권장)", "탭이 이름과 개수를 전담하고, 아래 줄에는 보기 토글만 남긴다. 마크업 변경 없이 클래스 토글만으로 되고, 탭이 꺼지면 제목·개수가 그대로 돌아온다.", "A"],
+  ["B안 — 토글을 탭 줄로 병합", "섹션 헤더 줄을 통째로 없애 목록이 한 줄 더 보인다. 320px 폭에는 무리 없이 들어간다(실측). 다만 두 토글이 모두 눈 모양 아이콘이라 라벨을 떼면 서로 구분이 안 되는 게 실질적 약점.", "B"],
+  ["C안 — 탭에서 개수만 제거", "개수는 섹션 헤더가 전담. 가장 손이 덜 가지만 두 줄 구조와 이름 중복은 그대로 남고, 반대편 탭에 몇 건 있는지 알 수 없다.", "C"],
+];
+
+const render = (host, withTabs = true) => {
+  host.innerHTML = VARIANTS.map(([cap, why, mode]) => `
+    <div class="col">
+      <div class="cap">${cap}</div>
+      <div class="why">${why}</div>
+      <div class="frame">${panel(mode, withTabs)}</div>
+    </div>`).join("");
+};
+render(document.getElementById("dark-grid"));
+render(document.getElementById("light-grid"));
+render(document.getElementById("notabs-grid"), false);
+</script>
+</body>
+</html>
