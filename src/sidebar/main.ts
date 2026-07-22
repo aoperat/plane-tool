@@ -141,6 +141,7 @@ let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
 // 따로 가져간다. 캐시를 localStorage에 두어 앱을 다시 켰을 때와 네트워크가
 // 끊겼을 때 마지막 성공 결과를 그대로 쓴다.
 const CYCLE_CACHE_KEY = "cycleDataCache";
+const CYCLE_LOADING_TEXT = "사이클 불러오는 중…";
 const CYCLE_TTL_MS = 10 * 60_000;
 // 일부 프로젝트를 통째로 건너뛴 결과(is_partial)는 훨씬 빨리 낡은 것으로
 // 본다. 2분은 rate limit 창이나 일시적인 네트워크 장애가 지나갈 만큼은
@@ -189,7 +190,7 @@ function ensureCycleData(): void {
   const ttl = cycleData?.is_partial ? CYCLE_PARTIAL_TTL_MS : CYCLE_TTL_MS;
   if (cycleData && Date.now() - cycleFetchedAtMs < ttl) return;
   const stale = cycleData === null;
-  if (stale) synced.textContent = "사이클 불러오는 중…";
+  if (stale) synced.textContent = CYCLE_LOADING_TEXT;
   cycleInFlight = fetchCycleData(resolveDatePreset("today"))
     .then((data) => {
       const at = Date.now();
@@ -209,22 +210,18 @@ function ensureCycleData(): void {
       }
       renderFromLastData();
       // renderFromLastData는 footer를 건드리지 않는다 — 여기서 정상 문구로
-      // 되돌리지 않으면 "사이클 불러오는 중…"이 다음 runRefresh(포커스 +
+      // 되돌리지 않으면 사이클 로딩 문구가 다음 runRefresh(포커스 +
       // 60초 쿨다운)까지, 즉 사실상 세션 내내 남는다. 이 호출이 실제로 그
-      // 문구를 쓴 경우에만 되돌린다 — 그 사이 다른 작업이 써둔 문구를
-      // 덮어쓰면 안 된다.
-      if (stale) {
-        synced.textContent = offlineStatusText(
-          lastSidebarData?.is_cached ?? false,
-          lastSidebarData?.cached_at_ms ?? null,
-          pendingCount,
-          Date.now(),
-        );
+      // 문구를 쓴 경우에만, 그리고 그 사이 다른 작업이 써둔 더 새로운 문구로
+      // 덮어지지 않았을 때만 되돌린다. 또한 실제 데이터가 있어야만 복구한다 —
+      // 없으면 낡은 캐시로 "동기화 완료" 같은 거짓 상태를 만든다.
+      if (stale && synced.textContent === CYCLE_LOADING_TEXT && lastSidebarData) {
+        synced.textContent = offlineStatusText(lastSidebarData.is_cached, lastSidebarData.cached_at_ms, pendingCount, Date.now());
       }
     })
     .catch((err) => {
       console.error("fetchCycleData failed:", err);
-      if (stale) synced.textContent = "사이클을 불러오지 못했습니다";
+      if (stale && synced.textContent === CYCLE_LOADING_TEXT) synced.textContent = "사이클을 불러오지 못했습니다";
     })
     .finally(() => {
       cycleInFlight = null;
