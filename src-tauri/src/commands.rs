@@ -68,6 +68,22 @@ pub struct WorkItemDetailDto {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StateDto { pub id: String, pub group: String, pub project_id: String, pub default: bool }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CycleDto {
+    pub id: String,
+    pub name: String,
+    pub project_id: String,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CycleDataDto {
+    pub cycles: Vec<CycleDto>,
+    /// 작업 id → 사이클 id. 사이클은 작업당 최대 1개라 맵으로 충분하다.
+    pub item_cycle: std::collections::HashMap<String, String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SidebarData {
     pub projects: Vec<ProjectDto>,
@@ -401,6 +417,44 @@ pub async fn fetch_sidebar_data(
         }
         Err(e) => Err(e),
     }
+}
+
+/// 사이클 목록과 작업↔사이클 소속을 가져온다. `fetch_sidebar_data`와 별도인
+/// 이유는 두 가지다 — (1) 사용자가 사이클별 보기를 고르기 전에는 요청이
+/// 한 건도 나가지 않아야 하고, (2) 소속은 작업 목록보다 훨씬 덜 바뀌어
+/// 갱신 주기를 따로 가져가기 때문이다(캐시는 프론트엔드가 관리한다).
+/// `today`는 "YYYY-MM-DD" — 사용자 로컬 날짜는 프론트엔드가 안다
+/// (`fetch_sidebar_data`가 날짜창을 받는 것과 같은 이유).
+///
+/// 프로젝트를 순차로 도는 것은 의도적이다 — `fetch_sidebar_data_online`은
+/// `buffer_unordered`로 병렬화하지만, 여기서는 사이클마다 요청이 한 건씩 더
+/// 붙어 총 요청 수가 훨씬 많다. Plane의 API 키당 60 req/min을 넘기지 않도록
+/// 느리더라도 순차로 둔다 (호출 자체가 10분에 한 번뿐이다).
+#[tauri::command]
+pub async fn fetch_cycle_data(
+    app: tauri::AppHandle,
+    today: String,
+) -> Result<CycleDataDto, String> {
+    let (client, _s) = client(&app)?;
+    let projects = client.list_projects().await?;
+    let mut cycles: Vec<CycleDto> = Vec::new();
+    let mut item_cycle = std::collections::HashMap::new();
+    for p in projects.iter().filter(|p| p.cycle_view) {
+        let all = client.list_cycles(&p.id).await?;
+        for c in plane_api::select_cycles_to_fetch(&all, &today) {
+            for issue_id in client.list_cycle_issue_ids(&p.id, &c.id).await? {
+                item_cycle.insert(issue_id, c.id.clone());
+            }
+            cycles.push(CycleDto {
+                id: c.id,
+                name: c.name,
+                project_id: c.project_id,
+                start_date: c.start_date,
+                end_date: c.end_date,
+            });
+        }
+    }
+    Ok(CycleDataDto { cycles, item_cycle })
 }
 
 async fn fetch_sidebar_data_online(
@@ -1101,8 +1155,8 @@ mod tests {
     #[test]
     fn assemble_filters_to_my_open_items_across_projects() {
         let projects = vec![
-            Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() },
-            Project { id: "p2".into(), name: "Mob".into(), identifier: "MOB".into() },
+            Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true },
+            Project { id: "p2".into(), name: "Mob".into(), identifier: "MOB".into(), cycle_view: true },
         ];
         let items = vec![
             wi("a", "started", &["me"], "p1"),
@@ -1125,7 +1179,7 @@ mod tests {
 
     #[test]
     fn assemble_includes_items_completed_within_the_window() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
         let items = vec![
             wi("a", "started", &["me"], "p1"),
             wi_completed("b", "completed", &["me"], "p1", Some("2026-07-01T09:00:00Z")), // in window
@@ -1140,7 +1194,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_carries_updated_at_into_work_item_dto() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
         let mut item = wi("a", "started", &["me"], "p1");
         item.updated_at = Some("2026-07-01T10:00:00Z".into());
         let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
@@ -1149,7 +1203,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_carries_assignee_ids_into_work_item_dto() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
         let item = wi("a", "started", &["me", "other"], "p1");
         let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
         assert_eq!(data.assigned[0].assignee_ids, vec!["me".to_string(), "other".to_string()]);
@@ -1268,7 +1322,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_fills_delegated_from_created_by() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
         let mut mine_for_other = wi("a", "started", &["other"], "p1");
         mine_for_other.created_by = Some("me".into());
         let mut mine_for_me = wi("b", "started", &["me"], "p1");

@@ -771,6 +771,7 @@ pub fn run() {
             commands::verify_delegated_tab_password,
             commands::create_issue,
             commands::fetch_sidebar_data,
+            commands::fetch_cycle_data,
             commands::list_projects,
             commands::list_members,
             commands::update_work_item_priority,

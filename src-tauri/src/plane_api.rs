@@ -14,7 +14,23 @@ pub const ACK_COMMENT_TEXT: &str = "🔔 할당을 확인했습니다 (Quick Doc
 pub const WORK_ITEMS_PER_PAGE: u32 = 500;
 
 #[derive(Debug, Clone)]
-pub struct Project { pub id: String, pub name: String, pub identifier: String }
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub identifier: String,
+    /// 프로젝트에서 사이클 기능을 켰는지. 꺼져 있으면 cycles/ 조차 부르지 않는다.
+    pub cycle_view: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cycle {
+    pub id: String,
+    pub name: String,
+    pub project_id: String,
+    /// "YYYY-MM-DD" 또는 UTC 타임스탬프. 초안 사이클은 둘 다 None이다.
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct WorkItem {
@@ -73,6 +89,35 @@ pub struct NewWorkItem<'a> {
 
 pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
     states.iter().find(|s| s.group == group).map(|s| s.id.clone())
+}
+
+/// 지난 사이클을 프로젝트마다 최대 몇 개까지 가져올지. 2주 스프린트 기준 약
+/// 3개월. 이보다 오래된 사이클에 남은 미완료 작업은 "사이클 없음"에 들어간다 —
+/// 사이드바는 미완료와 오늘 완료된 작업만 보여주므로 실제로 드문 경우다.
+const PAST_CYCLE_LIMIT: usize = 6;
+
+/// 소속을 받아올 사이클을 고른다. 진행 중·예정·날짜 미정은 전부 남기고,
+/// 이미 끝난 것은 종료일이 최신인 PAST_CYCLE_LIMIT개까지만 남긴다.
+/// `today`는 "YYYY-MM-DD".
+pub fn select_cycles_to_fetch(cycles: &[Cycle], today: &str) -> Vec<Cycle> {
+    let ended = |c: &Cycle| -> Option<String> {
+        // 타임스탬프면 날짜 부분만 본다. UTC와 로컬이 갈리는 자정 경계에서
+        // 하루 어긋날 수 있지만, 그 경우 어느 쪽으로 갈려도 최신 6개 안에 든다.
+        let end = c.end_date.as_deref()?;
+        let day = end.get(..10)?.to_string();
+        if day.as_str() < today { Some(day) } else { None }
+    };
+    let mut keep: Vec<Cycle> = Vec::new();
+    let mut past: Vec<(String, Cycle)> = Vec::new();
+    for c in cycles {
+        match ended(c) {
+            Some(day) => past.push((day, c.clone())),
+            None => keep.push(c.clone()),
+        }
+    }
+    past.sort_by(|a, b| b.0.cmp(&a.0));
+    keep.extend(past.into_iter().take(PAST_CYCLE_LIMIT).map(|(_, c)| c));
+    keep
 }
 
 /// 이 작업을 나에게 할당한 사람의 user id. assignees 필드를 바꾼 활동 중
@@ -201,7 +246,12 @@ struct RawProject {
     name: String,
     #[serde(default)] identifier: String,
     #[serde(default)] is_member: bool,
+    /// 응답에 없으면 켜진 것으로 본다 — 없다고 사이클을 못 보게 하면
+    /// 서버 버전 차이가 조용한 기능 상실이 된다.
+    #[serde(default = "default_true")] cycle_view: bool,
 }
+
+fn default_true() -> bool { true }
 
 #[derive(Deserialize)]
 struct RawState { #[serde(default)] group: String }
@@ -250,6 +300,18 @@ struct RawProjectState {
     group: String,
     #[serde(default)] default: bool,
 }
+
+#[derive(Deserialize)]
+struct RawCycle {
+    id: String,
+    #[serde(default)] name: String,
+    start_date: Option<String>,
+    end_date: Option<String>,
+}
+
+/// cycle-issues/ 행에서 필요한 건 작업 id뿐이다 (cycle id는 요청 경로로 이미 안다).
+#[derive(Deserialize)]
+struct RawCycleIssue { issue: String }
 
 #[derive(Deserialize)]
 struct RawMember { id: String, #[serde(default)] display_name: String }
@@ -411,7 +473,12 @@ impl PlaneClient {
             .results
             .into_iter()
             .filter(|p| p.is_member)
-            .map(|p| Project { id: p.id, name: p.name, identifier: p.identifier })
+            .map(|p| Project {
+                id: p.id,
+                name: p.name,
+                identifier: p.identifier,
+                cycle_view: p.cycle_view,
+            })
             .collect())
     }
 
@@ -450,6 +517,42 @@ impl PlaneClient {
             .into_iter()
             .map(|s| ProjectState { id: s.id, group: s.group, project_id: project_id.to_string(), default: s.default })
             .collect())
+    }
+
+    pub async fn list_cycles(&self, project_id: &str) -> Result<Vec<Cycle>, String> {
+        let url = format!("{}/projects/{}/cycles/?per_page=100", self.ws_base(), project_id);
+        let page: Paginated<RawCycle> =
+            self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(page
+            .results
+            .into_iter()
+            .map(|c| Cycle {
+                id: c.id,
+                name: c.name,
+                project_id: project_id.to_string(),
+                start_date: c.start_date,
+                end_date: c.end_date,
+            })
+            .collect())
+    }
+
+    /// 사이클에 속한 작업 id 목록. Plane의 work-items 응답에는 cycle 필드가
+    /// 없어(IssueSerializer에 정의되지 않아 expand=cycle도 통하지 않는다)
+    /// 소속은 이 엔드포인트로만 알 수 있다.
+    pub async fn list_cycle_issue_ids(
+        &self,
+        project_id: &str,
+        cycle_id: &str,
+    ) -> Result<Vec<String>, String> {
+        let url = format!(
+            "{}/projects/{}/cycles/{}/cycle-issues/?per_page=100",
+            self.ws_base(),
+            project_id,
+            cycle_id
+        );
+        let page: Paginated<RawCycleIssue> =
+            self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
+        Ok(page.results.into_iter().map(|c| c.issue).collect())
     }
 
     // Unlike every other list endpoint in this file, /members/ returns a bare
@@ -1279,5 +1382,93 @@ mod tests {
         assert!(is_not_found_error("HTTP 404 Not Found (http://x): oops"));
         assert!(!is_not_found_error("HTTP 400 Bad Request (http://x): oops"));
         assert!(!is_not_found_error("error sending request for url (http://x/): connection refused"));
+    }
+
+    fn cyc(id: &str, end: Option<&str>) -> Cycle {
+        Cycle {
+            id: id.into(),
+            name: format!("c{id}"),
+            project_id: "p1".into(),
+            start_date: Some("2026-01-01".into()),
+            end_date: end.map(|e| e.into()),
+        }
+    }
+
+    #[test]
+    fn select_cycles_keeps_every_running_upcoming_and_undated_cycle() {
+        let cycles = vec![
+            cyc("running", Some("2026-07-25")),
+            cyc("upcoming", Some("2026-09-01")),
+            cyc("undated", None),
+        ];
+        let picked = select_cycles_to_fetch(&cycles, "2026-07-22");
+        let mut ids: Vec<&str> = picked.iter().map(|c| c.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["running", "undated", "upcoming"]);
+    }
+
+    #[test]
+    fn select_cycles_keeps_only_the_six_most_recently_ended_past_cycles() {
+        let mut cycles = vec![cyc("live", Some("2026-08-01"))];
+        // 2026-07-01 부터 하루씩 앞당겨 지난 사이클 8개
+        for i in 1..=8 {
+            cycles.push(cyc(&format!("past{i}"), Some(&format!("2026-07-{:02}", 21 - i))));
+        }
+        let picked = select_cycles_to_fetch(&cycles, "2026-07-22");
+        let ids: Vec<&str> = picked.iter().map(|c| c.id.as_str()).collect();
+        assert!(ids.contains(&"live"));
+        // 종료일이 최신인 6개(past1..past6)만 남고 past7/past8은 빠진다.
+        for keep in ["past1", "past6"] {
+            assert!(ids.contains(&keep), "{keep} should be kept, got {ids:?}");
+        }
+        for drop in ["past7", "past8"] {
+            assert!(!ids.contains(&drop), "{drop} should be dropped, got {ids:?}");
+        }
+        assert_eq!(picked.len(), 7);
+    }
+
+    #[test]
+    fn select_cycles_treats_a_cycle_ending_today_as_still_running() {
+        let cycles = vec![cyc("today", Some("2026-07-22T14:59:59Z"))];
+        assert_eq!(select_cycles_to_fetch(&cycles, "2026-07-22").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn list_cycles_parses_names_and_dates() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "c1", "name": "Sprint 12", "start_date": "2026-07-13", "end_date": "2026-07-25" },
+                    { "id": "c2", "name": "초안", "start_date": null, "end_date": null }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let client = client_for(&server).await;
+        let cycles = client.list_cycles("p1").await.unwrap();
+        assert_eq!(cycles.len(), 2);
+        assert_eq!(cycles[0].name, "Sprint 12");
+        assert_eq!(cycles[0].project_id, "p1");
+        assert_eq!(cycles[0].end_date.as_deref(), Some("2026-07-25"));
+        assert_eq!(cycles[1].start_date, None);
+    }
+
+    #[tokio::test]
+    async fn list_cycle_issue_ids_returns_just_the_issue_ids() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "ci1", "issue": "i1", "cycle": "c1" },
+                    { "id": "ci2", "issue": "i2", "cycle": "c1" }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let client = client_for(&server).await;
+        assert_eq!(client.list_cycle_issue_ids("p1", "c1").await.unwrap(), vec!["i1", "i2"]);
     }
 }

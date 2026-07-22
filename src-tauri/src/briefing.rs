@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn open_assigned_items_excludes_completed_cancelled_and_others() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into() }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
         let mk = |id: &str, group: &str, assignees: &[&str]| WorkItem {
             id: id.into(), name: format!("n{id}"), priority: "none".into(),
             target_date: None, start_date: None, state_group: group.into(),
