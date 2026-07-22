@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -64,6 +64,8 @@ export const listMembers = (project_id: string) =>
   invoke<Member[]>("list_members", { projectId: project_id });
 export const fetchSidebarData = (completedAfter: string, completedBefore: string) =>
   invoke<SidebarData>("fetch_sidebar_data", { completedAfter, completedBefore });
+export const fetchCycleData = (today: string) =>
+  invoke<CycleData>("fetch_cycle_data", { today });
 export const listProjects = () => invoke<Project[]>("list_projects");
 export const updateWorkItemPriority = (project_id: string, item_id: string, priority: string) =>
   invoke<void>("update_work_item_priority", { projectId: project_id, itemId: item_id, priority });

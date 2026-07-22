@@ -2,7 +2,7 @@ import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } f
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchReleaseNotes, fetchSidebarData, getConflicts, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openConflictWindow, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchCycleData, fetchReleaseNotes, fetchSidebarData, getConflicts, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openConflictWindow, openEditModal, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
@@ -12,7 +12,7 @@ import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
-import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment } from "../shared/types";
+import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment, CycleData } from "../shared/types";
 import "../shared/app.css";
 
 // The window is wider than the panel so the collapse tab can sit outside the
@@ -136,6 +136,59 @@ function renderConflictBadge() {
 // needed). Both are toggled from the more-menu's 보기 설정 section — see openMoreMenu.
 const HIDE_DONE_KEY = "hideCompleted";
 let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
+
+// 사이클 데이터. 작업 목록(60초 쿨다운)보다 훨씬 덜 바뀌므로 갱신 주기를
+// 따로 가져간다. 캐시를 localStorage에 두어 앱을 다시 켰을 때와 네트워크가
+// 끊겼을 때 마지막 성공 결과를 그대로 쓴다.
+const CYCLE_CACHE_KEY = "cycleDataCache";
+const CYCLE_TTL_MS = 10 * 60_000;
+let cycleData: CycleData | null = null;
+let cycleFetchedAtMs = 0;
+let cycleInFlight: Promise<void> | null = null;
+let itemCycleMap = new Map<string, string>();
+
+function setCycleData(data: CycleData, fetchedAtMs: number): void {
+  cycleData = data;
+  cycleFetchedAtMs = fetchedAtMs;
+  itemCycleMap = new Map(Object.entries(data.item_cycle));
+}
+
+function loadCachedCycleData(): void {
+  try {
+    const raw = localStorage.getItem(CYCLE_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { data: CycleData; at: number };
+    if (parsed?.data?.cycles && parsed.data.item_cycle) setCycleData(parsed.data, parsed.at);
+  } catch {
+    // 손상된 캐시는 없는 셈 친다 — 다음 요청이 다시 채운다.
+  }
+}
+loadCachedCycleData();
+
+/** 사이클별 보기에 필요한 데이터를 확보한다. 신선한 캐시가 있으면 아무것도
+ *  하지 않고, 없으면 백그라운드로 받아온 뒤 화면을 다시 그린다. 실패하면
+ *  낡은 캐시를 그대로 쓴다 — 축을 되돌리지는 않는다. 사용자가 자기가 뭘
+ *  잘못 눌렀다고 오해하기 때문이다. */
+function ensureCycleData(): void {
+  if (cycleInFlight) return;
+  if (cycleData && Date.now() - cycleFetchedAtMs < CYCLE_TTL_MS) return;
+  const stale = cycleData === null;
+  if (stale) synced.textContent = "사이클 불러오는 중…";
+  cycleInFlight = fetchCycleData(resolveDatePreset("today"))
+    .then((data) => {
+      const at = Date.now();
+      setCycleData(data, at);
+      localStorage.setItem(CYCLE_CACHE_KEY, JSON.stringify({ data, at }));
+      renderFromLastData();
+    })
+    .catch((err) => {
+      console.error("fetchCycleData failed:", err);
+      if (stale) synced.textContent = "사이클을 불러오지 못했습니다";
+    })
+    .finally(() => {
+      cycleInFlight = null;
+    });
+}
 
 const sectionTitleEl = document.getElementById("sectionTitle")!;
 const sectionHeadEl = document.getElementById("sectionHead")!;
