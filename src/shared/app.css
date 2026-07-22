@@ -28,6 +28,10 @@
   --radius: 12px;
   --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
   font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  /* 사이드바 패널 폭. 테마와 무관하며 main.ts가 사용자 설정값으로 덮어쓴다.
+     .sidebar / .notes-panel / .collapse-tab 세 곳이 이 값을 함께 본다 —
+     따로 두면 폭을 바꿀 때 접기 탭만 제자리에 남는다. */
+  --panel-w: 352px;
 }
 /* Light mode overrides — applied via shared/theme.ts setting <html data-theme="light"> */
 :root[data-theme="light"] {
@@ -233,11 +237,11 @@ kbd {
 
 /* ============ SURFACE 2: SIDEBAR ============ */
 /* The sidebar window is wider than the panel (see tauri.conf.json): the panel
-   keeps the right 320px and the strip left of it is transparent, so the
+   keeps the right var(--panel-w) and the strip left of it is transparent, so the
    collapse tab can sit outside the panel's rectangle. Clicking that empty
    strip closes the sidebar, same as clicking anywhere else outside it. */
 .collapse-tab {
-  position: fixed; top: 0; right: 320px; width: 28px; height: 57px;
+  position: fixed; top: 0; right: var(--panel-w); width: 28px; height: 57px;
   display: grid; place-items: center; z-index: 25;
   background: var(--panel); color: var(--muted); cursor: pointer;
   border: 1px solid var(--border); border-right: none; border-radius: 10px 0 0 10px;
@@ -245,7 +249,7 @@ kbd {
 .collapse-tab:hover { color: var(--accent); background: var(--surface-grp-hover); }
 .collapse-tab svg { width: 13px; height: 13px; display: block; }
 .sidebar {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 320px;
+  position: fixed; top: 0; right: 0; bottom: 0; width: var(--panel-w);
   background: var(--panel); border-left: 1px solid var(--border);
   /* No drop shadow: it used to fall outside the window (which was exactly the
      panel's width) and was clipped away, but the transparent strip added for
@@ -265,9 +269,9 @@ kbd {
 .logo:hover { filter: brightness(1.15); }
 .logo svg { width: 15px; height: 15px; display: block; }
 .sb-head .t { font-weight: 600; font-size: 14px; }
-/* min-width:0 + ellipsis: the username is the only flexible item in the fixed
-   320px header — without this a long name pushes the header buttons past the
-   window edge instead of truncating. */
+/* min-width:0 + ellipsis: the username is the only flexible item in the
+   fixed-width header — without this a long name pushes the header buttons
+   past the window edge instead of truncating. */
 .sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbtn {
   width: 28px; height: 28px; border-radius: 7px; flex: none;
@@ -704,7 +708,7 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .notes-panel {
   /* Covers the panel only — `inset: 0` would spill onto the transparent strip
      that holds the collapse tab and paint a solid block outside the sidebar. */
-  position: fixed; top: 0; right: 0; bottom: 0; width: 320px;
+  position: fixed; top: 0; right: 0; bottom: 0; width: var(--panel-w);
   z-index: 30; /* above sidebar content (20), below popovers (40) */
   display: flex; flex-direction: column;
   background: var(--panel); color: var(--text);

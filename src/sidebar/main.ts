@@ -6,7 +6,7 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, visibleTabItems } from "./logic";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, visibleTabItems } from "./logic";
 import type { SidebarTab } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
@@ -15,13 +15,39 @@ import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePre
 import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment } from "../shared/types";
 import "../shared/app.css";
 
-const PANEL_WIDTH = 320;
 // The window is wider than the panel so the collapse tab can sit outside the
 // panel's rectangle; the strip left of the panel is transparent. Keep in sync
-// with `.collapse-tab` (right/width) in app.css and the window width in
+// with `.collapse-tab` (width) in app.css and the window width in
 // tauri.conf.json.
 const COLLAPSE_TAB_WIDTH = 28;
-const WINDOW_WIDTH = PANEL_WIDTH + COLLAPSE_TAB_WIDTH;
+
+// 패널 폭은 사용자가 왼쪽 가장자리를 끌어 바꾼다. 사이드바 webview만 쓰는
+// 화면 취향이라 백엔드 설정이 아니라 localStorage에 둔다 — hideCompleted,
+// delegatedShowAll 과 같은 자리다.
+const SIDEBAR_WIDTH_KEY = "sidebarWidth";
+let panelWidth = readStoredPanelWidth();
+
+function readStoredPanelWidth(): number {
+  const raw = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  return Number.isFinite(raw) && raw > 0 ? raw : SIDEBAR_WIDTH_DEFAULT;
+}
+
+/** 폭 상태와 CSS 변수를 함께 갱신한다. 둘 중 하나만 바꾸면 창 크기와 패널
+ *  그림이 어긋난다. */
+function applyPanelWidth(w: number): void {
+  panelWidth = w;
+  document.documentElement.style.setProperty("--panel-w", `${w}px`);
+}
+
+function persistPanelWidth(): void {
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(panelWidth));
+}
+
+function windowWidth(): number {
+  return panelWidth + COLLAPSE_TAB_WIDTH;
+}
+
+applyPanelWidth(panelWidth);
 // Every window focus (including re-showing the sidebar on toggle) re-fetches the full sidebar
 // data set, which itself is an N+1 request per project — a cooldown keeps re-focusing from
 // bursting past the Plane server's rate limit (60 req/min per API key). Local edits don't
@@ -838,22 +864,35 @@ async function getTargetMonitor() {
   return pickMonitor(sortMonitorsByPosition(monitors), s.display_index) ?? null;
 }
 
+/** 현재 패널 폭으로 창의 크기와 위치를 다시 잡는다. 창이 화면 오른쪽에
+ *  붙어 있으므로 폭과 x좌표를 함께 바꿔야 오른쪽 가장자리가 제자리에 남는다. */
+async function applyWindowGeometry(monitor: Awaited<ReturnType<typeof getTargetMonitor>>): Promise<void> {
+  if (!monitor) return;
+  const geo = computeSidebarGeometry(
+    monitor.size.width,
+    monitor.size.height,
+    monitor.scaleFactor,
+    windowWidth(),
+    monitor.position.x,
+    monitor.position.y,
+  );
+  await win.setSize(new PhysicalSize(geo.width, geo.height));
+  await win.setPosition(new PhysicalPosition(geo.visibleX, geo.y));
+}
+
 async function showSidebar(takeFocus = true): Promise<void> {
   const monitor = await getTargetMonitor();
   if (!monitor) {
     await showWindow(takeFocus);
     return;
   }
-  const geo = computeSidebarGeometry(
-    monitor.size.width,
-    monitor.size.height,
-    monitor.scaleFactor,
-    WINDOW_WIDTH,
-    monitor.position.x,
-    monitor.position.y,
-  );
-  await win.setSize(new PhysicalSize(geo.width, geo.height));
-  await win.setPosition(new PhysicalPosition(geo.visibleX, geo.y));
+  // 저장된 폭은 다른 모니터에서 정한 값일 수 있다 — 지금 모니터 기준으로 자른다.
+  const clamped = clampSidebarWidth(panelWidth, monitor.size.width / monitor.scaleFactor);
+  if (clamped !== panelWidth) {
+    applyPanelWidth(clamped);
+    persistPanelWidth();
+  }
+  await applyWindowGeometry(monitor);
   await win.setAlwaysOnTop(true);
   await showWindow(takeFocus);
 }
