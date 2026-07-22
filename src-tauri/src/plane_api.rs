@@ -102,11 +102,22 @@ pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> 
 /// 지난 사이클을 프로젝트마다 최대 몇 개까지 가져올지. 2주 스프린트 기준 약
 /// 3개월. 이보다 오래된 사이클에 남은 미완료 작업은 "사이클 없음"에 들어간다 —
 /// 사이드바는 미완료와 오늘 완료된 작업만 보여주므로 실제로 드문 경우다.
+/// (다른 상한은 UPCOMING_CYCLE_LIMIT, UNDATED_CYCLE_LIMIT 참고.)
 const PAST_CYCLE_LIMIT: usize = 6;
 
-/// 소속을 받아올 사이클을 고른다. 진행 중·예정·날짜 미정은 전부 남기고,
-/// 이미 끝난 것은 종료일이 최신인 PAST_CYCLE_LIMIT개까지만 남긴다.
-/// `today`는 "YYYY-MM-DD".
+/// 예정 사이클을 프로젝트마다 최대 몇 개까지 가져올지. 2주 스프린트 기준 약
+/// 6주 앞까지 — 빠른 조회용 독이 미리 보여줘야 할 범위로는 그 정도면 충분하다.
+const UPCOMING_CYCLE_LIMIT: usize = 3;
+
+/// 날짜 미정(초안) 사이클을 프로젝트마다 최대 몇 개까지 가져올지. 초안에는
+/// 실제 진행 중인 작업이 걸려 있는 경우가 드물어, 요청 수를 줄여야 할 때
+/// 가장 먼저 쳐내도 되는 부류다.
+const UNDATED_CYCLE_LIMIT: usize = 3;
+
+/// 소속을 받아올 사이클을 고른다. 진행 중(오늘이 시작일~종료일 사이)인 것은
+/// 개수 제한 없이 전부 남기고, 예정·날짜 미정·이미 끝난 것은 각각 상한까지만
+/// 남긴다. 사이클 하나당 요청이 하나씩 늘어나므로 이 함수가 요청 수의 유일한
+/// 방어선이다. `today`는 "YYYY-MM-DD".
 pub fn select_cycles_to_fetch(cycles: &[Cycle], today: &str) -> Vec<Cycle> {
     let ended = |c: &Cycle| -> Option<String> {
         // 타임스탬프면 날짜 부분만 본다. UTC와 로컬이 갈리는 자정 경계에서
@@ -118,15 +129,37 @@ pub fn select_cycles_to_fetch(cycles: &[Cycle], today: &str) -> Vec<Cycle> {
         let day = end.get(..10)?.to_string();
         if day.as_str() < today { Some(day) } else { None }
     };
-    let mut keep: Vec<Cycle> = Vec::new();
+    let mut running: Vec<Cycle> = Vec::new();
+    let mut upcoming: Vec<(String, Cycle)> = Vec::new();
+    let mut undated: Vec<Cycle> = Vec::new();
     let mut past: Vec<(String, Cycle)> = Vec::new();
     for c in cycles {
-        match ended(c) {
-            Some(day) => past.push((day, c.clone())),
-            None => keep.push(c.clone()),
+        if let Some(day) = ended(c) {
+            past.push((day, c.clone()));
+            continue;
+        }
+        if c.start_date.is_none() || c.end_date.is_none() {
+            // 초안 사이클(둘 다 None)뿐 아니라 한쪽만 없는 경우도 날짜로 우선
+            // 순위를 매길 수 없으니 같은 부류로 묶는다.
+            undated.push(c.clone());
+            continue;
+        }
+        match c.start_date.as_deref().and_then(|s| s.get(..10)) {
+            Some(start) if start > today => upcoming.push((start.to_string(), c.clone())),
+            // 시작일이 오늘 이전/당일이면 진행 중. 시작일이 손상된 값이라
+            // 파싱에 실패해도(위에서 이미 end_date는 있다고 확인했다) 안전하게
+            // 진행 중으로 취급해 무제한으로 남긴다.
+            _ => running.push(c.clone()),
         }
     }
-    past.sort_by(|a, b| b.0.cmp(&a.0));
+    upcoming.sort_by(|a, b| a.0.cmp(&b.0)); // 빠른 시작일 먼저
+    past.sort_by(|a, b| b.0.cmp(&a.0)); // 최근에 끝난 것 먼저
+
+    // 반환 순서는 진행 중 → 예정 → 날짜 미정 → 지난 순. 프런트엔드가 어차피
+    // 다시 정렬하므로 이 순서 자체에 의미를 두어 코드를 억지로 맞추지 않는다.
+    let mut keep = running;
+    keep.extend(upcoming.into_iter().take(UPCOMING_CYCLE_LIMIT).map(|(_, c)| c));
+    keep.extend(undated.into_iter().take(UNDATED_CYCLE_LIMIT));
     keep.extend(past.into_iter().take(PAST_CYCLE_LIMIT).map(|(_, c)| c));
     keep
 }
@@ -1424,6 +1457,18 @@ mod tests {
         }
     }
 
+    /// `cyc`와 달리 start_date를 직접 지정한다 — 예정/날짜 미정 사이클을
+    /// 만들 때 쓴다.
+    fn cyc_dated(id: &str, start: Option<&str>, end: Option<&str>) -> Cycle {
+        Cycle {
+            id: id.into(),
+            name: format!("c{id}"),
+            project_id: "p1".into(),
+            start_date: start.map(|s| s.into()),
+            end_date: end.map(|e| e.into()),
+        }
+    }
+
     #[test]
     fn select_cycles_keeps_every_running_upcoming_and_undated_cycle() {
         let cycles = vec![
@@ -1461,6 +1506,44 @@ mod tests {
     fn select_cycles_treats_a_cycle_ending_today_as_still_running() {
         let cycles = vec![cyc("today", Some("2026-07-22T14:59:59Z"))];
         assert_eq!(select_cycles_to_fetch(&cycles, "2026-07-22").len(), 1);
+    }
+
+    #[test]
+    fn select_cycles_never_drops_a_running_cycle_no_matter_how_many_drafts_crowd_it() {
+        let mut cycles = vec![cyc("running", Some("2026-07-25"))];
+        for i in 1..=10 {
+            cycles.push(cyc_dated(&format!("draft{i}"), None, None));
+        }
+        let picked = select_cycles_to_fetch(&cycles, "2026-07-22");
+        let ids: Vec<&str> = picked.iter().map(|c| c.id.as_str()).collect();
+        assert!(ids.contains(&"running"), "running cycle must survive, got {ids:?}");
+        let undated_count = ids.iter().filter(|id| id.starts_with("draft")).count();
+        assert_eq!(undated_count, UNDATED_CYCLE_LIMIT, "undated should be capped, got {ids:?}");
+    }
+
+    #[test]
+    fn select_cycles_keeps_only_the_three_soonest_starting_upcoming_cycles() {
+        let cycles = vec![
+            cyc_dated("soon1", Some("2026-08-01"), Some("2026-08-14")),
+            cyc_dated("soon2", Some("2026-08-05"), Some("2026-08-18")),
+            cyc_dated("soon3", Some("2026-08-10"), Some("2026-08-24")),
+            cyc_dated("later1", Some("2026-08-15"), Some("2026-08-29")),
+            cyc_dated("later2", Some("2026-09-01"), Some("2026-09-14")),
+        ];
+        let picked = select_cycles_to_fetch(&cycles, "2026-07-22");
+        let mut ids: Vec<&str> = picked.iter().map(|c| c.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["soon1", "soon2", "soon3"]);
+    }
+
+    #[test]
+    fn select_cycles_keeps_only_three_undated_cycles() {
+        let mut cycles = Vec::new();
+        for i in 1..=5 {
+            cycles.push(cyc_dated(&format!("draft{i}"), None, None));
+        }
+        let picked = select_cycles_to_fetch(&cycles, "2026-07-22");
+        assert_eq!(picked.len(), UNDATED_CYCLE_LIMIT);
     }
 
     #[tokio::test]
