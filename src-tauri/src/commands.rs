@@ -426,35 +426,77 @@ pub async fn fetch_sidebar_data(
 /// `today`는 "YYYY-MM-DD" — 사용자 로컬 날짜는 프론트엔드가 안다
 /// (`fetch_sidebar_data`가 날짜창을 받는 것과 같은 이유).
 ///
-/// 프로젝트를 순차로 도는 것은 의도적이다 — `fetch_sidebar_data_online`은
-/// `buffer_unordered`로 병렬화하지만, 여기서는 사이클마다 요청이 한 건씩 더
-/// 붙어 총 요청 수가 훨씬 많다. Plane의 API 키당 60 req/min을 넘기지 않도록
-/// 느리더라도 순차로 둔다 (호출 자체가 10분에 한 번뿐이다).
+/// 실제 동작은 `fetch_cycle_data_online`에 있다 — 단위 테스트에서
+/// `tauri::AppHandle` 없이 `&PlaneClient`만으로 호출할 수 있도록 커맨드
+/// 본체를 분리했다.
 #[tauri::command]
 pub async fn fetch_cycle_data(
     app: tauri::AppHandle,
     today: String,
 ) -> Result<CycleDataDto, String> {
     let (client, _s) = client(&app)?;
+    fetch_cycle_data_online(&client, &today).await
+}
+
+/// 프로젝트를 순차로 도는 것은 의도적이다 — `fetch_sidebar_data_online`은
+/// `buffer_unordered`로 병렬화하지만, 여기서는 사이클마다 요청이 한 건씩 더
+/// 붙어 총 요청 수가 훨씬 많다. Plane의 API 키당 60 req/min을 넘기지 않도록
+/// 느리더라도 순차로 둔다 (호출 자체가 10분에 한 번뿐이다).
+///
+/// 프로젝트 하나에서 요청이 실패해도(`list_cycles` 자체든, 그 안의 어느
+/// 사이클의 `list_cycle_issue_ids`든) 전체 커맨드를 중단하지 않고 그
+/// 프로젝트만 건너뛴다 — `fetch_sidebar_data_online`("한쪽이 실패해도 다른
+/// 쪽은 그대로 쓴다")과 같은 관례다. 단, 프로젝트 하나가 기여하는 사이클
+/// 데이터는 **전부 아니면 전무**여야 한다: `list_cycles`는 성공했는데 그중
+/// 한 사이클의 `list_cycle_issue_ids`만 실패했다고 그 사이클만 건너뛰고
+/// `CycleDto`는 그대로 남기면, 실제로는 그 사이클에 속한 작업들이
+/// `item_cycle`에 안 들어가 프론트엔드(`splitByCycle`)가 "사이클 없음"으로
+/// 잘못 분류한다 — 조용히 틀린 분류는 아예 안 보이는 것보다 나쁘다. 그래서
+/// 프로젝트별로 `fetch_project_cycle_data`가 사이클·소속을 로컬 임시 변수에
+/// 모았다가, 그 프로젝트의 모든 요청이 성공했을 때만 통째로 반영한다.
+/// 실패한 프로젝트는 사이클을 하나도 못 받은 것처럼 취급되어(`cycle_view`가
+/// 꺼진 프로젝트와 시각적으로 동일하게 평범한 목록으로) 표시된다 — 이건
+/// 정직한 열화다. `list_projects` 실패만은 그대로 전체 커맨드를 실패시킨다
+/// (프로젝트 목록 자체가 없으면 애초에 할 일이 없다).
+async fn fetch_cycle_data_online(client: &PlaneClient, today: &str) -> Result<CycleDataDto, String> {
     let projects = client.list_projects().await?;
     let mut cycles: Vec<CycleDto> = Vec::new();
     let mut item_cycle = std::collections::HashMap::new();
     for p in projects.iter().filter(|p| p.cycle_view) {
-        let all = client.list_cycles(&p.id).await?;
-        for c in plane_api::select_cycles_to_fetch(&all, &today) {
-            for issue_id in client.list_cycle_issue_ids(&p.id, &c.id).await? {
-                item_cycle.insert(issue_id, c.id.clone());
-            }
-            cycles.push(CycleDto {
-                id: c.id,
-                name: c.name,
-                project_id: c.project_id,
-                start_date: c.start_date,
-                end_date: c.end_date,
-            });
+        if let Ok((mut project_cycles, project_item_cycle)) =
+            fetch_project_cycle_data(client, &p.id, today).await
+        {
+            cycles.append(&mut project_cycles);
+            item_cycle.extend(project_item_cycle);
         }
     }
     Ok(CycleDataDto { cycles, item_cycle })
+}
+
+/// 프로젝트 하나의 사이클·소속을 가져온다. 도중에 어떤 요청이든 실패하면
+/// 그 시점까지 모은 것도 전부 버리고 `Err`를 돌려준다 — 호출부
+/// (`fetch_cycle_data_online`)가 이 프로젝트를 통째로 건너뛸 수 있도록.
+async fn fetch_project_cycle_data(
+    client: &PlaneClient,
+    project_id: &str,
+    today: &str,
+) -> Result<(Vec<CycleDto>, std::collections::HashMap<String, String>), String> {
+    let all = client.list_cycles(project_id).await?;
+    let mut cycles = Vec::new();
+    let mut item_cycle = std::collections::HashMap::new();
+    for c in plane_api::select_cycles_to_fetch(&all, today) {
+        for issue_id in client.list_cycle_issue_ids(project_id, &c.id).await? {
+            item_cycle.insert(issue_id, c.id.clone());
+        }
+        cycles.push(CycleDto {
+            id: c.id,
+            name: c.name,
+            project_id: c.project_id,
+            start_date: c.start_date,
+            end_date: c.end_date,
+        });
+    }
+    Ok((cycles, item_cycle))
 }
 
 async fn fetch_sidebar_data_online(
@@ -1342,5 +1384,74 @@ mod tests {
         assert!(!verify_delegated_tab_password("16006938".to_string()));
         assert!(!verify_delegated_tab_password(" 16006937".to_string()));
         assert!(!verify_delegated_tab_password("16006937 ".to_string()));
+    }
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn client_for(server: &MockServer) -> PlaneClient {
+        PlaneClient::new(server.uri(), "acme".into(), "secret-key".into())
+    }
+
+    // Finding 1: 프로젝트 하나의 사이클-소속 조회가 (list_cycles 자체가 아니라)
+    // 그 안의 한 사이클의 list_cycle_issue_ids에서만 실패해도, 그 프로젝트가
+    // 기여하는 사이클/소속은 하나도 없어야 한다 — 절반만 반영되면 실제로는
+    // 그 사이클에 속한 작업이 item_cycle에 빠져 "사이클 없음"으로 잘못
+    // 보이기 때문이다(Finding 1 본문 참고). 반면 건강한 프로젝트(p1)는
+    // 그대로 온전히 반영되어야 한다.
+    #[tokio::test]
+    async fn fetch_cycle_data_online_keeps_healthy_project_and_drops_failing_project_entirely() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "p1", "name": "Healthy", "identifier": "OK", "is_member": true, "cycle_view": true },
+                    { "id": "p2", "name": "Flaky", "identifier": "BAD", "is_member": true, "cycle_view": true }
+                ]
+            })))
+            .mount(&server)
+            .await;
+        // p1: 사이클 조회, 소속 조회 모두 성공 — 그대로 반영돼야 한다.
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "c1", "name": "Sprint 1", "start_date": null, "end_date": null }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "ci1", "issue": "i1", "cycle": "c1" }]
+            })))
+            .mount(&server)
+            .await;
+        // p2: 사이클 조회는 성공하지만, 그 사이클의 소속 조회가 실패한다 —
+        // 이 프로젝트는 cycles/item_cycle 어느 쪽에도 등장하면 안 된다.
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p2/cycles/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "c2", "name": "Sprint 2", "start_date": null, "end_date": null }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p2/cycles/c2/cycle-issues/"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let data = fetch_cycle_data_online(&client, "2026-07-22").await.unwrap();
+
+        let cycle_ids: Vec<&str> = data.cycles.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(cycle_ids, vec!["c1"], "failing project's cycle must not appear at all");
+        assert_eq!(data.item_cycle.get("i1"), Some(&"c1".to_string()));
+        assert!(
+            !data.item_cycle.values().any(|v| v == "c2"),
+            "failing project must contribute no item_cycle entries"
+        );
+        assert_eq!(data.item_cycle.len(), 1);
     }
 }

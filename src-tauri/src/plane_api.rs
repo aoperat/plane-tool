@@ -13,6 +13,14 @@ pub const ACK_COMMENT_TEXT: &str = "🔔 할당을 확인했습니다 (Quick Doc
 /// 있다 — 참고: `C:\WorkSpaces\plane`(자체 호스팅 서버 소스) 및 CLAUDE.md.
 pub const WORK_ITEMS_PER_PAGE: u32 = 500;
 
+/// `list_cycles`/`list_cycle_issue_ids`가 한 번에 가져오는 개수. 두 엔드포인트도
+/// cursor 페이지네이션을 따라가지 않으므로, 한 프로젝트의 사이클 수 또는 한
+/// 사이클의 작업 수가 이 값을 넘으면 나머지가 조용히 누락된다(`list_cycles`는
+/// 오래된 사이클, `list_cycle_issue_ids`는 그 사이클의 일부 작업 소속이 빠진다).
+/// `WORK_ITEMS_PER_PAGE`와 같은 값으로 맞춘다 — 서버의 실제 최대치는 여기서도
+/// 1000(공개 문서엔 100)이라 필요하면 더 올릴 수 있다.
+const CYCLE_LIST_PER_PAGE: u32 = 500;
+
 #[derive(Debug, Clone)]
 pub struct Project {
     pub id: String,
@@ -103,6 +111,9 @@ pub fn select_cycles_to_fetch(cycles: &[Cycle], today: &str) -> Vec<Cycle> {
     let ended = |c: &Cycle| -> Option<String> {
         // 타임스탬프면 날짜 부분만 본다. UTC와 로컬이 갈리는 자정 경계에서
         // 하루 어긋날 수 있지만, 그 경우 어느 쪽으로 갈려도 최신 6개 안에 든다.
+        // end_date가 있는데 10바이트보다 짧거나 문자 경계가 아니면 `get(..10)`이
+        // None을 돌려줘 이 사이클은 "아직 안 끝남"으로 취급되어 keep에 남는다 —
+        // 패닉 없이 안전하게 과거 사이클 개수 상한 계산에서만 빠지는 선택이다.
         let end = c.end_date.as_deref()?;
         let day = end.get(..10)?.to_string();
         if day.as_str() < today { Some(day) } else { None }
@@ -520,7 +531,7 @@ impl PlaneClient {
     }
 
     pub async fn list_cycles(&self, project_id: &str) -> Result<Vec<Cycle>, String> {
-        let url = format!("{}/projects/{}/cycles/?per_page=100", self.ws_base(), project_id);
+        let url = format!("{}/projects/{}/cycles/?per_page={}", self.ws_base(), project_id, CYCLE_LIST_PER_PAGE);
         let page: Paginated<RawCycle> =
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
         Ok(page
@@ -545,10 +556,11 @@ impl PlaneClient {
         cycle_id: &str,
     ) -> Result<Vec<String>, String> {
         let url = format!(
-            "{}/projects/{}/cycles/{}/cycle-issues/?per_page=100",
+            "{}/projects/{}/cycles/{}/cycle-issues/?per_page={}",
             self.ws_base(),
             project_id,
-            cycle_id
+            cycle_id,
+            CYCLE_LIST_PER_PAGE
         );
         let page: Paginated<RawCycleIssue> =
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
@@ -906,6 +918,24 @@ mod tests {
         assert_eq!(projects.len(), 2);
         assert_eq!(projects[0].id, "p1");
         assert_eq!(projects[1].name, "Mobile");
+    }
+
+    #[tokio::test]
+    async fn list_projects_defaults_cycle_view_to_true_when_field_is_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "id": "p1", "name": "Web App", "identifier": "WEB", "is_member": true }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let projects = client_for(&server).await.list_projects().await.unwrap();
+        assert_eq!(projects.len(), 1);
+        assert!(projects[0].cycle_view);
     }
 
     #[tokio::test]
