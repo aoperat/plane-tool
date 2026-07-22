@@ -515,11 +515,39 @@ describe("splitByCycle", () => {
   });
 
   it("reads UTC timestamps as their local calendar date", () => {
-    // Plane은 프로젝트 타임존 기준 날짜를 UTC로 저장해 내려준다.
-    const cycles = [cy("now", "Sprint 12", "2026-07-12T15:00:00Z", "2026-07-25T14:59:59Z"), cy("d", "초안", null, null)];
-    const map = new Map([["a", "now"], ["b", "d"]]);
+    // Plane은 프로젝트 타임존 기준 날짜를 UTC로 저장해 내려준다. 문자열을 앞
+    // 10자로 잘라 날짜만 취하면 이 오프셋만큼 로컬 날짜가 하루 밀릴 수 있다.
+    // rawEnd는 UTC 20:00이라 UTC+9에서는 로컬 날짜가 하루 넘어간다 —
+    // 이 assertion은 로컬 오프셋이 0인(UTC) 머신에서는 자르기와 실제 변환이
+    // 우연히 같은 값이 되어 실패하지 않는다. 그런 머신에서의 통과는 구현이
+    // 맞다는 증거가 아니라 이 조건에서 우연히 구분이 안 됐을 뿐이다.
+    const rawEnd = "2026-07-20T20:00:00Z";
+    const localEnd = new Date(rawEnd);
+    const expectedDue = `${localEnd.getMonth() + 1}/${localEnd.getDate()} 종료`;
+
+    const cycles = [cy("past", "Sprint 4", "2026-06-01", rawEnd)];
+    const map = new Map([["a", "past"]]); // b는 사이클이 없어 두 번째 묶음(사이클 없음)이 된다
     const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
-    expect(groups[0].name).toBe("Sprint 12");
-    expect(groups[0].dueKind).not.toBe("past");
+    expect(groups[0].dueKind).toBe("past");
+    expect(groups[0].due).toBe(expectedDue);
+  });
+
+  it("keeps an item whose itemCycle entry points at a cycle id absent from cycles, under 사이클 없음", () => {
+    // itemCycle의 참조 무결성은 보장되지 않는다 — 캐시가 오래됐거나 사이클이
+    // 보관/삭제됐을 수 있다. 그런 매핑을 조용히 버리면 작업 자체가 화면에서
+    // 사라지므로, "사이클 없음"으로라도 보여주는 게 맞다.
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
+    const map = new Map([["a", "now"], ["b", "stale-cycle-id"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const none = groups.find((g) => g.key === "cycle:none");
+    expect(none?.items.map((i) => i.id)).toEqual(["b"]);
+  });
+
+  it("treats a cycle with only one of start/end date set as 날짜 미정", () => {
+    const cycles = [cy("half1", "시작만", "2026-07-01", null), cy("half2", "종료만", null, "2026-07-30")];
+    const map = new Map([["a", "half1"], ["b", "half2"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups.map((g) => g.due)).toEqual([null, null]);
+    expect(groups.map((g) => g.dueKind)).toEqual([null, null]);
   });
 });

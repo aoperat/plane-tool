@@ -302,11 +302,15 @@ export function splitByCycle(
   now: Date = new Date(),
 ): SubGroup[] {
   const today = startOfDay(now);
+  const knownCycleIds = new Set(cycles.map((c) => c.id));
   const byCycle = new Map<string, WorkItem[]>();
   const orphans: WorkItem[] = [];
   for (const it of items) {
     const cid = itemCycle.get(it.id);
-    if (!cid) {
+    // itemCycle의 참조 무결성은 보장되지 않는다 — 캐시가 오래됐거나 사이클이
+    // 보관/삭제됐을 수 있다. cycles에 없는 id를 그냥 무시하면 작업이 화면에서
+    // 통째로 사라지므로, 그럴 땐 "사이클 없음"으로 보여주는 편이 안전하다.
+    if (!cid || !knownCycleIds.has(cid)) {
       orphans.push(it);
       continue;
     }
