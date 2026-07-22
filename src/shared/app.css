@@ -258,6 +258,15 @@ kbd {
   display: flex; flex-direction: column;
   color: var(--text);
 }
+/* 패널 왼쪽 모서리를 끌어 폭을 조절하는 손잡이. .sidebar 가 position:fixed 라
+   absolute 자식은 패널 기준으로 잡힌다. 접기 탭은 패널 바깥(right: var(--panel-w))
+   이라 겹치지 않는다 — z-index 는 패널 안 형제들 위에만 있으면 된다. */
+.resize-handle {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+  z-index: 5; cursor: col-resize;
+}
+.resize-handle:hover,
+.resize-handle.dragging { background: var(--accent-soft); }
 .sb-head {
   display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px;
   border-bottom: 1px solid var(--border);

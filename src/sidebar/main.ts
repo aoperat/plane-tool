@@ -880,6 +880,73 @@ async function applyWindowGeometry(monitor: Awaited<ReturnType<typeof getTargetM
   await win.setPosition(new PhysicalPosition(geo.visibleX, geo.y));
 }
 
+// ---- 폭 조절 드래그 ----
+const resizeHandleEl = document.getElementById("resizeHandle")!;
+let dragStartScreenX = 0;
+let dragStartWidth = 0;
+let dragMonitor: Awaited<ReturnType<typeof getTargetMonitor>> = null;
+let dragPendingWidth: number | null = null;
+let dragFrame = 0;
+
+resizeHandleEl.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  dragStartScreenX = e.screenX;
+  dragStartWidth = panelWidth;
+  dragPendingWidth = null;
+  // 캡처는 동기적으로 먼저 잡는다 — await 뒤로 미루면 그 사이의 pointermove를 놓친다.
+  resizeHandleEl.setPointerCapture(e.pointerId);
+  resizeHandleEl.classList.add("dragging");
+  void getTargetMonitor().then((m) => {
+    dragMonitor = m;
+  });
+});
+
+resizeHandleEl.addEventListener("pointermove", (e) => {
+  if (!resizeHandleEl.hasPointerCapture(e.pointerId) || !dragMonitor) return;
+  // 드래그하는 동안 창 자체가 왼쪽으로 자라므로 창 기준 좌표(clientX)는 매
+  // 프레임 원점이 바뀌어 값이 튄다 — 데스크톱 절대 좌표인 screenX를 쓴다.
+  // 왼쪽으로 끌수록 screenX가 작아지므로 (시작 - 현재)가 늘어난 폭이다.
+  const logicalWidth = dragMonitor.size.width / dragMonitor.scaleFactor;
+  dragPendingWidth = clampSidebarWidth(
+    dragStartWidth + (dragStartScreenX - e.screenX),
+    logicalWidth,
+  );
+  // setSize/setPosition은 IPC라 pointermove마다 부르면 밀린다 — 프레임당 한 번만.
+  if (dragFrame) return;
+  dragFrame = requestAnimationFrame(() => {
+    dragFrame = 0;
+    if (dragPendingWidth == null) return;
+    applyPanelWidth(dragPendingWidth);
+    void applyWindowGeometry(dragMonitor);
+  });
+});
+
+function endResizeDrag(e: PointerEvent): void {
+  if (!resizeHandleEl.hasPointerCapture(e.pointerId)) return;
+  resizeHandleEl.releasePointerCapture(e.pointerId);
+  resizeHandleEl.classList.remove("dragging");
+  if (dragFrame) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
+  // 마지막 프레임이 아직 안 돌았을 수 있다 — 놓은 위치를 확실히 반영한다.
+  if (dragPendingWidth != null) {
+    applyPanelWidth(dragPendingWidth);
+    void applyWindowGeometry(dragMonitor);
+  }
+  dragPendingWidth = null;
+  // 저장은 여기서 한 번만 — 드래그 중에 쓰면 매 프레임 localStorage에 쓰게 된다.
+  persistPanelWidth();
+}
+resizeHandleEl.addEventListener("pointerup", endResizeDrag);
+resizeHandleEl.addEventListener("pointercancel", endResizeDrag);
+
+resizeHandleEl.addEventListener("dblclick", () => {
+  applyPanelWidth(SIDEBAR_WIDTH_DEFAULT);
+  persistPanelWidth();
+  void getTargetMonitor().then((m) => applyWindowGeometry(m));
+});
+
 async function showSidebar(takeFocus = true): Promise<void> {
   const monitor = await getTargetMonitor();
   if (!monitor) {
