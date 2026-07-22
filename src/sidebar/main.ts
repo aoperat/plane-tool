@@ -16,6 +16,12 @@ import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, Pending
 import "../shared/app.css";
 
 const PANEL_WIDTH = 320;
+// The window is wider than the panel so the collapse tab can sit outside the
+// panel's rectangle; the strip left of the panel is transparent. Keep in sync
+// with `.collapse-tab` (right/width) in app.css and the window width in
+// tauri.conf.json.
+const COLLAPSE_TAB_WIDTH = 28;
+const WINDOW_WIDTH = PANEL_WIDTH + COLLAPSE_TAB_WIDTH;
 // Every window focus (including re-showing the sidebar on toggle) re-fetches the full sidebar
 // data set, which itself is an N+1 request per project — a cooldown keeps re-focusing from
 // bursting past the Plane server's rate limit (60 req/min per API key). Local edits don't
@@ -779,7 +785,7 @@ async function showSidebar(takeFocus = true): Promise<void> {
     monitor.size.width,
     monitor.size.height,
     monitor.scaleFactor,
-    PANEL_WIDTH,
+    WINDOW_WIDTH,
     monitor.position.x,
     monitor.position.y,
   );
@@ -1185,7 +1191,21 @@ conflictBadgeEl.onclick = () => {
   openConflictWindow().catch((err) => console.error("openConflictWindow failed:", err));
 };
 
-document.addEventListener("click", () => closePopover());
+document.getElementById("collapseTab")!.onclick = (e) => {
+  e.stopPropagation();
+  hideSidebar();
+};
+
+document.addEventListener("click", (e) => {
+  const hadPopover = openPopover !== null;
+  closePopover();
+  // The transparent strip beside the panel still belongs to this window, so a
+  // click there never reaches the app underneath and never fires tauri://blur.
+  // Treat it as "clicked outside the sidebar" and close, which is what the user
+  // means by clicking next to the panel — but let a first click merely dismiss
+  // an open popover, matching how clicking inside the panel behaves.
+  if (!hadPopover && e.target === document.body) hideSidebar();
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (openPopover) {

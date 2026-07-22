@@ -22,8 +22,8 @@
       {
         "label": "sidebar",
         "url": "src/sidebar/index.html",
-        "width": 320, "height": 720,
-        "decorations": false, "alwaysOnTop": true, "shadow": false,
+        "width": 348, "height": 720,
+        "decorations": false, "alwaysOnTop": true, "shadow": false, "transparent": true,
         "skipTaskbar": true, "visible": false, "resizable": false
       },
       {

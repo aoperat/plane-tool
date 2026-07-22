@@ -5,8 +5,13 @@
     <title>Quick Dock</title>
     <link rel="stylesheet" href="../shared/app.css" />
   </head>
-  <body>
-    <aside class="sidebar" style="position:static;width:100%;height:100vh;">
+  <body class="transparent-body">
+    <!-- 패널(320px) 바깥, 창의 왼쪽 투명 띠에 걸쳐 붙는 접기 탭. 패널 맨 위
+         모서리에서 자라난 것처럼 보이도록 헤더와 같은 높이를 쓴다. -->
+    <span id="collapseTab" class="collapse-tab" title="사이드바 접기 (Esc)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3.5 8 8 3.5 12.5M9 3.5 13.5 8 9 12.5"/></svg>
+    </span>
+    <aside class="sidebar">
       <div class="sb-head">
         <div id="openPlane" class="logo" title="Plane 웹 열기"><svg viewBox="0 0 460 460" fill="#fff" fill-rule="evenodd"><path d="M73 136 L71 240 L87 266 L212 328 L226 320 L227 295 L293 328 L306 323 L308 295 L374 328 L387 323 L388 215 L375 195 L246 131 L234 138 L232 164 L165 131 L153 138 L152 164 L84 131 Z M234 164 L294 194 L305 206 L308 216 L307 295 L246 265 L236 254 L233 247 Z M153 164 L211 193 L222 203 L227 215 L226 295 L165 265 L155 254 L152 247 Z"/></svg></div>
         <div class="t">Quick Dock</div>

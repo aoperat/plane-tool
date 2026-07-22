@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사이드바 닫기(&gt;) 버튼 목업</title>
+<link rel="stylesheet" href="../../../src/shared/app.css" />
+<style>
+  body { margin: 0; padding: 22px; background: #33363d; color: #e6e8ec;
+         font-family: "Segoe UI","Malgun Gothic",system-ui,sans-serif; }
+  h1 { font-size: 16px; margin: 0 0 6px; }
+  .lead { font-size: 12.5px; color: #9aa1ac; line-height: 1.7; max-width: 900px; margin-bottom: 20px; }
+  h2 { font-size: 13.5px; margin: 0 0 12px; color: #cfd3da; }
+  .grid { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .col { width: 320px; }
+  .cap { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .why { font-size: 11.5px; color: #9aa1ac; line-height: 1.6; margin-bottom: 10px; min-height: 72px; }
+  /* 실제처럼 화면 오른쪽 가장자리에 붙어 있는 상황을 흉내내기 위해 바탕을 깔아둔다 */
+  .frame { width: 320px; height: 330px; position: relative; border-radius: 10px; overflow: hidden;
+           background: repeating-linear-gradient(135deg,#2b2e35 0 10px,#292c33 10px 20px); }
+  .frame .sidebar { position: absolute; width: 320px; height: 330px; box-shadow: -8px 0 24px rgba(0,0,0,.4); }
+  .light { --bg:#f4f5f7; --panel:#fff; --panel-2:#eef0f3; --border:#dfe2e7; --text:#1c1f26;
+    --muted:#6b7280; --muted-2:#9aa1ac; --accent:#3f68e0; --accent-soft:rgba(63,104,224,.12);
+    --accent-ring:rgba(63,104,224,.35); --green:#1f9d55; --amber:#b06a00; --red:#d6414d;
+    --surface-list:#eef0f3; --surface-task:#fff; --surface-task-border:#e2e5ea;
+    --surface-task-hover:#f7f8fa; --surface-grp-hover:#e4e7ec; --surface-chip-on-task:#eef0f3; }
+  .light .frame { background: repeating-linear-gradient(135deg,#dcdfe4 0 10px,#e4e7ec 10px 20px); }
+  .note { font-size: 12px; color: #9aa1ac; line-height: 1.75; max-width: 900px;
+    background: #1a1d23; border: 1px solid #2a2e37; border-radius: 10px; padding: 14px 16px; margin-top: 22px; }
+  .note b { color: #e6e8ec; }
+  .note code { background:#14161a; border:1px solid #2a2e37; border-radius:4px; padding:1px 5px; font-size:11px; }
+  hr.sep { border: none; border-top: 1px solid #40444d; margin: 26px 0 18px; }
+
+  /* ===== 실제 반영 시 app.css로 옮길 새 규칙 ===== */
+  /* A·B안: 헤더 안의 닫기 버튼 — 기존 .hbtn과 같은 크기/모양을 쓴다 */
+  .sb-head .hbtn.close-btn { margin-left: -4px; }
+  /* C안: 사이드바 왼쪽 가장자리에 붙는 세로 손잡이 */
+  .edge-handle {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 46px; border-radius: 0 7px 7px 0;
+    background: var(--panel-2); border: 1px solid var(--border); border-left: none;
+    display: grid; place-items: center; color: var(--muted-2); cursor: pointer; z-index: 30;
+  }
+  .edge-handle:hover { color: var(--accent); background: var(--accent-soft); }
+  .edge-handle svg { width: 11px; height: 11px; display: block; }
+</style>
+</head>
+<body>
+
+<h1>사이드바 — 닫기(&gt;) 버튼 배치</h1>
+<p class="lead">
+  지금 사이드바를 닫는 방법은 <b>Esc</b>, <b>단축키(F2)</b>, <b>다른 창 클릭</b>(고정 안 했을 때), 트레이 메뉴뿐이라 화면에 보이는 단추가 없다.
+  특히 <b>고정</b>해 둔 상태에서는 마우스만으로 닫을 방법이 사실상 없다. 사이드바가 화면 오른쪽에 붙어 있으므로
+  <b>오른쪽을 가리키는 &gt;</b> 가 "밀어서 치운다"는 뜻으로 가장 자연스럽다.
+</p>
+
+<h2>다크 모드</h2>
+<div class="grid" id="dark-grid"></div>
+
+<hr class="sep">
+<h2>라이트 모드</h2>
+<div class="grid light" id="light-grid"></div>
+
+<div class="note">
+  <b>구현 메모</b> — 어느 안이든 동작은 같다: 클릭 → <code>hideSidebar()</code> (Esc와 동일). 툴팁은 "닫기 (Esc)".
+  <b>A안</b>은 <code>index.html</code>의 <code>.sb-head</code> 맨 앞에 <code>.hbtn</code> 하나를 추가하고 클릭 핸들러만 붙이면 끝이라 위험이 거의 없다.
+  <b>B안</b>은 헤더 아이콘 수가 늘지 않는 대신 로고(=Plane 웹 열기)를 더보기 메뉴로 옮겨야 해서 기존 동선이 하나 바뀐다.
+  <b>C안</b>은 헤더를 전혀 건드리지 않지만, 사이드바 본문 위에 떠 있는 요소라 목록 스크롤·팝오버와 겹치지 않는지 따로 확인이 필요하다.
+  <br><br>
+  <b>참고</b> — 창 자체가 화면 밖으로 슬라이드되는 방식이라, 닫은 뒤 다시 여는 수단은 지금처럼 단축키·트레이 메뉴다.
+  (열려 있을 때만 보이는 버튼이므로 "다시 열기" 손잡이는 이 목업 범위 밖.)
+</div>
+
+<script>
+const CHEV_R = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>`;
+const SPARK = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 1.5l1.4 3.6 3.6 1.4-3.6 1.4L8 11.5 6.6 7.9 3 6.5l3.6-1.4z"/></svg>`;
+const SEARCH = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M13.2 13.2 10.3 10.3"/></svg>`;
+const DOTS = `<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.2" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.8" cy="8" r="1.3"/></svg>`;
+const PLANE = `<svg viewBox="0 0 460 460" fill="#fff" fill-rule="evenodd"><path d="M73 136 L71 240 L87 266 L212 328 L226 320 L227 295 L293 328 L306 323 L308 295 L374 328 L387 323 L388 215 L375 195 L246 131 L234 138 L232 164 L165 131 L153 138 L152 164 L84 131 Z M234 164 L294 194 L305 206 L308 216 L307 295 L246 265 L236 254 L233 247 Z M153 164 L211 193 L222 203 L227 215 L226 295 L165 265 L155 254 L152 247 Z"/></svg>`;
+const CAL = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke-linecap="round"/></svg>`;
+const PLUS = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
+const ring = (d,t) => { const C=2*Math.PI*6, f=t?d/t:0;
+  const a = f>0 ? `<circle cx="8" cy="8" r="6" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-dasharray="${(f*C).toFixed(2)} ${C.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>`:"";
+  return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--border)" stroke-width="2.4"/>${a}</svg>`; };
+const stateSvg = (g) => g==="started"
+  ? `<svg viewBox="0 0 16 16" fill="none" stroke="var(--amber)" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M8 8V3.5A4.5 4.5 0 0 1 8 12.5z" fill="var(--amber)" stroke="none"/></svg>`
+  : `<svg viewBox="0 0 16 16" fill="none" stroke="var(--muted-2)" stroke-width="1.6" stroke-dasharray="2.4 2.2"><circle cx="8" cy="8" r="6.2"/></svg>`;
+const task = (g,name,chips) => `
+  <div class="task ${g==="started"?"in-progress":""}">
+    <div class="task-top"><span class="task-state">${stateSvg(g)}</span><div class="name">${name}</div></div>
+    <div class="task-chips">${chips}</div>
+  </div>`;
+
+const listBody = `
+  <div class="grp"><span class="chev">▾</span><span class="dot" style="background:#2ecc71"></span>
+    <span class="name">Plane</span><span class="ident">PLANE</span>
+    <span class="prog">${ring(0,5)}<span class="txt">0/5</span></span></div>
+  <div class="grp-body">
+    ${task("started","시작일, 마감일 단축키 변경",`<span class="chip sm">보통</span><span class="chip sm">${CAL} 7/7 → 7/6</span>`)}
+    ${task("unstarted","subtitleai",`<span class="chip sm">보통</span><span class="chip sm">${CAL} 7/8 → 7/8</span>`)}
+    ${task("unstarted","quick add 에서 home 키로 작성 중인 내용 초기화",`<span class="chip sm empty">${PLUS} 우선순위</span><span class="chip sm">${CAL} 7/6 → 7/6</span>`)}
+  </div>`;
+
+// 헤더: mode에 따라 닫기 버튼 위치가 달라진다
+const head = (mode) => {
+  const close = `<span class="hbtn close-btn" title="닫기 (Esc)">${CHEV_R}</span>`;
+  const logo = `<div class="logo" title="Plane 웹 열기">${PLANE}</div>`;
+  if (mode === "A") return `${close}${logo}<div class="t">Quick Dock</div>`;
+  if (mode === "B") return `${close}<div class="t">Quick Dock</div>`;   // 로고는 더보기 메뉴로 이동
+  return `${logo}<div class="t">Quick Dock</div>`;                       // 현재 / C안
+};
+
+const panel = (mode) => `
+  <aside class="sidebar" style="position:absolute;width:320px;height:330px;">
+    ${mode === "C" ? `<span class="edge-handle" title="닫기 (Esc)">${CHEV_R}</span>` : ""}
+    <div class="sb-head">
+      ${head(mode)}
+      <span class="u"></span>
+      <span class="hbtn">${SPARK}</span>
+      <span class="hbtn">${SEARCH}</span>
+      <span class="hbtn">${DOTS}</span>
+    </div>
+    <div class="sb-tabs">
+      <button class="sb-tab active">담당 작업 <span class="count">5</span></button>
+      <button class="sb-tab">내가 할당한 작업 <span class="count">0</span></button>
+    </div>
+    <div class="scroll"><div class="sb-section"><div>${listBody}</div></div></div>
+    <div class="sb-foot"><span>동기화 완료</span></div>
+  </aside>`;
+
+const VARIANTS = [
+  ["현재 — 닫기 버튼 없음", "마우스로 닫으려면 사이드바 밖을 클릭하는 수밖에 없고, 고정해 두면 그 방법도 막힌다.", "now"],
+  ["A안 — 헤더 맨 왼쪽에 추가 (권장)", "로고 앞에 > 버튼을 하나 더 둔다. 기존 요소를 건드리지 않고, 눈이 가장 먼저 닿는 왼쪽 위 모서리라 찾기 쉽다. 헤더 아이콘이 하나 늘지만 왼쪽은 여유가 있다.", "A"],
+  ["B안 — 로고 자리를 닫기로 교체", "헤더 아이콘 수를 늘리지 않는다. 대신 Plane 웹 열기가 더보기 메뉴로 들어가야 해서, 로고를 눌러 웹을 열던 기존 습관이 바뀐다.", "B"],
+  ["C안 — 왼쪽 가장자리 손잡이", "헤더를 전혀 건드리지 않고 창 경계에 붙인다. 패널을 접는다는 은유는 가장 분명하지만, 목록 위에 떠 있어 스크롤·팝오버와 겹칠 여지가 있다.", "C"],
+];
+
+const render = (host) => {
+  host.innerHTML = VARIANTS.map(([cap, why, mode]) => `
+    <div class="col"><div class="cap">${cap}</div><div class="why">${why}</div>
+      <div class="frame">${panel(mode)}</div></div>`).join("");
+};
+render(document.getElementById("dark-grid"));
+render(document.getElementById("light-grid"));
+</script>
+</body>
+</html>
