@@ -412,7 +412,10 @@ kbd {
 
 /* 왼쪽 세로 가이드선이 "이 카드들은 위 줄에 속한다"를 말한다. 들여쓰기가
    한 번뿐이라 작업 카드 폭은 조금만 준다. */
-.sub-body { margin-left: 17px; padding-left: 8px; border-left: 1px solid var(--border); }
+.sub-body {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-left: 17px; padding-left: 8px; border-left: 1px solid var(--border);
+}
 .sub-body.collapsed { display: none; }
 
 .task {

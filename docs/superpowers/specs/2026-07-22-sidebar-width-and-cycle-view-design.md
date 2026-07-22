@@ -4,6 +4,26 @@
 - 상태: 사용자 승인 대기
 - 목업: `docs/superpowers/mockups/2026-07-22-sidebar-cycle-module-grouping-mockup.html`
 
+## 구현 시 변경 (2026-07-22)
+
+아래 세 곳은 이 문서와 **다르게** 구현됐다. 본문은 그대로 두었으니 이 목록을
+먼저 보고 읽어야 한다.
+
+| 스펙 | 실제 구현 |
+|---|---|
+| §A3 `Settings.sidebar_width` + `SettingsDto` | webview `localStorage`의 `sidebarWidth` |
+| §B2 `CycleData.is_cached` + `offline.rs` 영속화 | webview `localStorage`의 `cycleDataCache` (프론트엔드가 TTL과 캐시를 관리) |
+| §B5.6 `Settings.sidebar_group_axis` | webview `localStorage`의 `sidebarGroupAxis` |
+
+이유는 셋 다 같다 — 이 저장소는 **화면 취향은 백엔드 설정이 아니라 사이드바
+webview의 `localStorage`에 둔다**는 관례를 이미 쓰고 있다(`hideCompleted`,
+`delegatedShowAll`, `sidebarActiveTab`). 그 자리에 맞춰 두면 `SettingsDto`·
+`save_settings`·설정 파일 마이그레이션을 건드리지 않아도 되고, 사이드바가 아닌
+다른 창이 알 필요도 없는 값이 백엔드 설정으로 새 나가지 않는다.
+
+(§B2에는 `CycleDataDto.is_partial`이 나중에 추가됐다 — 일부 프로젝트를 건너뛴
+불완전한 결과를 프론트엔드가 캐시하지 않도록 표시하는 값이다.)
+
 ## 목적
 
 사이드바는 작업을 **프로젝트로만** 묶는다. "이번 스프린트에 내가 뭘 남겨뒀나"를

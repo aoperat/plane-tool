@@ -142,6 +142,11 @@ let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
 // 끊겼을 때 마지막 성공 결과를 그대로 쓴다.
 const CYCLE_CACHE_KEY = "cycleDataCache";
 const CYCLE_TTL_MS = 10 * 60_000;
+// 일부 프로젝트를 통째로 건너뛴 결과(is_partial)는 훨씬 빨리 낡은 것으로
+// 본다. 2분은 rate limit 창이나 일시적인 네트워크 장애가 지나갈 만큼은
+// 기다리면서, 사용자가 10분 내내 "사이클을 안 쓰는 프로젝트"와 구분되지
+// 않는 잘못된 모양의 화면에 묶이지 않게 하는 절충이다.
+const CYCLE_PARTIAL_TTL_MS = 2 * 60_000;
 let cycleData: CycleData | null = null;
 let cycleFetchedAtMs = 0;
 let cycleInFlight: Promise<void> | null = null;
@@ -165,7 +170,9 @@ function loadCachedCycleData(): void {
     const cycles = parsed?.data?.cycles;
     const itemCycle = parsed?.data?.item_cycle;
     if (Array.isArray(cycles) && itemCycle != null && typeof itemCycle === "object") {
-      setCycleData(parsed.data, parsed.at);
+      // is_partial이 생기기 전 버전이 써둔 캐시에는 이 필드가 없다 — 없으면
+      // 완전한 결과로 본다(그때 저장된 값은 모두 완전한 것으로 취급됐다).
+      setCycleData({ ...parsed.data, is_partial: parsed.data.is_partial === true }, parsed.at);
     }
   } catch {
     // 손상된 캐시는 없는 셈 친다 — 다음 요청이 다시 채운다.
@@ -179,22 +186,41 @@ loadCachedCycleData();
  *  잘못 눌렀다고 오해하기 때문이다. */
 function ensureCycleData(): void {
   if (cycleInFlight) return;
-  if (cycleData && Date.now() - cycleFetchedAtMs < CYCLE_TTL_MS) return;
+  const ttl = cycleData?.is_partial ? CYCLE_PARTIAL_TTL_MS : CYCLE_TTL_MS;
+  if (cycleData && Date.now() - cycleFetchedAtMs < ttl) return;
   const stale = cycleData === null;
   if (stale) synced.textContent = "사이클 불러오는 중…";
   cycleInFlight = fetchCycleData(resolveDatePreset("today"))
     .then((data) => {
       const at = Date.now();
       setCycleData(data, at);
-      // 저장은 최선-노력(best-effort) 최적화일 뿐이다 — 여기서 실패해도
-      // (용량 초과 등) fetch 자체는 성공했으니 그것을 fetch 실패로 보고하면
-      // 안 되고, 화면도 이미 받은 데이터로 계속 그려야 한다.
-      try {
-        localStorage.setItem(CYCLE_CACHE_KEY, JSON.stringify({ data, at }));
-      } catch (err) {
-        console.error("cycle cache setItem failed:", err);
+      // 부분 결과는 저장하지 않는다 — 앱을 다시 켰을 때 일부 프로젝트가
+      // 빠진 화면을 그대로 되살리게 되고, 무엇보다 먼저 저장돼 있던
+      // 온전한 결과를 덮어써 버린다. 메모리에서는 그대로 쓴다(부분이라도
+      // 없는 것보다 낫다). 저장 자체는 최선-노력(best-effort) 최적화일
+      // 뿐이라 여기서 실패해도(용량 초과 등) fetch 실패로 보고하지 않고,
+      // 화면도 이미 받은 데이터로 계속 그린다.
+      if (!data.is_partial) {
+        try {
+          localStorage.setItem(CYCLE_CACHE_KEY, JSON.stringify({ data, at }));
+        } catch (err) {
+          console.error("cycle cache setItem failed:", err);
+        }
       }
       renderFromLastData();
+      // renderFromLastData는 footer를 건드리지 않는다 — 여기서 정상 문구로
+      // 되돌리지 않으면 "사이클 불러오는 중…"이 다음 runRefresh(포커스 +
+      // 60초 쿨다운)까지, 즉 사실상 세션 내내 남는다. 이 호출이 실제로 그
+      // 문구를 쓴 경우에만 되돌린다 — 그 사이 다른 작업이 써둔 문구를
+      // 덮어쓰면 안 된다.
+      if (stale) {
+        synced.textContent = offlineStatusText(
+          lastSidebarData?.is_cached ?? false,
+          lastSidebarData?.cached_at_ms ?? null,
+          pendingCount,
+          Date.now(),
+        );
+      }
     })
     .catch((err) => {
       console.error("fetchCycleData failed:", err);
@@ -975,7 +1001,7 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     // 하나씩 흩어지면 좁히려던 목적과 반대로 찾기 어려워진다.
     const subs =
       groupAxis === "cycle" && !isFiltering && cycleData
-        ? splitByCycle(groupItems, cycleData.cycles.filter((c) => c.project_id === project.id), itemCycleMap)
+        ? splitByCycle(project.id, groupItems, cycleData.cycles.filter((c) => c.project_id === project.id), itemCycleMap)
         : [];
     if (subs.length > 0) {
       for (const sub of subs) body.appendChild(renderSubGroup(sub, items, projects));
@@ -1036,12 +1062,18 @@ function renderSubGroup(sub: SubGroup, items: WorkItem[], projects: Project[]): 
   };
   frag.appendChild(head);
 
-  const body = document.createElement("div");
-  body.className = "sub-body" + (collapsed ? " collapsed" : "");
-  for (const it of filterHiddenCompleted(sub.items, hideCompleted)) {
-    body.appendChild(renderTaskRow(it, items, projects));
+  // 헤더의 개수는 숨긴 완료 항목까지 세지만(프로젝트 단과 같은 규칙), 몸통에
+  // 그릴 줄이 하나도 없으면 아예 붙이지 않는다 — 빈 .sub-body는 왼쪽
+  // 가이드선만 남아 헤더 밑에 짧은 선 토막으로 떠 있는다.
+  const rows = filterHiddenCompleted(sub.items, hideCompleted);
+  if (rows.length > 0) {
+    const body = document.createElement("div");
+    body.className = "sub-body" + (collapsed ? " collapsed" : "");
+    for (const it of rows) {
+      body.appendChild(renderTaskRow(it, items, projects));
+    }
+    frag.appendChild(body);
   }
-  frag.appendChild(body);
   return frag;
 }
 
@@ -1130,9 +1162,17 @@ resizeHandleEl.addEventListener("pointerup", endResizeDrag);
 resizeHandleEl.addEventListener("pointercancel", endResizeDrag);
 
 resizeHandleEl.addEventListener("dblclick", () => {
-  applyPanelWidth(SIDEBAR_WIDTH_DEFAULT);
-  persistPanelWidth();
-  void getTargetMonitor().then((m) => applyWindowGeometry(m));
+  void getTargetMonitor().then((m) => {
+    // 기본값도 지금 모니터 기준으로 자른다 — 드래그 경로와 같은 규칙이다.
+    // 논리 폭이 704px보다 좁은 모니터에서는 기본값 352가 상한(폭의 절반)을
+    // 넘어, 자르지 않으면 다음 showSidebar 전까지 허용 범위를 벗어난 폭이 된다.
+    const width = m
+      ? clampSidebarWidth(SIDEBAR_WIDTH_DEFAULT, m.size.width / m.scaleFactor)
+      : SIDEBAR_WIDTH_DEFAULT;
+    applyPanelWidth(width);
+    persistPanelWidth();
+    return applyWindowGeometry(m);
+  });
 });
 
 async function showSidebar(takeFocus = true): Promise<void> {

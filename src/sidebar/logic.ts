@@ -253,7 +253,10 @@ export function clampSidebarWidth(width: number, monitorLogicalWidth: number): n
 export type GroupAxis = "flat" | "cycle";
 
 export interface SubGroup {
-  /** 접힘 상태 키. `cycle:` 접두어를 붙여 프로젝트 id와 한 Set에서 섞이지 않게 한다. */
+  /** 접힘 상태 키. `cycle:` 접두어를 붙여 프로젝트 id와 한 Set에서 섞이지 않게 한다.
+   *  실제 사이클은 uuid라 그것만으로 프로젝트 사이에서도 유일하지만,
+   *  "사이클 없음" 묶음은 사이클 id가 없어 프로젝트마다 같은 키가 된다 —
+   *  그래서 그 키에만 프로젝트 id를 덧붙인다(splitByCycle 참고). */
   key: string;
   name: string;
   /** "D-3" / "7/28 시작" / "7/12 종료". 날짜가 없으면 null. */
@@ -288,14 +291,21 @@ function dayDiff(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
-/** 한 프로젝트의 작업을 사이클별로 쪼갠다. 묶음이 하나뿐이면 빈 배열을
- *  돌려주고 호출부는 지금처럼 평평하게 그린다 — 사이클을 안 쓰는 프로젝트에
- *  "사이클 없음" 헤더 한 줄만 덧붙는 건 노이즈다.
+/** 한 프로젝트(`projectId`)의 작업을 사이클별로 쪼갠다. 묶음이 하나뿐이면 빈
+ *  배열을 돌려주고 호출부는 지금처럼 평평하게 그린다 — 사이클을 안 쓰는
+ *  프로젝트에 "사이클 없음" 헤더 한 줄만 덧붙는 건 노이즈다.
+ *
+ *  `projectId`는 "사이클 없음" 묶음의 키에만 쓰인다. 실제 사이클 키는 uuid를
+ *  담고 있어 프로젝트가 달라도 절대 겹치지 않지만, "사이클 없음"은 담을 id가
+ *  없어 프로젝트마다 같은 키가 된다 — 접힘 상태는 프로젝트와 하위 묶음이 한
+ *  Set을 공유하므로, 그대로 두면 한 프로젝트에서 접은 "사이클 없음"이 모든
+ *  프로젝트에서 접힌다.
  *
  *  순서는 진행 중 → 날짜 미정 → 예정 → 지난 → 사이클 없음. 진행 중은 종료가
  *  임박한 순, 예정은 시작이 이른 순, 지난 것은 최근 종료 순이다. 내 작업이
  *  하나도 없는 사이클은 묶음으로 만들지 않는다. */
 export function splitByCycle(
+  projectId: string,
   items: WorkItem[],
   cycles: Cycle[],
   itemCycle: Map<string, string>,
@@ -357,7 +367,7 @@ export function splitByCycle(
   const groups = ranked.map((r) => r.group);
   if (orphans.length > 0) {
     groups.push({
-      key: "cycle:none", name: "사이클 없음",
+      key: `cycle:none:${projectId}`, name: "사이클 없음",
       due: null, dueKind: null, ghost: true, items: orphans,
     });
   }

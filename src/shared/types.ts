@@ -79,4 +79,7 @@ export interface CycleData {
   cycles: Cycle[];
   /** 작업 id → 사이클 id. 사이클은 작업당 최대 1개라 맵으로 충분하다. */
   item_cycle: Record<string, string>;
+  /** 사이클 조회가 실패해 통째로 건너뛴 프로젝트가 하나라도 있으면 true.
+   *  이 결과는 캐시에 저장하지 않고, 다음 렌더에서 더 빨리 다시 시도한다. */
+  is_partial: boolean;
 }

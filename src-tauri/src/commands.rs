@@ -82,6 +82,12 @@ pub struct CycleDataDto {
     pub cycles: Vec<CycleDto>,
     /// 작업 id → 사이클 id. 사이클은 작업당 최대 1개라 맵으로 충분하다.
     pub item_cycle: std::collections::HashMap<String, String>,
+    /// 요청 실패로 통째로 건너뛴 프로젝트가 하나라도 있으면 true —
+    /// 즉 이 응답은 "성공했지만 불완전"하다. 건너뛴 프로젝트는 사이클을 안
+    /// 쓰는 프로젝트와 화면에서 구분되지 않으므로, 이 표시가 없으면
+    /// 프론트엔드가 열화된 결과를 온전한 것으로 캐시해 한동안 재시도조차
+    /// 하지 않는다.
+    pub is_partial: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -440,8 +446,12 @@ pub async fn fetch_cycle_data(
 
 /// 프로젝트를 순차로 도는 것은 의도적이다 — `fetch_sidebar_data_online`은
 /// `buffer_unordered`로 병렬화하지만, 여기서는 사이클마다 요청이 한 건씩 더
-/// 붙어 총 요청 수가 훨씬 많다. Plane의 API 키당 60 req/min을 넘기지 않도록
-/// 느리더라도 순차로 둔다 (호출 자체가 10분에 한 번뿐이다).
+/// 붙어 총 요청 수가 훨씬 많다. 다만 순차 실행이 막아 주는 것은 **동시성**
+/// 이지 **속도(rate)**가 아니다 — 순차라도 빠른 서버에서는 수십 건이 몇 초
+/// 만에 나가므로 이것만으로 Plane의 API 키당 60 req/min 안에 들어간다는
+/// 보장은 없다. rate limit을 실제로 지켜 주는 건 `get_json`의 429/`Retry-After`
+/// 처리이고, 10분 캐시가 평균 요청량을 낮게 유지한다. 한 번의 버스트가
+/// 한도를 넘길 수 있다는 문제는 아직 남아 있다.
 ///
 /// 프로젝트 하나에서 요청이 실패해도(`list_cycles` 자체든, 그 안의 어느
 /// 사이클의 `list_cycle_issue_ids`든) 전체 커맨드를 중단하지 않고 그
@@ -462,15 +472,19 @@ async fn fetch_cycle_data_online(client: &PlaneClient, today: &str) -> Result<Cy
     let projects = client.list_projects().await?;
     let mut cycles: Vec<CycleDto> = Vec::new();
     let mut item_cycle = std::collections::HashMap::new();
+    let mut is_partial = false;
     for p in projects.iter().filter(|p| p.cycle_view) {
-        if let Ok((mut project_cycles, project_item_cycle)) =
-            fetch_project_cycle_data(client, &p.id, today).await
-        {
-            cycles.append(&mut project_cycles);
-            item_cycle.extend(project_item_cycle);
+        match fetch_project_cycle_data(client, &p.id, today).await {
+            Ok((mut project_cycles, project_item_cycle)) => {
+                cycles.append(&mut project_cycles);
+                item_cycle.extend(project_item_cycle);
+            }
+            // 건너뛴 프로젝트가 있었다는 사실만 남긴다 — 열화 자체는 그대로 두되
+            // 호출부가 이 결과를 온전한 것으로 오해하지 않게 한다.
+            Err(_) => is_partial = true,
         }
     }
-    Ok(CycleDataDto { cycles, item_cycle })
+    Ok(CycleDataDto { cycles, item_cycle, is_partial })
 }
 
 /// 프로젝트 하나의 사이클·소속을 가져온다. 도중에 어떤 요청이든 실패하면
@@ -1427,17 +1441,29 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        // p2: 사이클 조회는 성공하지만, 그 사이클의 소속 조회가 실패한다 —
-        // 이 프로젝트는 cycles/item_cycle 어느 쪽에도 등장하면 안 된다.
+        // p2: 사이클 조회는 성공하고, 사이클도 **두 개**다 — 첫 번째(c2)의 소속
+        // 조회는 성공하지만 두 번째(c3)가 실패한다. 사이클이 하나뿐이면 "실패한
+        // 사이클만 건너뛰는" 구현도 똑같이 통과하므로 아무것도 증명하지 못한다.
+        // 두 개여야 이미 받아둔 c2까지 함께 버려지는지를 확인할 수 있다.
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p2/cycles/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "results": [{ "id": "c2", "name": "Sprint 2", "start_date": null, "end_date": null }]
+                "results": [
+                    { "id": "c2", "name": "Sprint 2", "start_date": null, "end_date": null },
+                    { "id": "c3", "name": "Sprint 3", "start_date": null, "end_date": null }
+                ]
             })))
             .mount(&server)
             .await;
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p2/cycles/c2/cycle-issues/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "ci2", "issue": "i2", "cycle": "c2" }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p2/cycles/c3/cycle-issues/"))
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
@@ -1446,12 +1472,50 @@ mod tests {
         let data = fetch_cycle_data_online(&client, "2026-07-22").await.unwrap();
 
         let cycle_ids: Vec<&str> = data.cycles.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cycle_ids, vec!["c1"], "failing project's cycle must not appear at all");
+        assert_eq!(
+            cycle_ids,
+            vec!["c1"],
+            "neither cycle of the failing project may appear — not even the one already fetched"
+        );
         assert_eq!(data.item_cycle.get("i1"), Some(&"c1".to_string()));
         assert!(
-            !data.item_cycle.values().any(|v| v == "c2"),
+            !data.item_cycle.values().any(|v| v == "c2" || v == "c3"),
             "failing project must contribute no item_cycle entries"
         );
+        assert_eq!(data.item_cycle.len(), 1, "only the healthy project's entry may remain");
+        assert!(data.is_partial, "a skipped project must mark the result as incomplete");
+    }
+
+    // 모든 프로젝트가 정상이면 결과는 완전한 것으로 표시돼야 한다 — is_partial이
+    // 늘 true라면 프론트엔드가 캐시를 아예 못 쓰고 2분마다 다시 요청한다.
+    #[tokio::test]
+    async fn fetch_cycle_data_online_marks_a_fully_successful_result_as_complete() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "p1", "name": "Healthy", "identifier": "OK", "is_member": true, "cycle_view": true }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "c1", "name": "Sprint 1", "start_date": null, "end_date": null }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{ "id": "ci1", "issue": "i1", "cycle": "c1" }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let data = fetch_cycle_data_online(&client, "2026-07-22").await.unwrap();
+        assert!(!data.is_partial);
         assert_eq!(data.item_cycle.len(), 1);
     }
 }

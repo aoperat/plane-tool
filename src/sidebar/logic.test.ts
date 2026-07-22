@@ -446,7 +446,7 @@ describe("splitByCycle", () => {
     ];
     const items = [wi("a", "p1"), wi("b", "p1"), wi("c", "p1"), wi("d", "p1"), wi("e", "p1")];
     const map = new Map([["a", "now"], ["b", "next"], ["c", "past"], ["d", "draft"]]);
-    const groups = splitByCycle(items, cycles, map, NOW);
+    const groups = splitByCycle("p1", items, cycles, map, NOW);
     expect(groups.map((g) => g.name)).toEqual([
       "Sprint 12", "백로그 정리", "Sprint 13", "Sprint 4", "사이클 없음",
     ]);
@@ -457,15 +457,23 @@ describe("splitByCycle", () => {
   it("labels a running cycle with the days left and flags the last three as soon", () => {
     const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25"), cy("x", "Sprint 9", "2026-07-01", "2026-07-30")];
     const map = new Map([["a", "now"], ["b", "x"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups[0]).toMatchObject({ name: "Sprint 12", due: "D-3", dueKind: "soon" });
     expect(groups[1]).toMatchObject({ name: "Sprint 9", due: "D-8", dueKind: "plain" });
+  });
+
+  it("stops flagging soon one day past the threshold (D-4)", () => {
+    // 임계값(3일 이하)의 바로 바깥쪽 — 손으로 정한 경계라 양쪽을 다 고정한다.
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-26"), cy("d", "초안", null, null)];
+    const map = new Map([["a", "now"], ["b", "d"]]);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups[0]).toMatchObject({ due: "D-4", dueKind: "plain" });
   });
 
   it("labels a cycle ending today as D-0", () => {
     const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-22"), cy("d", "초안", null, null)];
     const map = new Map([["a", "now"], ["b", "d"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups[0].due).toBe("D-0");
   });
 
@@ -475,7 +483,7 @@ describe("splitByCycle", () => {
       cy("past", "Sprint 4", "2026-06-29", "2026-07-12"),
     ];
     const map = new Map([["a", "next"], ["b", "past"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups[0]).toMatchObject({ due: "7/28 시작", dueKind: "plain" });
     expect(groups[1]).toMatchObject({ due: "7/12 종료", dueKind: "past" });
   });
@@ -489,29 +497,43 @@ describe("splitByCycle", () => {
     ];
     const map = new Map([["a", "r2"], ["b", "r1"], ["c", "p2"], ["d", "p1"]]);
     const items = [wi("a", "p1"), wi("b", "p1"), wi("c", "p1"), wi("d", "p1")];
-    expect(splitByCycle(items, cycles, map, NOW).map((g) => g.name))
+    expect(splitByCycle("p1", items, cycles, map, NOW).map((g) => g.name))
       .toEqual(["임박", "느긋", "최근", "오래된"]);
   });
 
   it("skips cycles that hold none of my items", () => {
     const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25"), cy("empty", "Sprint 11", "2026-07-01", "2026-07-12")];
     const map = new Map([["a", "now"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups.map((g) => g.name)).toEqual(["Sprint 12", "사이클 없음"]);
   });
 
   it("returns nothing when there is only one bucket — the caller renders flat", () => {
     // 사이클을 안 쓰는 프로젝트: 전부 사이클 없음 하나
-    expect(splitByCycle([wi("a", "p1")], [], new Map(), NOW)).toEqual([]);
+    expect(splitByCycle("p1", [wi("a", "p1")], [], new Map(), NOW)).toEqual([]);
     // 사이클이 하나뿐이고 바깥에 남은 작업이 없는 프로젝트
     const one = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
-    expect(splitByCycle([wi("a", "p1")], one, new Map([["a", "now"]]), NOW)).toEqual([]);
+    expect(splitByCycle("p1", [wi("a", "p1")], one, new Map([["a", "now"]]), NOW)).toEqual([]);
   });
 
   it("keys groups with a cycle: prefix so they cannot collide with project ids", () => {
     const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, new Map([["a", "now"]]), NOW);
-    expect(groups.map((g) => g.key)).toEqual(["cycle:now", "cycle:none"]);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, new Map([["a", "now"]]), NOW);
+    expect(groups.map((g) => g.key)).toEqual(["cycle:now", "cycle:none:p1"]);
+  });
+
+  it("scopes the 사이클 없음 key to the project so collapsing it in one project does not collapse it in others", () => {
+    // 접힘 상태는 프로젝트와 하위 묶음이 한 Set을 공유하고 localStorage에
+    // 남는다 — "사이클 없음" 키가 프로젝트마다 같으면 한 번 접은 것이 모든
+    // 프로젝트에서 영구히 접힌 채로 남는다.
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
+    const map = new Map([["a", "now"]]);
+    const a = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const b = splitByCycle("p2", [wi("a", "p2"), wi("b", "p2")], cycles, map, NOW);
+    const ghostKey = (groups: typeof a) => groups.find((g) => g.ghost)!.key;
+    expect(ghostKey(a)).toBe("cycle:none:p1");
+    expect(ghostKey(b)).toBe("cycle:none:p2");
+    expect(ghostKey(a)).not.toBe(ghostKey(b));
   });
 
   it("reads UTC timestamps as their local calendar date", () => {
@@ -527,7 +549,7 @@ describe("splitByCycle", () => {
 
     const cycles = [cy("past", "Sprint 4", "2026-06-01", rawEnd)];
     const map = new Map([["a", "past"]]); // b는 사이클이 없어 두 번째 묶음(사이클 없음)이 된다
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups[0].dueKind).toBe("past");
     expect(groups[0].due).toBe(expectedDue);
   });
@@ -538,15 +560,15 @@ describe("splitByCycle", () => {
     // 사라지므로, "사이클 없음"으로라도 보여주는 게 맞다.
     const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
     const map = new Map([["a", "now"], ["b", "stale-cycle-id"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
-    const none = groups.find((g) => g.key === "cycle:none");
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const none = groups.find((g) => g.key === "cycle:none:p1");
     expect(none?.items.map((i) => i.id)).toEqual(["b"]);
   });
 
   it("treats a cycle with only one of start/end date set as 날짜 미정", () => {
     const cycles = [cy("half1", "시작만", "2026-07-01", null), cy("half2", "종료만", null, "2026-07-30")];
     const map = new Map([["a", "half1"], ["b", "half2"]]);
-    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    const groups = splitByCycle("p1", [wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
     expect(groups.map((g) => g.due)).toEqual([null, null]);
     expect(groups.map((g) => g.dueKind)).toEqual([null, null]);
   });
