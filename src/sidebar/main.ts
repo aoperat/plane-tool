@@ -158,7 +158,15 @@ function loadCachedCycleData(): void {
     const raw = localStorage.getItem(CYCLE_CACHE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as { data: CycleData; at: number };
-    if (parsed?.data?.cycles && parsed.data.item_cycle) setCycleData(parsed.data, parsed.at);
+    // 단순 truthy 체크가 아니라 실제 모양을 검사한다 — 이 캐시는 앱 버전을
+    // 넘어 남으므로, 다른 버전이 써둔 다른 모양의 값이 그대로 들어올 수
+    // 있다. 여기서 걸러내지 않으면 itemCycleMap 생성이나 이후 렌더링 안에서
+    // 알아보기 힘든 crash로 터진다.
+    const cycles = parsed?.data?.cycles;
+    const itemCycle = parsed?.data?.item_cycle;
+    if (Array.isArray(cycles) && itemCycle != null && typeof itemCycle === "object") {
+      setCycleData(parsed.data, parsed.at);
+    }
   } catch {
     // 손상된 캐시는 없는 셈 친다 — 다음 요청이 다시 채운다.
   }
@@ -178,7 +186,14 @@ function ensureCycleData(): void {
     .then((data) => {
       const at = Date.now();
       setCycleData(data, at);
-      localStorage.setItem(CYCLE_CACHE_KEY, JSON.stringify({ data, at }));
+      // 저장은 최선-노력(best-effort) 최적화일 뿐이다 — 여기서 실패해도
+      // (용량 초과 등) fetch 자체는 성공했으니 그것을 fetch 실패로 보고하면
+      // 안 되고, 화면도 이미 받은 데이터로 계속 그려야 한다.
+      try {
+        localStorage.setItem(CYCLE_CACHE_KEY, JSON.stringify({ data, at }));
+      } catch (err) {
+        console.error("cycle cache setItem failed:", err);
+      }
       renderFromLastData();
     })
     .catch((err) => {
