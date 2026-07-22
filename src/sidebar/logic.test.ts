@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, visibleTabItems } from "./logic";
-import type { Project, ProjectState, WorkItem } from "../shared/types";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
+import type { Cycle, Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
   return { id, name: "n" + id, priority: "none", target_date: null, start_date: null, state_group, project_id, assignee_ids: [], completed_at: null, created_at: null };
@@ -427,5 +427,99 @@ describe("clampSidebarWidth", () => {
   it("rounds to whole pixels — a drag delta can land on a fraction", () => {
     expect(clampSidebarWidth(352.4, 1920)).toBe(352);
     expect(clampSidebarWidth(352.6, 1920)).toBe(353);
+  });
+});
+
+function cy(id: string, name: string, start: string | null, end: string | null): Cycle {
+  return { id, name, project_id: "p1", start_date: start, end_date: end };
+}
+// 모든 테스트의 "오늘"
+const NOW = new Date(2026, 6, 22); // 2026-07-22
+
+describe("splitByCycle", () => {
+  it("orders groups: running, undated, upcoming, past, then the no-cycle bucket", () => {
+    const cycles = [
+      cy("past", "Sprint 4", "2026-06-29", "2026-07-12"),
+      cy("next", "Sprint 13", "2026-07-28", "2026-08-08"),
+      cy("draft", "백로그 정리", null, null),
+      cy("now", "Sprint 12", "2026-07-13", "2026-07-25"),
+    ];
+    const items = [wi("a", "p1"), wi("b", "p1"), wi("c", "p1"), wi("d", "p1"), wi("e", "p1")];
+    const map = new Map([["a", "now"], ["b", "next"], ["c", "past"], ["d", "draft"]]);
+    const groups = splitByCycle(items, cycles, map, NOW);
+    expect(groups.map((g) => g.name)).toEqual([
+      "Sprint 12", "백로그 정리", "Sprint 13", "Sprint 4", "사이클 없음",
+    ]);
+    expect(groups[4].items.map((i) => i.id)).toEqual(["e"]);
+    expect(groups[4].ghost).toBe(true);
+  });
+
+  it("labels a running cycle with the days left and flags the last three as soon", () => {
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25"), cy("x", "Sprint 9", "2026-07-01", "2026-07-30")];
+    const map = new Map([["a", "now"], ["b", "x"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups[0]).toMatchObject({ name: "Sprint 12", due: "D-3", dueKind: "soon" });
+    expect(groups[1]).toMatchObject({ name: "Sprint 9", due: "D-8", dueKind: "plain" });
+  });
+
+  it("labels a cycle ending today as D-0", () => {
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-22"), cy("d", "초안", null, null)];
+    const map = new Map([["a", "now"], ["b", "d"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups[0].due).toBe("D-0");
+  });
+
+  it("labels upcoming and past cycles with their boundary date", () => {
+    const cycles = [
+      cy("next", "Sprint 13", "2026-07-28", "2026-08-08"),
+      cy("past", "Sprint 4", "2026-06-29", "2026-07-12"),
+    ];
+    const map = new Map([["a", "next"], ["b", "past"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups[0]).toMatchObject({ due: "7/28 시작", dueKind: "plain" });
+    expect(groups[1]).toMatchObject({ due: "7/12 종료", dueKind: "past" });
+  });
+
+  it("sorts running cycles by soonest end and past cycles by most recent end", () => {
+    const cycles = [
+      cy("r2", "느긋", "2026-07-01", "2026-07-30"),
+      cy("r1", "임박", "2026-07-01", "2026-07-24"),
+      cy("p2", "오래된", "2026-05-01", "2026-05-30"),
+      cy("p1", "최근", "2026-06-20", "2026-07-04"),
+    ];
+    const map = new Map([["a", "r2"], ["b", "r1"], ["c", "p2"], ["d", "p1"]]);
+    const items = [wi("a", "p1"), wi("b", "p1"), wi("c", "p1"), wi("d", "p1")];
+    expect(splitByCycle(items, cycles, map, NOW).map((g) => g.name))
+      .toEqual(["임박", "느긋", "최근", "오래된"]);
+  });
+
+  it("skips cycles that hold none of my items", () => {
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25"), cy("empty", "Sprint 11", "2026-07-01", "2026-07-12")];
+    const map = new Map([["a", "now"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups.map((g) => g.name)).toEqual(["Sprint 12", "사이클 없음"]);
+  });
+
+  it("returns nothing when there is only one bucket — the caller renders flat", () => {
+    // 사이클을 안 쓰는 프로젝트: 전부 사이클 없음 하나
+    expect(splitByCycle([wi("a", "p1")], [], new Map(), NOW)).toEqual([]);
+    // 사이클이 하나뿐이고 바깥에 남은 작업이 없는 프로젝트
+    const one = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
+    expect(splitByCycle([wi("a", "p1")], one, new Map([["a", "now"]]), NOW)).toEqual([]);
+  });
+
+  it("keys groups with a cycle: prefix so they cannot collide with project ids", () => {
+    const cycles = [cy("now", "Sprint 12", "2026-07-13", "2026-07-25")];
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, new Map([["a", "now"]]), NOW);
+    expect(groups.map((g) => g.key)).toEqual(["cycle:now", "cycle:none"]);
+  });
+
+  it("reads UTC timestamps as their local calendar date", () => {
+    // Plane은 프로젝트 타임존 기준 날짜를 UTC로 저장해 내려준다.
+    const cycles = [cy("now", "Sprint 12", "2026-07-12T15:00:00Z", "2026-07-25T14:59:59Z"), cy("d", "초안", null, null)];
+    const map = new Map([["a", "now"], ["b", "d"]]);
+    const groups = splitByCycle([wi("a", "p1"), wi("b", "p1")], cycles, map, NOW);
+    expect(groups[0].name).toBe("Sprint 12");
+    expect(groups[0].dueKind).not.toBe("past");
   });
 });

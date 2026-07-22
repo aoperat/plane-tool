@@ -1,4 +1,4 @@
-import type { Project, ProjectState, WorkItem } from "../shared/types";
+import type { Cycle, Project, ProjectState, WorkItem } from "../shared/types";
 
 export interface ProjectGroup {
   project: Project;
@@ -245,4 +245,117 @@ export function clampSidebarWidth(width: number, monitorLogicalWidth: number): n
     Math.min(SIDEBAR_WIDTH_MAX, Math.floor(monitorLogicalWidth / 2)),
   );
   return Math.round(Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, width)));
+}
+
+/** 프로젝트 그룹 안에서 작업을 어떤 기준으로 다시 묶을지. "flat"이 기본이며
+ *  지금까지의 화면과 같다. 모듈은 작업당 여러 개에 속할 수 있어 중복 규칙을
+ *  따로 정해야 하므로 다음 단계로 미뤄져 있다. */
+export type GroupAxis = "flat" | "cycle";
+
+export interface SubGroup {
+  /** 접힘 상태 키. `cycle:` 접두어를 붙여 프로젝트 id와 한 Set에서 섞이지 않게 한다. */
+  key: string;
+  name: string;
+  /** "D-3" / "7/28 시작" / "7/12 종료". 날짜가 없으면 null. */
+  due: string | null;
+  dueKind: "soon" | "plain" | "past" | null;
+  /** 사이클이 없는 작업을 모은 묶음이면 true — 더 흐리게 그린다. */
+  ghost: boolean;
+  items: WorkItem[];
+}
+
+/** ISO 날짜/타임스탬프를 로컬 달력 날짜(자정)로 읽는다. Plane은 프로젝트
+ *  타임존 기준 날짜를 UTC로 저장해 내려주므로 문자열을 앞 10자로 자르면
+ *  타임존에 따라 하루가 어긋난다 — isCompletedToday와 같이 Date로 변환해
+ *  로컬 게터를 쓴다. */
+function localDateOf(iso: string | null): Date | null {
+  if (!iso) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return null;
+  return new Date(t.getFullYear(), t.getMonth(), t.getDate());
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** 자정 기준 두 Date 사이의 날짜 수. */
+function dayDiff(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+/** 한 프로젝트의 작업을 사이클별로 쪼갠다. 묶음이 하나뿐이면 빈 배열을
+ *  돌려주고 호출부는 지금처럼 평평하게 그린다 — 사이클을 안 쓰는 프로젝트에
+ *  "사이클 없음" 헤더 한 줄만 덧붙는 건 노이즈다.
+ *
+ *  순서는 진행 중 → 날짜 미정 → 예정 → 지난 → 사이클 없음. 진행 중은 종료가
+ *  임박한 순, 예정은 시작이 이른 순, 지난 것은 최근 종료 순이다. 내 작업이
+ *  하나도 없는 사이클은 묶음으로 만들지 않는다. */
+export function splitByCycle(
+  items: WorkItem[],
+  cycles: Cycle[],
+  itemCycle: Map<string, string>,
+  now: Date = new Date(),
+): SubGroup[] {
+  const today = startOfDay(now);
+  const byCycle = new Map<string, WorkItem[]>();
+  const orphans: WorkItem[] = [];
+  for (const it of items) {
+    const cid = itemCycle.get(it.id);
+    if (!cid) {
+      orphans.push(it);
+      continue;
+    }
+    const list = byCycle.get(cid);
+    if (list) list.push(it);
+    else byCycle.set(cid, [it]);
+  }
+
+  const ranked: { phase: number; sortKey: number; name: string; group: SubGroup }[] = [];
+  for (const c of cycles) {
+    const its = byCycle.get(c.id);
+    if (!its || its.length === 0) continue;
+    const start = localDateOf(c.start_date);
+    const end = localDateOf(c.end_date);
+    let phase: number;
+    let sortKey: number;
+    let due: string | null;
+    let dueKind: SubGroup["dueKind"];
+    if (!start || !end) {
+      phase = 1; sortKey = 0; due = null; dueKind = null;
+    } else if (start > today) {
+      phase = 2; sortKey = start.getTime();
+      due = `${start.getMonth() + 1}/${start.getDate()} 시작`; dueKind = "plain";
+    } else if (end < today) {
+      phase = 3; sortKey = -end.getTime();
+      due = `${end.getMonth() + 1}/${end.getDate()} 종료`; dueKind = "past";
+    } else {
+      const left = dayDiff(today, end);
+      phase = 0; sortKey = end.getTime();
+      due = `D-${left}`; dueKind = left <= 3 ? "soon" : "plain";
+    }
+    ranked.push({
+      phase, sortKey, name: c.name,
+      group: { key: `cycle:${c.id}`, name: c.name, due, dueKind, ghost: false, items: its },
+    });
+  }
+  ranked.sort(
+    (a, b) =>
+      a.phase - b.phase ||
+      a.sortKey - b.sortKey ||
+      (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+  );
+
+  const groups = ranked.map((r) => r.group);
+  if (orphans.length > 0) {
+    groups.push({
+      key: "cycle:none", name: "사이클 없음",
+      due: null, dueKind: null, ghost: true, items: orphans,
+    });
+  }
+  return groups.length > 1 ? groups : [];
 }

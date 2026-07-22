@@ -70,3 +70,13 @@ export interface Conflict {
   server_fields: ConflictFields | null;
   detected_at_ms: number;
 }
+export interface Cycle {
+  id: string; name: string; project_id: string;
+  /** "YYYY-MM-DD" 또는 UTC 타임스탬프. 초안 사이클은 둘 다 null일 수 있다. */
+  start_date: string | null; end_date: string | null;
+}
+export interface CycleData {
+  cycles: Cycle[];
+  /** 작업 id → 사이클 id. 사이클은 작업당 최대 1개라 맵으로 충분하다. */
+  item_cycle: Record<string, string>;
+}
