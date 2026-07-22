@@ -6,8 +6,8 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, visibleTabItems } from "./logic";
-import type { SidebarTab } from "./logic";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
+import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -208,6 +208,60 @@ function ensureCycleData(): void {
 const sectionTitleEl = document.getElementById("sectionTitle")!;
 const sectionHeadEl = document.getElementById("sectionHead")!;
 const foldAllEl = document.getElementById("foldAll")!;
+const axisBtnEl = document.getElementById("axisBtn")!;
+
+// 묶는 기준. 화면 취향이라 localStorage에 둔다 (hideCompleted와 같은 자리).
+const GROUP_AXIS_KEY = "sidebarGroupAxis";
+let groupAxis: GroupAxis = localStorage.getItem(GROUP_AXIS_KEY) === "cycle" ? "cycle" : "flat";
+
+const AXIS_LABEL: Record<GroupAxis, string> = { flat: "전체 작업", cycle: "사이클별" };
+
+function syncAxisButton(): void {
+  axisBtnEl.innerHTML = `${AXIS_LABEL[groupAxis]}<span class="car">▾</span>`;
+  axisBtnEl.classList.toggle("alt", groupAxis !== "flat");
+}
+syncAxisButton();
+
+function setGroupAxis(next: GroupAxis): void {
+  groupAxis = next;
+  localStorage.setItem(GROUP_AXIS_KEY, next);
+  syncAxisButton();
+  if (next === "cycle") ensureCycleData();
+  renderTasks(lastItems, lastProjects);
+}
+
+axisBtnEl.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (openPopover) {
+    closePopover();
+    return;
+  }
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.position = "fixed";
+  pop.style.width = "156px";
+
+  const head = document.createElement("div");
+  head.className = "pop-head";
+  // 프로젝트가 언제나 최상위임을 제목이 못박는다.
+  head.textContent = "프로젝트 안에서";
+  pop.appendChild(head);
+
+  for (const axis of ["flat", "cycle"] as GroupAxis[]) {
+    const item = document.createElement("div");
+    item.className = "pop-item" + (groupAxis === axis ? " sel" : "");
+    item.textContent = AXIS_LABEL[axis];
+    item.onclick = (ev) => {
+      ev.stopPropagation();
+      closePopover();
+      setGroupAxis(axis);
+    };
+    pop.appendChild(item);
+  }
+
+  const rect = axisBtnEl.getBoundingClientRect();
+  attachPopover(pop, rect.right - 156, rect.bottom + 6);
+});
 
 // 접기는 화살표가 선 쪽으로 모이고, 펼치기는 선에서 벌어진다. 서로 마주보는
 // 겹화살표(chevrons-down-up)는 14px에서 X자로 뭉쳐 읽혀 쓰지 않았다.
@@ -917,13 +971,78 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
 
     const body = document.createElement("div");
     body.className = "grp-body" + (collapsed ? " collapsed" : "");
-    // Filter rows only — the group header (and its progress ring above) still
-    // counts hidden completed items, so "3/3" stays visible when all are done.
-    for (const it of filterHiddenCompleted(groupItems, hideCompleted)) {
-      body.appendChild(renderTaskRow(it, items, projects));
+    // 검색·필터 중에는 하위 묶음을 그리지 않는다 — "3개 결과"가 세 묶음에
+    // 하나씩 흩어지면 좁히려던 목적과 반대로 찾기 어려워진다.
+    const subs =
+      groupAxis === "cycle" && !isFiltering && cycleData
+        ? splitByCycle(groupItems, cycleData.cycles.filter((c) => c.project_id === project.id), itemCycleMap)
+        : [];
+    if (subs.length > 0) {
+      for (const sub of subs) body.appendChild(renderSubGroup(sub, items, projects));
+    } else {
+      // Filter rows only — the group header (and its progress ring above) still
+      // counts hidden completed items, so "3/3" stays visible when all are done.
+      for (const it of filterHiddenCompleted(groupItems, hideCompleted)) {
+        body.appendChild(renderTaskRow(it, items, projects));
+      }
     }
     tasksEl.appendChild(body);
   });
+}
+
+/** 하위 묶음 헤더 한 줄 + 그 아래 카드들을 담은 조각을 만든다. 접힘 상태는
+ *  프로젝트와 같은 collapsedGroups Set을 쓰되 sub.key가 "cycle:" 접두어를
+ *  달고 있어 프로젝트 id와 섞이지 않는다. */
+function renderSubGroup(sub: SubGroup, items: WorkItem[], projects: Project[]): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const collapsed = collapsedGroups.has(sub.key);
+
+  const head = document.createElement("div");
+  head.className = "sub" + (collapsed ? " collapsed" : "") + (sub.ghost ? " ghost" : "");
+
+  const chev = document.createElement("span");
+  chev.className = "chev";
+  chev.textContent = "▾";
+  head.appendChild(chev);
+
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = sub.name;
+  head.appendChild(name);
+
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  head.appendChild(spacer);
+
+  if (sub.due) {
+    const due = document.createElement("span");
+    due.className = "due" + (sub.dueKind === "soon" ? " soon" : sub.dueKind === "past" ? " past" : "");
+    due.textContent = sub.due;
+    head.appendChild(due);
+  }
+
+  const prog = groupProgress(sub.items);
+  const progEl = document.createElement("span");
+  progEl.className = "prog";
+  progEl.title = `내 작업 ${prog.done}/${prog.total} 완료`;
+  progEl.innerHTML = progressRingSvg(prog.done, prog.total) + `<span class="txt">${prog.done}/${prog.total}</span>`;
+  head.appendChild(progEl);
+
+  head.onclick = () => {
+    if (collapsedGroups.has(sub.key)) collapsedGroups.delete(sub.key);
+    else collapsedGroups.add(sub.key);
+    persistCollapsedGroups();
+    renderTasks(items, projects);
+  };
+  frag.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "sub-body" + (collapsed ? " collapsed" : "");
+  for (const it of filterHiddenCompleted(sub.items, hideCompleted)) {
+    body.appendChild(renderTaskRow(it, items, projects));
+  }
+  frag.appendChild(body);
+  return frag;
 }
 
 async function getTargetMonitor() {
@@ -1182,9 +1301,12 @@ async function runRefresh() {
     // 탭이 목록 이름과 개수를 전담한다 — 탭이 보이는 동안 섹션 헤더를 두면
     // 같은 정보가 두 줄에 반복되므로 숨기고, 탭이 꺼져 있을 때만 되살린다.
     sectionHeadEl.hidden = s.show_delegated_tab;
-    // 접기 버튼은 지금 보이는 줄의 오른쪽 끝에 있어야 한다 — appendChild가
-    // 노드를 옮기므로 양쪽에 버튼을 두 개 두고 동기화할 필요가 없다.
-    (s.show_delegated_tab ? sbTabsEl : sectionHeadEl).appendChild(foldAllEl);
+    // 두 버튼 모두 지금 보이는 줄의 오른쪽 끝에 있어야 한다 — appendChild가
+    // 노드를 옮기므로 양쪽에 버튼을 두 개 두고 동기화할 필요가 없다. 순서가
+    // 곧 화면 순서이므로 축 버튼을 먼저 붙인다.
+    const controlRow = s.show_delegated_tab ? sbTabsEl : sectionHeadEl;
+    controlRow.appendChild(axisBtnEl);
+    controlRow.appendChild(foldAllEl);
     if (!s.show_delegated_tab) activeTab = "assigned";
     syncTabButtons();
     baseUrl = s.base_url;
@@ -1197,6 +1319,7 @@ async function runRefresh() {
     lastSidebarData = data;
     delegatedMemberNames = new Map(data.delegated_members.map((m) => [m.id, m.display_name]));
     renderFromLastData();
+    if (groupAxis === "cycle") ensureCycleData();
     synced.textContent = offlineStatusText(data.is_cached, data.cached_at_ms, pendingCount, Date.now());
     refreshInbox();
   } catch (e) {
