@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, visibleTabItems } from "./logic";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, visibleTabItems } from "./logic";
 import type { Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -399,5 +399,33 @@ describe("resolveAssigneeName", () => {
   it("falls back to 알 수 없음 when the id isn't in the map", () => {
     const names = new Map([["u1", "재석"]]);
     expect(resolveAssigneeName(names, "missing")).toBe("알 수 없음");
+  });
+});
+
+describe("clampSidebarWidth", () => {
+  it("keeps a width that is already in range", () => {
+    expect(clampSidebarWidth(SIDEBAR_WIDTH_DEFAULT, 1920)).toBe(352);
+  });
+
+  it("raises a too-small width to the minimum", () => {
+    expect(clampSidebarWidth(120, 1920)).toBe(300);
+  });
+
+  it("lowers a too-large width to the maximum", () => {
+    expect(clampSidebarWidth(900, 1920)).toBe(560);
+  });
+
+  it("caps the maximum at half the monitor so the panel never covers most of the screen", () => {
+    expect(clampSidebarWidth(500, 800)).toBe(400);
+  });
+
+  it("still guarantees the minimum on a monitor too narrow for half to reach it", () => {
+    // 상한(250)이 하한(300)보다 작아도 폭이 0으로 수렴하면 사이드바가 사라진다.
+    expect(clampSidebarWidth(352, 500)).toBe(300);
+  });
+
+  it("rounds to whole pixels — a drag delta can land on a fraction", () => {
+    expect(clampSidebarWidth(352.4, 1920)).toBe(352);
+    expect(clampSidebarWidth(352.6, 1920)).toBe(353);
   });
 });

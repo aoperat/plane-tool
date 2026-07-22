@@ -228,3 +228,21 @@ export function offlineStatusText(
 export function resolveAssigneeName(names: Map<string, string>, id: string): string {
   return names.get(id) ?? "알 수 없음";
 }
+
+/** 사이드바 폭의 허용 범위와 기본값. 기본 352는 예전 320보다 10% 넓다 —
+ *  사이클 하위 묶음이 가이드선과 들여쓰기로 쓰는 가로 공간을 되돌려준다. */
+export const SIDEBAR_WIDTH_MIN = 300;
+export const SIDEBAR_WIDTH_MAX = 560;
+export const SIDEBAR_WIDTH_DEFAULT = 352;
+
+/** 저장된/드래그 중인 폭을 허용 범위로 자른다. 작은 화면에서 사이드바가 화면
+ *  절반을 넘게 덮지 않도록 상한이 모니터 논리 폭의 절반까지 줄어들지만,
+ *  하한(300)은 언제나 보장한다 — 아주 좁은 모니터에서 상한이 하한 아래로
+ *  내려가면 폭이 0에 수렴해 사이드바가 사실상 사라진다. */
+export function clampSidebarWidth(width: number, monitorLogicalWidth: number): number {
+  const max = Math.max(
+    SIDEBAR_WIDTH_MIN,
+    Math.min(SIDEBAR_WIDTH_MAX, Math.floor(monitorLogicalWidth / 2)),
+  );
+  return Math.round(Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, width)));
+}
