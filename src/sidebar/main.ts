@@ -893,6 +893,7 @@ resizeHandleEl.addEventListener("pointerdown", (e) => {
   dragStartScreenX = e.screenX;
   dragStartWidth = panelWidth;
   dragPendingWidth = null;
+  dragMonitor = null; // 이전 드래그의 stale monitor 값이 guard를 통과하지 않도록 리셋한다.
   // 캡처는 동기적으로 먼저 잡는다 — await 뒤로 미루면 그 사이의 pointermove를 놓친다.
   resizeHandleEl.setPointerCapture(e.pointerId);
   resizeHandleEl.classList.add("dragging");
