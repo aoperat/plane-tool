@@ -59,7 +59,33 @@ let priorityFilter: string | null = null;
 let autoOpened = false;
 let themePref = "auto";
 let lastRefreshAt = 0;
-const collapsedGroups = new Set<string>();
+// 접어둔 프로젝트는 webview의 localStorage에 남겨 앱을 껐다 켜도 유지된다
+// (완료 표시·활성 탭과 같은 방식). 지워진 프로젝트의 id가 남아도 그 그룹이
+// 다시 그려지지 않을 뿐이라 해롭지 않다.
+const COLLAPSED_KEY = "collapsedProjects";
+
+function loadCollapsedGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_KEY);
+    const ids: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(ids)) return new Set();
+    return new Set(ids.filter((v): v is string => typeof v === "string"));
+  } catch {
+    // 손상된 값이면 전부 펼친 상태로 시작한다 — 접힘은 복구할 가치가 없다.
+    return new Set();
+  }
+}
+
+const collapsedGroups = loadCollapsedGroups();
+
+function persistCollapsedGroups() {
+  localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedGroups]));
+}
+// 마지막 렌더에서 실제로 화면에 나온 프로젝트 id — "모두 접기"가 무엇을
+// 대상으로 하는지, 그리고 지금이 전부 접힌 상태인지 판단하는 기준이다.
+// 항목이 하나도 없는 프로젝트는 애초에 그룹으로 그려지지 않으므로
+// collapsedGroups 전체가 아니라 이 목록과 비교해야 한다.
+let lastGroupIds: string[] = [];
 let lastItems: WorkItem[] = [];
 let lastProjects: Project[] = [];
 let lastSidebarData: SidebarData | null = null;
@@ -87,6 +113,38 @@ let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
 
 const sectionTitleEl = document.getElementById("sectionTitle")!;
 const sectionHeadEl = document.getElementById("sectionHead")!;
+const foldAllEl = document.getElementById("foldAll")!;
+
+// 접기는 화살표가 선 쪽으로 모이고, 펼치기는 선에서 벌어진다. 서로 마주보는
+// 겹화살표(chevrons-down-up)는 14px에서 X자로 뭉쳐 읽혀 쓰지 않았다.
+const FOLD_ICON =
+  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7 8 2.5 12.5 7"/><path d="M3 12.5h10"/></svg>`;
+const UNFOLD_ICON =
+  `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9 8 13.5 12.5 9"/><path d="M3 3.5h10"/></svg>`;
+
+/** 화면에 나온 그룹이 하나도 빠짐없이 접혀 있는지. 그룹이 없으면 false —
+ *  이 경우 버튼 자체를 숨기므로 어느 쪽으로 판정하든 보이지 않는다. */
+function allGroupsCollapsed(): boolean {
+  return lastGroupIds.length > 0 && lastGroupIds.every((id) => collapsedGroups.has(id));
+}
+
+/** 버튼은 하나이고 상태에 따라 뜻이 바뀐다 — 하나라도 펼쳐져 있으면 "모두
+ *  접기", 전부 접혀 있으면 "모두 펼치기". renderTasks가 그룹을 다시 계산할
+ *  때마다 호출해 화면과 어긋나지 않게 한다. */
+function syncFoldButton() {
+  const collapsed = allGroupsCollapsed();
+  foldAllEl.hidden = lastGroupIds.length === 0;
+  foldAllEl.innerHTML = collapsed ? UNFOLD_ICON : FOLD_ICON;
+  foldAllEl.title = collapsed ? "모든 프로젝트 펼치기" : "모든 프로젝트 접기";
+}
+
+foldAllEl.onclick = (e) => {
+  e.stopPropagation();
+  if (allGroupsCollapsed()) collapsedGroups.clear();
+  else for (const id of lastGroupIds) collapsedGroups.add(id);
+  persistCollapsedGroups();
+  renderTasks(lastItems, lastProjects);
+};
 const assignedTabCountEl = document.getElementById("assignedTabCount")!;
 const delegatedTabCountEl = document.getElementById("delegatedTabCount")!;
 const tabEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".sb-tab"));
@@ -704,8 +762,12 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
 
   const groups = groupItemsByProject(filtered, projects);
   emptyStateEl.hidden = !isFiltering || groups.length > 0;
+  lastGroupIds = groups.map((g) => g.project.id);
+  syncFoldButton();
   groups.forEach(({ project, items: groupItems }, i) => {
-    const collapsed = collapsedGroups.has(project.id);
+    // 검색·필터 중에는 접힘을 무시하고 펼쳐 보여준다 — 그러지 않으면
+    // "3개 결과"라고 떠도 그 프로젝트가 접혀 있어 화면에는 아무것도 안 보인다.
+    const collapsed = collapsedGroups.has(project.id) && !isFiltering;
 
     const grp = document.createElement("div");
     grp.className = "grp" + (collapsed ? " collapsed" : "") + (i > 0 ? " with-divider" : "");
@@ -754,6 +816,7 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     grp.onclick = () => {
       if (collapsedGroups.has(project.id)) collapsedGroups.delete(project.id);
       else collapsedGroups.add(project.id);
+      persistCollapsedGroups();
       renderTasks(items, projects);
     };
     tasksEl.appendChild(grp);
@@ -944,6 +1007,9 @@ async function runRefresh() {
     // 탭이 목록 이름과 개수를 전담한다 — 탭이 보이는 동안 섹션 헤더를 두면
     // 같은 정보가 두 줄에 반복되므로 숨기고, 탭이 꺼져 있을 때만 되살린다.
     sectionHeadEl.hidden = s.show_delegated_tab;
+    // 접기 버튼은 지금 보이는 줄의 오른쪽 끝에 있어야 한다 — appendChild가
+    // 노드를 옮기므로 양쪽에 버튼을 두 개 두고 동기화할 필요가 없다.
+    (s.show_delegated_tab ? sbTabsEl : sectionHeadEl).appendChild(foldAllEl);
     if (!s.show_delegated_tab) activeTab = "assigned";
     syncTabButtons();
     baseUrl = s.base_url;

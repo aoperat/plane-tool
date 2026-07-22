@@ -24,6 +24,9 @@
       <div class="sb-tabs" id="sbTabs">
         <button type="button" class="sb-tab active" data-tab="assigned">담당 작업 <span class="count" id="assignedTabCount">0</span></button>
         <button type="button" class="sb-tab" data-tab="delegated">내가 할당한 작업 <span class="count" id="delegatedTabCount">0</span></button>
+        <!-- 탭이 꺼져 있으면 이 줄이 사라지므로, 스크립트가 이 버튼을 섹션
+             헤더 줄로 옮긴다 (같은 노드 하나를 자리만 바꿔 쓴다). -->
+        <span id="foldAll" class="fold-btn"></span>
       </div>
       <div class="sb-search-bar" id="searchBar" hidden>
         <div class="sb-search-row">
