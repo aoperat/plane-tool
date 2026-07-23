@@ -1,6 +1,5 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { deleteWorkItem, getSettings, getWorkItem, listMembers, updateWorkItemFields, type UpdateWorkItemFields } from "../shared/ipc";
+import { deleteWorkItem, getSettings, getWorkItem, listMembers, openIssuePopup, updateWorkItemFields, type UpdateWorkItemFields } from "../shared/ipc";
 import { buildIssueUrl } from "../sidebar/logic";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
 import { attachWheelCycle } from "../shared/wheelCycle";
@@ -465,9 +464,9 @@ async function openInBrowser() {
     // appear above the modal instead of behind it — same fix as the
     // sidebar's openInBrowser.
     await win.setAlwaysOnTop(false);
-    await openUrl(url);
+    await openIssuePopup(url);
   } catch (err) {
-    console.error("openUrl failed:", url, err);
+    console.error("openIssuePopup failed:", url, err);
   }
 }
 

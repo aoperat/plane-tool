@@ -40,6 +40,7 @@ export const saveSettings = (
   });
 export const verifyDelegatedTabPassword = (password: string) =>
   invoke<boolean>("verify_delegated_tab_password", { password });
+export const openIssuePopup = (url: string) => invoke<void>("open_issue_popup", { url });
 export const createIssue = (
   project_id: string,
   name: string,
