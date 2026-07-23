@@ -270,6 +270,73 @@ fn spawn_morning_briefing_watcher(app: tauri::AppHandle) {
     });
 }
 
+/// 마감 다이제스트 발화 시각 판정 주기. 브리핑 워처와 같은 매분 폴링.
+const DEADLINE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 매분 로컬 시각을 확인해, 마감 알림이 켜져 있고 지정 시각이 지났으며 오늘
+/// 아직 안 띄웠다면 마감 다이제스트를 평가해 토스트를 띄운다. 발화 판정은
+/// 아침 브리핑과 같은 `should_fire_morning`을 재사용한다.
+fn spawn_deadline_watcher(app: tauri::AppHandle) {
+    use chrono::Timelike;
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let s = config::load_settings(&app);
+            if s.deadline_notify_enabled {
+                if let Some(cfg_min) = briefing::parse_hhmm(&s.deadline_notify_time) {
+                    let now = chrono::Local::now();
+                    let today = now.format("%Y-%m-%d").to_string();
+                    let now_min = now.hour() * 60 + now.minute();
+                    let last = config::get_deadline_last(&app);
+                    if briefing::should_fire_morning(now_min, cfg_min, &today, last.as_deref()) {
+                        match deadline_tick(&app, &s, &today).await {
+                            // 평가 성공 시에만 오늘 발화한 것으로 기록한다.
+                            Ok(true) => { let _ = config::set_deadline_last(&app, &today); }
+                            // 미설정(토큰/URL 없음)은 기록하지 않는다.
+                            Ok(false) => {}
+                            // 오프라인/일시 오류는 기록하지 않아 다음 tick에 재시도한다.
+                            Err(e) => eprintln!("deadline watch tick failed: {e}"),
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(DEADLINE_POLL_INTERVAL).await;
+        }
+    });
+}
+
+/// 내 미완료 작업의 마감을 평가해 다이제스트 토스트를 띄운다. 대상이 하나도
+/// 없으면 토스트 없이 조용히 넘어간다. 반환값: 평가에 성공하면 Ok(true),
+/// 미설정으로 건너뛰면 Ok(false), 네트워크/조회 오류면 Err.
+async fn deadline_tick(app: &tauri::AppHandle, s: &config::Settings, today: &str) -> Result<bool, String> {
+    if s.base_url.is_empty() || s.workspace.is_empty() {
+        return Ok(false);
+    }
+    let Some(token) = config::get_token() else { return Ok(false) };
+    let client = plane_api::PlaneClient::new(s.base_url.clone(), s.workspace.clone(), token);
+    let me = client.current_user_cached().await?.id;
+
+    // 프로젝트별 work items 조회 (assign_tick과 같은 N+1). 하나라도 실패하면
+    // 부분 목록으로 잘못된 다이제스트를 내지 않도록 tick 전체를 중단한다.
+    let projects = client.list_projects().await?;
+    let mut items: Vec<plane_api::WorkItem> = Vec::new();
+    for p in &projects {
+        items.extend(client.list_work_items(&p.id).await?);
+    }
+
+    // "나에게 할당된 미완료 + project identifier 부여" 필터를 재사용.
+    let open = briefing::open_assigned_items(&me, &projects, items);
+    let digest = deadline_watch::summarize(&open, today, s.deadline_lead_days);
+    if !digest.is_empty() {
+        let _ = app
+            .notification()
+            .builder()
+            .title("마감 임박 작업")
+            .body(deadline_watch::digest_body(&digest))
+            .show();
+    }
+    Ok(true)
+}
+
 /// 할당 감지 폴링 간격. Plane 레이트 리밋을 고려해 60초 고정 (스펙 승인값).
 const ASSIGN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -758,6 +825,7 @@ pub fn run() {
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());
+            spawn_deadline_watcher(app.handle().clone());
             spawn_assign_watcher(app.handle().clone());
             spawn_offline_watcher(app.handle().clone());
             // Note: no focus-loss auto-hide here — QuickAdd stays open until
