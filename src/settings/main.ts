@@ -107,6 +107,9 @@ const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputE
 const idleOpenMinutes = document.getElementById("idleOpenMinutes") as HTMLInputElement;
 const assignNotifyEnabled = document.getElementById("assignNotifyEnabled") as HTMLInputElement;
 const assignRemindHours = document.getElementById("assignRemindHours") as HTMLInputElement;
+const deadlineNotifyEnabled = document.getElementById("deadlineNotifyEnabled") as HTMLInputElement;
+const deadlineNotifyTime = document.getElementById("deadlineNotifyTime") as HTMLInputElement;
+const deadlineLeadDays = document.getElementById("deadlineLeadDays") as HTMLInputElement;
 const showDelegatedTab = document.getElementById("showDelegatedTab") as HTMLInputElement;
 
 let pwPopover: HTMLElement | null = null;
@@ -227,6 +230,9 @@ async function load() {
   morningTime.value = s.morning_briefing_time;
   assignNotifyEnabled.checked = s.assign_notify_enabled;
   assignRemindHours.value = String(s.assign_remind_hours);
+  deadlineNotifyEnabled.checked = s.deadline_notify_enabled;
+  deadlineNotifyTime.value = s.deadline_notify_time;
+  deadlineLeadDays.value = String(s.deadline_lead_days);
   showDelegatedTab.checked = s.show_delegated_tab;
 
   const monitors = sortMonitorsByPosition(await availableMonitors());
@@ -262,6 +268,9 @@ document.getElementById("save")!.onclick = async () => {
       morningTime.value || undefined,
       assignNotifyEnabled.checked,
       Math.max(1, Math.floor(Number(assignRemindHours.value) || 2)),
+      deadlineNotifyEnabled.checked,
+      deadlineNotifyTime.value || undefined,
+      Math.max(1, Math.floor(Number(deadlineLeadDays.value) || 3)),
       showDelegatedTab.checked,
     );
     if (token.value) hasToken = true;

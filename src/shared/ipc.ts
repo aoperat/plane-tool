@@ -18,6 +18,9 @@ export const saveSettings = (
   morningBriefingTime?: string,
   assignNotifyEnabled?: boolean,
   assignRemindHours?: number,
+  deadlineNotifyEnabled?: boolean,
+  deadlineNotifyTime?: string,
+  deadlineLeadDays?: number,
   showDelegatedTab?: boolean,
 ) =>
   invoke<void>("save_settings", {
@@ -36,6 +39,9 @@ export const saveSettings = (
     morningBriefingTime,
     assignNotifyEnabled,
     assignRemindHours,
+    deadlineNotifyEnabled,
+    deadlineNotifyTime,
+    deadlineLeadDays,
     showDelegatedTab,
   });
 export const verifyDelegatedTabPassword = (password: string) =>

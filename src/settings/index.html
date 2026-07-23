@@ -60,6 +60,10 @@
         <h2>할당 알림</h2>
         <label class="check-row"><input id="assignNotifyEnabled" type="checkbox" />다른 사람이 나에게 작업을 할당하면 알림</label>
         <label>미확인 재알림 주기(시간)<input id="assignRemindHours" type="number" min="1" /></label>
+        <h2>마감 알림</h2>
+        <label class="check-row"><input id="deadlineNotifyEnabled" type="checkbox" />마감이 임박·경과한 작업을 하루 한 번 알림</label>
+        <label>마감 알림 시각<input id="deadlineNotifyTime" type="time" /></label>
+        <label>임박 기준 일수<input id="deadlineLeadDays" type="number" min="1" /></label>
       </section>
       <section class="set-panel" data-panel="briefing" role="tabpanel" hidden>
         <h2>AI 브리핑</h2>
