@@ -3,6 +3,7 @@ pub mod briefing;
 pub mod browser_popup;
 pub mod commands;
 pub mod config;
+pub mod deadline_watch;
 pub mod idle;
 pub mod monitors;
 pub mod offline;
