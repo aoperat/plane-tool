@@ -28,6 +28,9 @@ pub struct SettingsDto {
     pub morning_briefing_time: String,
     pub assign_notify_enabled: bool,
     pub assign_remind_hours: u32,
+    pub deadline_notify_enabled: bool,
+    pub deadline_notify_time: String,
+    pub deadline_lead_days: u32,
     pub show_delegated_tab: bool,
 }
 
@@ -226,6 +229,9 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         morning_briefing_time: s.morning_briefing_time,
         assign_notify_enabled: s.assign_notify_enabled,
         assign_remind_hours: s.assign_remind_hours,
+        deadline_notify_enabled: s.deadline_notify_enabled,
+        deadline_notify_time: s.deadline_notify_time,
+        deadline_lead_days: s.deadline_lead_days,
         show_delegated_tab: s.show_delegated_tab,
     }
 }
@@ -248,6 +254,9 @@ pub fn save_settings(
     morning_briefing_time: Option<String>,
     assign_notify_enabled: Option<bool>,
     assign_remind_hours: Option<u32>,
+    deadline_notify_enabled: Option<bool>,
+    deadline_notify_time: Option<String>,
+    deadline_lead_days: Option<u32>,
     show_delegated_tab: Option<bool>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
@@ -275,6 +284,14 @@ pub fn save_settings(
     }
     if let Some(v) = assign_notify_enabled { s.assign_notify_enabled = v; }
     if let Some(v) = assign_remind_hours { if v >= 1 { s.assign_remind_hours = v; } }
+    if let Some(v) = deadline_notify_enabled { s.deadline_notify_enabled = v; }
+    if let Some(v) = deadline_notify_time {
+        let ok = v.len() == 5 && v.as_bytes()[2] == b':'
+            && v[0..2].parse::<u32>().map_or(false, |h| h < 24)
+            && v[3..5].parse::<u32>().map_or(false, |m| m < 60);
+        if ok { s.deadline_notify_time = v; }
+    }
+    if let Some(v) = deadline_lead_days { if v >= 1 { s.deadline_lead_days = v; } }
     if let Some(v) = show_delegated_tab { s.show_delegated_tab = v; }
     // 재시작 없이 즉시 반영. 등록에 실패하면(다른 앱이 선점 등) 아무것도
     // 저장하지 않고 에러를 돌려줘서 설정 파일과 실제 등록 상태를 일치시킨다.
