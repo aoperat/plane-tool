@@ -1437,7 +1437,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "results": [{ "id": "ci1", "issue": "i1", "cycle": "c1" }]
+                "results": [{ "id": "i1", "name": "작업1", "state": { "group": "started" } }]
             })))
             .mount(&server)
             .await;
@@ -1458,7 +1458,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p2/cycles/c2/cycle-issues/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "results": [{ "id": "ci2", "issue": "i2", "cycle": "c2" }]
+                "results": [{ "id": "i2", "name": "작업2", "state": { "group": "started" } }]
             })))
             .mount(&server)
             .await;
@@ -1508,7 +1508,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "results": [{ "id": "ci1", "issue": "i1", "cycle": "c1" }]
+                "results": [{ "id": "i1", "name": "작업1", "state": { "group": "started" } }]
             })))
             .mount(&server)
             .await;

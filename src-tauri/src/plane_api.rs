@@ -353,9 +353,11 @@ struct RawCycle {
     end_date: Option<String>,
 }
 
-/// cycle-issues/ 행에서 필요한 건 작업 id뿐이다 (cycle id는 요청 경로로 이미 안다).
+/// cycle-issues/ 응답은 `{cycle, issue}` 관계 쌍이 아니라 **작업(issue) 객체를
+/// 직접** 나열한다 — 각 행의 `id`가 곧 작업 id다(cycle id는 요청 경로로 이미
+/// 안다). 나머지 필드(name/state/assignees 등)는 쓰지 않으므로 무시한다.
 #[derive(Deserialize)]
-struct RawCycleIssue { issue: String }
+struct RawCycleIssue { id: String }
 
 #[derive(Deserialize)]
 struct RawMember { id: String, #[serde(default)] display_name: String }
@@ -597,7 +599,7 @@ impl PlaneClient {
         );
         let page: Paginated<RawCycleIssue> =
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
-        Ok(page.results.into_iter().map(|c| c.issue).collect())
+        Ok(page.results.into_iter().map(|c| c.id).collect())
     }
 
     // Unlike every other list endpoint in this file, /members/ returns a bare
@@ -1573,10 +1575,12 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v1/workspaces/acme/projects/p1/cycles/c1/cycle-issues/"))
+            // 실제 응답은 관계 쌍이 아니라 작업(issue) 객체를 직접 나열한다 —
+            // 각 행의 `id`가 작업 id이고, name/state 등 나머지는 무시된다.
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "results": [
-                    { "id": "ci1", "issue": "i1", "cycle": "c1" },
-                    { "id": "ci2", "issue": "i2", "cycle": "c1" }
+                    { "id": "i1", "name": "작업 1", "state": { "group": "started" } },
+                    { "id": "i2", "name": "작업 2", "state": { "group": "unstarted" } }
                 ]
             })))
             .mount(&server)
