@@ -1,5 +1,6 @@
 pub mod assign_watch;
 pub mod briefing;
+pub mod browser_popup;
 pub mod commands;
 pub mod config;
 pub mod idle;
