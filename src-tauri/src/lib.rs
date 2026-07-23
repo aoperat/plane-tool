@@ -822,6 +822,7 @@ pub fn run() {
             app.manage(assign_watch::StateLock::default());
             app.manage(offline::QueueLock::default());
             app.manage(offline::ConflictLock::default());
+            app.manage(browser_popup::PopupWindow::default());
             check_for_updates(app.handle().clone());
             spawn_idle_watcher(app.handle().clone());
             spawn_morning_briefing_watcher(app.handle().clone());

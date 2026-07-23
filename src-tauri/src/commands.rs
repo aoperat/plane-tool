@@ -867,13 +867,8 @@ pub fn open_issue_popup(app: tauri::AppHandle, url: String) -> Result<(), String
     let popup_launched = crate::browser_popup::default_browser_exe()
         .filter(|exe| crate::browser_popup::is_chromium_browser(exe))
         .and_then(|exe| {
-            let (x, y) = crate::browser_popup::popup_position(&app, (1100, 800))?;
-            std::process::Command::new(&exe)
-                .arg(format!("--app={url}"))
-                .arg("--window-size=1100,800")
-                .arg(format!("--window-position={x},{y}"))
-                .spawn()
-                .ok()
+            let position = crate::browser_popup::popup_position(&app, (1100, 800))?;
+            crate::browser_popup::open_popup_window(&app, &exe, &url, position, (1100, 800))
         })
         .is_some();
 
