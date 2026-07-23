@@ -181,6 +181,14 @@ function loadCachedCycleData(): void {
 }
 loadCachedCycleData();
 
+/** 다음 사이클 데이터 요청이 캐시 TTL을 무시하고 다시 받도록 만든다. 명시적
+ *  사용자 액션(수동 새로고침, 드롭다운에서 사이클별 선택)에서만 부른다 —
+ *  자동 갱신(포커스)은 10분 TTL을 지켜야 요청이 늘지 않는다. 방금 만든
+ *  사이클이 캐시에 가려 안 보일 때 사용자가 직접 최신화할 수단이 된다. */
+function invalidateCycleData(): void {
+  cycleFetchedAtMs = 0;
+}
+
 /** 사이클별 보기에 필요한 데이터를 확보한다. 신선한 캐시가 있으면 아무것도
  *  하지 않고, 없으면 백그라운드로 받아온 뒤 화면을 다시 그린다. 실패하면
  *  낡은 캐시를 그대로 쓴다 — 축을 되돌리지는 않는다. 사용자가 자기가 뭘
@@ -249,7 +257,13 @@ function setGroupAxis(next: GroupAxis): void {
   groupAxis = next;
   localStorage.setItem(GROUP_AXIS_KEY, next);
   syncAxisButton();
-  if (next === "cycle") ensureCycleData();
+  if (next === "cycle") {
+    // 드롭다운에서 사이클별을 직접 고르는 건 명시적 액션이다 — "방금 사이클을
+    // 만들었으니 최신이겠지"라는 기대에 맞춰, 캐시가 신선해도 무시하고 다시
+    // 받는다. 자동 갱신(10분)과 달리 이 경로는 사용자가 눌러야만 온다.
+    invalidateCycleData();
+    ensureCycleData();
+  }
   renderTasks(lastItems, lastProjects);
 }
 
@@ -1371,7 +1385,13 @@ function refreshIfStale() {
   if (!isWithinCooldown(lastRefreshAt, Date.now(), REFRESH_COOLDOWN_MS)) refresh();
 }
 
-document.getElementById("refresh")!.onclick = refresh;
+// 수동 새로고침은 사이클 소속도 강제로 다시 받는다 — 방금 만든 사이클이 10분
+// 캐시에 가려 안 보일 때 새로고침 한 번으로 최신화되게 한다. 자동 갱신 경로
+// (포커스)는 그대로 10분 TTL을 지켜 요청을 아낀다.
+document.getElementById("refresh")!.onclick = () => {
+  invalidateCycleData();
+  return refresh();
+};
 
 document.getElementById("briefingBtn")!.onclick = () => {
   openBriefing().catch((e) => console.error("openBriefing failed:", e));
