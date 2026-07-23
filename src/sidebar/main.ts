@@ -239,26 +239,19 @@ function ensureCycleData(): void {
 const sectionTitleEl = document.getElementById("sectionTitle")!;
 const sectionHeadEl = document.getElementById("sectionHead")!;
 const foldAllEl = document.getElementById("foldAll")!;
-const axisBtnEl = document.getElementById("axisBtn")!;
 
 // 묶는 기준. 화면 취향이라 localStorage에 둔다 (hideCompleted와 같은 자리).
+// 선택 UI는 더보기(⋯) 메뉴의 "묶기" 항목에 있다 — openMoreMenu 참고.
 const GROUP_AXIS_KEY = "sidebarGroupAxis";
 let groupAxis: GroupAxis = localStorage.getItem(GROUP_AXIS_KEY) === "cycle" ? "cycle" : "flat";
 
 const AXIS_LABEL: Record<GroupAxis, string> = { flat: "전체 작업", cycle: "사이클별" };
 
-function syncAxisButton(): void {
-  axisBtnEl.innerHTML = `${AXIS_LABEL[groupAxis]}<span class="car">▾</span>`;
-  axisBtnEl.classList.toggle("alt", groupAxis !== "flat");
-}
-syncAxisButton();
-
 function setGroupAxis(next: GroupAxis): void {
   groupAxis = next;
   localStorage.setItem(GROUP_AXIS_KEY, next);
-  syncAxisButton();
   if (next === "cycle") {
-    // 드롭다운에서 사이클별을 직접 고르는 건 명시적 액션이다 — "방금 사이클을
+    // 메뉴에서 사이클별을 직접 고르는 건 명시적 액션이다 — "방금 사이클을
     // 만들었으니 최신이겠지"라는 기대에 맞춰, 캐시가 신선해도 무시하고 다시
     // 받는다. 자동 갱신(10분)과 달리 이 경로는 사용자가 눌러야만 온다.
     invalidateCycleData();
@@ -266,39 +259,6 @@ function setGroupAxis(next: GroupAxis): void {
   }
   renderTasks(lastItems, lastProjects);
 }
-
-axisBtnEl.addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (openPopover) {
-    closePopover();
-    return;
-  }
-  const pop = document.createElement("div");
-  pop.className = "pop";
-  pop.style.position = "fixed";
-  pop.style.width = "156px";
-
-  const head = document.createElement("div");
-  head.className = "pop-head";
-  // 프로젝트가 언제나 최상위임을 제목이 못박는다.
-  head.textContent = "프로젝트 안에서";
-  pop.appendChild(head);
-
-  for (const axis of ["flat", "cycle"] as GroupAxis[]) {
-    const item = document.createElement("div");
-    item.className = "pop-item" + (groupAxis === axis ? " sel" : "");
-    item.textContent = AXIS_LABEL[axis];
-    item.onclick = (ev) => {
-      ev.stopPropagation();
-      closePopover();
-      setGroupAxis(axis);
-    };
-    pop.appendChild(item);
-  }
-
-  const rect = axisBtnEl.getBoundingClientRect();
-  attachPopover(pop, rect.right - 156, rect.bottom + 6);
-});
 
 // 접기는 화살표가 선 쪽으로 모이고, 펼치기는 선에서 벌어진다. 서로 마주보는
 // 겹화살표(chevrons-down-up)는 14px에서 X자로 뭉쳐 읽혀 쓰지 않았다.
@@ -1352,12 +1312,9 @@ async function runRefresh() {
     // 탭이 목록 이름과 개수를 전담한다 — 탭이 보이는 동안 섹션 헤더를 두면
     // 같은 정보가 두 줄에 반복되므로 숨기고, 탭이 꺼져 있을 때만 되살린다.
     sectionHeadEl.hidden = s.show_delegated_tab;
-    // 두 버튼 모두 지금 보이는 줄의 오른쪽 끝에 있어야 한다 — appendChild가
-    // 노드를 옮기므로 양쪽에 버튼을 두 개 두고 동기화할 필요가 없다. 순서가
-    // 곧 화면 순서이므로 축 버튼을 먼저 붙인다.
-    const controlRow = s.show_delegated_tab ? sbTabsEl : sectionHeadEl;
-    controlRow.appendChild(axisBtnEl);
-    controlRow.appendChild(foldAllEl);
+    // 접기 버튼은 지금 보이는 줄의 오른쪽 끝에 있어야 한다 — appendChild가
+    // 노드를 옮기므로 양쪽에 버튼을 두 개 두고 동기화할 필요가 없다.
+    (s.show_delegated_tab ? sbTabsEl : sectionHeadEl).appendChild(foldAllEl);
     if (!s.show_delegated_tab) activeTab = "assigned";
     syncTabButtons();
     baseUrl = s.base_url;
@@ -1565,6 +1522,26 @@ function openMoreMenu() {
       // 목록뿐 아니라 탭 개수도 이 설정에 따라 달라지므로 둘 다 다시 그린다.
       renderFromLastData();
     });
+  }
+  appendDivider(pop);
+
+  // 묶기 — 프로젝트 안에서 작업을 어떻게 나눌지. 좁은 사이드바라 hover 서브메뉴
+  // 대신 이 메뉴 안에 소제목 + 항목으로 편다. 나중에 모듈별을 더하면 이 배열에
+  // "module" 한 줄만 추가하면 된다.
+  const axisHead = document.createElement("div");
+  axisHead.className = "pop-head";
+  axisHead.textContent = "묶기";
+  pop.appendChild(axisHead);
+  for (const axis of ["flat", "cycle"] as GroupAxis[]) {
+    const axisItem = document.createElement("div");
+    axisItem.className = "pop-item" + (groupAxis === axis ? " sel" : "");
+    axisItem.textContent = AXIS_LABEL[axis];
+    axisItem.onclick = (e) => {
+      e.stopPropagation();
+      closePopover();
+      setGroupAxis(axis);
+    };
+    pop.appendChild(axisItem);
   }
   appendDivider(pop);
 

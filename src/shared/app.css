@@ -320,23 +320,6 @@ kbd {
 .sb-tabs .fold-btn { align-self: center; margin: 0 0 4px 4px; }
 .sb-section .h .fold-btn { margin-left: 6px; }
 
-/* 프로젝트 안에서 작업을 어떻게 묶을지 고르는 버튼. fold-btn 과 마찬가지로
-   지금 보이는 줄(탭 줄 또는 섹션 헤더)로 스크립트가 옮겨 붙인다 — 위임 탭이
-   켜져 있으면 섹션 헤더가 통째로 숨기 때문이다. */
-.axis-btn {
-  flex: none; display: inline-flex; align-items: center; gap: 3px;
-  padding: 2px 5px; border-radius: 5px; cursor: pointer;
-  /* .sb-section .h 가 uppercase/letter-spacing 을 걸어두므로 되돌린다. */
-  font-size: 10.5px; letter-spacing: 0; text-transform: none; color: var(--muted);
-}
-.axis-btn:hover { background: var(--panel-2); color: var(--text); }
-/* 기본(전체 작업)이 아닐 때만 강조 — "지금 평소와 다르게 보고 있다"는 신호. */
-.axis-btn.alt { color: var(--accent); background: var(--accent-soft); }
-.axis-btn .car { font-size: 8px; opacity: .8; }
-.axis-btn[hidden] { display: none; }
-.sb-section .h .axis-btn { margin-left: 6px; }
-.sb-tabs .axis-btn { align-self: center; margin: 0 0 4px 4px; }
-
 .sb-tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); }
 /* display:flex above beats the UA's [hidden] { display: none } — restate it. */
 .sb-tabs[hidden] { display: none; }
