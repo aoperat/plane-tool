@@ -69,16 +69,6 @@ pub fn popup_position(app: &tauri::AppHandle, window_size: (i32, i32)) -> Option
 #[derive(Default)]
 pub struct PopupWindow(pub std::sync::Mutex<Option<isize>>);
 
-/// `candidate`가 `target`과 `tolerance` 픽셀 이내로 비슷한 위치·크기인지.
-/// 둘 다 (x, y, width, height) 형식. DPI 스케일링 등으로 브라우저가 요청한
-/// 좌표를 픽셀 단위로 정확히 지키지 않을 수 있어 여유를 둔다.
-fn rect_matches(candidate: (i32, i32, i32, i32), target: (i32, i32, i32, i32), tolerance: i32) -> bool {
-    (candidate.0 - target.0).abs() <= tolerance
-        && (candidate.1 - target.1).abs() <= tolerance
-        && (candidate.2 - target.2).abs() <= tolerance
-        && (candidate.3 - target.3).abs() <= tolerance
-}
-
 unsafe extern "system" fn collect_visible_window(
     hwnd: windows::Win32::Foundation::HWND,
     lparam: windows::Win32::Foundation::LPARAM,
@@ -110,33 +100,25 @@ fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
     String::from_utf16_lossy(&buf[..len])
 }
 
-/// `before`에 없던 새 창 중 Chrome/Edge 최상위 창 클래스(`Chrome_WidgetWin_1`)이고
-/// `target` 위치·크기와 대략 일치하는 것을 최대 `timeout` 동안 짧은 간격으로
-/// 찾는다. 방금 띄운 팝업을 다음번에 닫기 위해 추적하는 용도 — 못 찾으면
-/// `None`(팝업 자체는 이미 열렸으니 실패로 취급하지 않고, 다음 호출에서
-/// 자동으로 닫는 것만 포기한다).
-fn find_new_popup_window(
-    before: &std::collections::HashSet<isize>,
-    target: (i32, i32, i32, i32),
-    timeout: std::time::Duration,
-) -> Option<isize> {
-    use windows::Win32::Foundation::{HWND, RECT};
-    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+/// `before`에 없던 새 창 중 Chrome/Edge 최상위 창 클래스(`Chrome_WidgetWin_1`)인
+/// 것을 최대 `timeout` 동안 짧은 간격으로 찾는다. 방금 띄운 팝업을 다음번에
+/// 닫기 위해 추적하는 용도 — 못 찾으면 `None`(팝업 자체는 이미 열렸으니 실패로
+/// 취급하지 않고, 다음 호출에서 자동으로 닫는 것만 포기한다).
+///
+/// 위치·크기로 대상을 좁히지 않는다 — Chrome은 같은 URL을 반복해서 `--app`으로
+/// 열면 `--window-position`/`--window-size`를 무시하고 그 앱의 마지막 창
+/// 위치를 그대로 복원하는 경우가 있어(직접 확인함), 요청한 좌표와 실제 창
+/// 좌표가 안 맞을 수 있다. "방금 새로 생긴 Chrome 최상위 창"이라는 시점
+/// 정보만으로 충분히 구분된다.
+fn find_new_popup_window(before: &std::collections::HashSet<isize>, timeout: std::time::Duration) -> Option<isize> {
+    use windows::Win32::Foundation::HWND;
 
-    const TOLERANCE: i32 = 200;
     let deadline = std::time::Instant::now() + timeout;
     loop {
         for &raw in visible_window_handles().difference(before) {
             let hwnd = HWND(raw as *mut std::ffi::c_void);
-            if window_class_name(hwnd) != "Chrome_WidgetWin_1" {
-                continue;
-            }
-            let mut rect = RECT::default();
-            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
-                let candidate = (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-                if rect_matches(candidate, target, TOLERANCE) {
-                    return Some(raw);
-                }
+            if window_class_name(hwnd) == "Chrome_WidgetWin_1" {
+                return Some(raw);
             }
         }
         if std::time::Instant::now() >= deadline {
@@ -185,7 +167,7 @@ pub fn open_popup_window(
         .spawn()
         .ok()?;
 
-    if let Some(hwnd) = find_new_popup_window(&before, (x, y, w, h), std::time::Duration::from_secs(2)) {
+    if let Some(hwnd) = find_new_popup_window(&before, std::time::Duration::from_secs(6)) {
         *state.0.lock().unwrap() = Some(hwnd);
     }
     Some(())
@@ -234,28 +216,62 @@ mod tests {
     }
 
     #[test]
-    fn rect_matches_exact() {
-        assert!(rect_matches((100, 200, 1100, 800), (100, 200, 1100, 800), 30));
-    }
-
-    #[test]
-    fn rect_matches_within_tolerance() {
-        assert!(rect_matches((110, 190, 1120, 780), (100, 200, 1100, 800), 30));
-    }
-
-    #[test]
-    fn rect_matches_rejects_beyond_tolerance_in_any_dimension() {
-        assert!(!rect_matches((200, 200, 1100, 800), (100, 200, 1100, 800), 30));
-        assert!(!rect_matches((100, 300, 1100, 800), (100, 200, 1100, 800), 30));
-        assert!(!rect_matches((100, 200, 1300, 800), (100, 200, 1100, 800), 30));
-        assert!(!rect_matches((100, 200, 1100, 1000), (100, 200, 1100, 800), 30));
-    }
-
-    #[test]
     #[ignore = "실제 Windows 레지스트리를 읽는다 — CI에서 돌리지 않음. 로컬에서 수동 확인용."]
     fn manual_check_default_browser_exe() {
         let exe = default_browser_exe();
         println!("detected default browser exe: {exe:?}");
         assert!(exe.is_some(), "레지스트리에서 기본 브라우저를 찾지 못했다");
+    }
+
+    /// `open_popup_window`이 하는 것과 같은 순서(spawn → 찾기 → 다음 번엔 닫기)를
+    /// Tauri 앱 없이 직접 재현해, "이전 팝업이 실제로 닫히고 새 팝업만 남는지"를
+    /// 검증한다. example.com/example.org는 IANA가 문서·테스트용으로 예약한
+    /// 도메인이라 실제 서비스에 영향이 없다.
+    #[test]
+    #[ignore = "실제 브라우저 창을 띄우고 닫는다 — CI에서 돌리지 않음. 로컬에서 수동 확인용."]
+    fn manual_check_single_popup_close_and_reopen() {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+        let exe = default_browser_exe().expect("기본 브라우저를 찾지 못했다");
+        assert!(is_chromium_browser(&exe), "기본 브라우저가 Chromium 계열이 아니다: {exe}");
+
+        let before1 = visible_window_handles();
+        let mut child1 = std::process::Command::new(&exe)
+            .arg("--app=https://example.com")
+            .arg("--window-size=900,700")
+            .arg("--window-position=100,100")
+            .spawn()
+            .expect("첫 팝업 spawn 실패");
+        let hwnd1 = find_new_popup_window(&before1, std::time::Duration::from_secs(10))
+            .expect("첫 팝업 창을 찾지 못했다");
+        println!("popup 1 hwnd = {hwnd1}");
+
+        let before2 = visible_window_handles();
+        let mut child2 = std::process::Command::new(&exe)
+            .arg("--app=https://example.org")
+            .arg("--window-size=900,700")
+            .arg("--window-position=300,300")
+            .spawn()
+            .expect("두 번째 팝업 spawn 실패");
+        let hwnd2 = find_new_popup_window(&before2, std::time::Duration::from_secs(10))
+            .expect("두 번째 팝업 창을 찾지 못했다");
+        println!("popup 2 hwnd = {hwnd2}");
+
+        // open_popup_window이 다음 호출 시 하는 일: 직전 팝업(hwnd1)만 닫는다.
+        close_window(hwnd1);
+        std::thread::sleep(std::time::Duration::from_millis(800));
+
+        let hwnd1_still_open = unsafe { IsWindow(Some(HWND(hwnd1 as *mut std::ffi::c_void))) }.as_bool();
+        let hwnd2_still_open = unsafe { IsWindow(Some(HWND(hwnd2 as *mut std::ffi::c_void))) }.as_bool();
+        println!("after closing popup1: popup1 open = {hwnd1_still_open}, popup2 open = {hwnd2_still_open}");
+
+        // 정리 — 검증 전에라도 반드시 닫는다.
+        close_window(hwnd2);
+        let _ = child1.kill();
+        let _ = child2.kill();
+
+        assert!(!hwnd1_still_open, "popup1이 안 닫혔다");
+        assert!(hwnd2_still_open, "popup2가 실수로 같이 닫혔다");
     }
 }
