@@ -10,6 +10,9 @@ use futures::stream::{self, StreamExt};
 /// 서버의 rate limit(429)에 걸리기 쉬워지므로 적당한 값으로 고정한다.
 const SYNC_CONCURRENCY: usize = 6;
 
+/// 작업 항목 브라우저 팝업 크기 (width, height).
+const ISSUE_POPUP_SIZE: (i32, i32) = (1320, 720);
+
 #[derive(Serialize)]
 pub struct SettingsDto {
     pub base_url: String,
@@ -867,8 +870,8 @@ pub fn open_issue_popup(app: tauri::AppHandle, url: String) -> Result<(), String
     let popup_launched = crate::browser_popup::default_browser_exe()
         .filter(|exe| crate::browser_popup::is_chromium_browser(exe))
         .and_then(|exe| {
-            let position = crate::browser_popup::popup_position(&app, (1100, 800))?;
-            crate::browser_popup::open_popup_window(&app, &exe, &url, position, (1100, 800))
+            let position = crate::browser_popup::popup_position(&app, ISSUE_POPUP_SIZE)?;
+            crate::browser_popup::open_popup_window(&app, &exe, &url, position, ISSUE_POPUP_SIZE)
         })
         .is_some();
 
