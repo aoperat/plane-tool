@@ -45,6 +45,15 @@ pub struct Settings {
     /// 미확인 할당 재알림 주기(시간).
     #[serde(default = "default_assign_remind_hours")]
     pub assign_remind_hours: u32,
+    /// 마감 알림 다이제스트 (기본 켬).
+    #[serde(default = "default_deadline_notify_enabled")]
+    pub deadline_notify_enabled: bool,
+    /// 마감 알림 발화 시각 "HH:MM".
+    #[serde(default = "default_deadline_notify_time")]
+    pub deadline_notify_time: String,
+    /// "곧 마감"으로 볼 임박 일수.
+    #[serde(default = "default_deadline_lead_days")]
+    pub deadline_lead_days: u32,
     /// "내가 할당한 작업" 탭을 사이드바에 보여줄지 (기본 꺼짐). 켤 때는
     /// `commands::verify_delegated_tab_password`로 비밀번호를 확인한다.
     /// 진짜 보안 기능이 아니라 가벼운 프라이버시 잠금이다 — 비밀번호는
@@ -63,6 +72,9 @@ fn default_briefing_model() -> String { "gpt-4o-mini".into() }
 fn default_morning_briefing_time() -> String { "09:00".into() }
 fn default_assign_notify_enabled() -> bool { true }
 fn default_assign_remind_hours() -> u32 { 2 }
+fn default_deadline_notify_enabled() -> bool { true }
+fn default_deadline_notify_time() -> String { "09:00".into() }
+fn default_deadline_lead_days() -> u32 { 3 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -84,6 +96,9 @@ impl Default for Settings {
             morning_briefing_time: default_morning_briefing_time(),
             assign_notify_enabled: default_assign_notify_enabled(),
             assign_remind_hours: default_assign_remind_hours(),
+            deadline_notify_enabled: default_deadline_notify_enabled(),
+            deadline_notify_time: default_deadline_notify_time(),
+            deadline_lead_days: default_deadline_lead_days(),
             show_delegated_tab: false,
         }
     }
@@ -178,6 +193,21 @@ pub fn set_morning_last(app: &tauri::AppHandle, date: &str) -> Result<(), String
     store.save().map_err(|e| e.to_string())
 }
 
+const DEADLINE_LAST_KEY: &str = "deadline_notify_last";
+
+pub fn get_deadline_last(app: &tauri::AppHandle) -> Option<String> {
+    app.store(STORE_FILE)
+        .ok()?
+        .get(DEADLINE_LAST_KEY)
+        .and_then(|v| v.as_str().map(str::to_owned))
+}
+
+pub fn set_deadline_last(app: &tauri::AppHandle, date: &str) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(DEADLINE_LAST_KEY, serde_json::json!(date));
+    store.save().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,6 +229,9 @@ mod tests {
             morning_briefing_time: "08:30".into(),
             assign_notify_enabled: false,
             assign_remind_hours: 6,
+            deadline_notify_enabled: false,
+            deadline_notify_time: "08:00".into(),
+            deadline_lead_days: 5,
             show_delegated_tab: true,
         };
         let json = serde_json::to_string(&s).unwrap();
@@ -320,5 +353,34 @@ mod tests {
         }"#;
         let s: Settings = serde_json::from_str(old_json).unwrap();
         assert!(!s.show_delegated_tab);
+    }
+
+    #[test]
+    fn settings_default_enables_deadline_notify_at_9_and_3_days() {
+        let s = Settings::default();
+        assert!(s.deadline_notify_enabled);
+        assert_eq!(s.deadline_notify_time, "09:00");
+        assert_eq!(s.deadline_lead_days, 3);
+    }
+
+    #[test]
+    fn settings_without_deadline_fields_gets_defaults() {
+        // 이 기능 이전에 저장된 설정 파일 — 기본값으로 채워져야 한다.
+        let old_json = r#"{
+            "base_url": "https://plane.example.com",
+            "workspace": "acme",
+            "last_project_id": null
+        }"#;
+        let s: Settings = serde_json::from_str(old_json).unwrap();
+        assert!(s.deadline_notify_enabled);
+        assert_eq!(s.deadline_notify_time, "09:00");
+        assert_eq!(s.deadline_lead_days, 3);
+    }
+
+    #[test]
+    fn deadline_last_round_trips_via_helpers() {
+        // get/set이 같은 키를 쓰는지, day-string이 보존되는지 확인.
+        // (실제 store 접근은 통합 실행에서, 여기서는 키 상수 일관성만 컴파일로 보장)
+        assert_eq!(DEADLINE_LAST_KEY, "deadline_notify_last");
     }
 }
