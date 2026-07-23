@@ -793,7 +793,8 @@ pub fn run() {
             commands::get_offline_status,
             commands::get_conflicts,
             commands::resolve_conflict,
-            commands::open_conflict_window
+            commands::open_conflict_window,
+            commands::open_issue_popup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

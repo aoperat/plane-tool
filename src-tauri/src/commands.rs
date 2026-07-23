@@ -841,6 +841,31 @@ pub fn open_conflict_window(app: tauri::AppHandle) {
     let _ = app.emit_to("conflict", "conflicts-open", ());
 }
 
+/// 작업 항목 URL을 연다. 기본 브라우저가 Chromium 계열이면 탭 없는 앱 모드
+/// 팝업으로, 아니면(감지 실패 포함) 기존 방식(`tauri-plugin-opener`)으로 연다.
+#[tauri::command]
+pub fn open_issue_popup(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let popup_launched = crate::browser_popup::default_browser_exe()
+        .filter(|exe| crate::browser_popup::is_chromium_browser(exe))
+        .and_then(|exe| {
+            let (x, y) = crate::browser_popup::popup_position(&app, (1100, 800))?;
+            std::process::Command::new(&exe)
+                .arg(format!("--app={url}"))
+                .arg("--window-size=1100,800")
+                .arg(format!("--window-position={x},{y}"))
+                .spawn()
+                .ok()
+        })
+        .is_some();
+
+    if popup_launched {
+        return Ok(());
+    }
+    app.opener().open_url(url, None::<String>).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("settings") {
