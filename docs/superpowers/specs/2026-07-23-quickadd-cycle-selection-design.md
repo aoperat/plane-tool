@@ -106,6 +106,15 @@ pub async fn list_project_cycles(app, project_id: String) -> Result<Vec<CycleDto
   기준이 아니라 프로젝트의 **모든** 사이클을 준다(QuickAdd는 진행 중 사이클을 다
   봐야 하므로). 진행 중 필터는 프론트(`runningCycles`)가 한다.
 
+**프로젝트별 세션 캐시 (프론트)**
+
+QuickAdd는 자주 열리고 열 때마다 마지막 프로젝트를 복원하므로, 프로젝트를 고를
+때마다 그대로 요청하면 낭비다. `list_project_cycles` 결과를 프론트 메모리에
+`프로젝트 id → { cycles, at }`로 캐시하고, 5분 이내면 재요청하지 않는다(사이드바
+사이클 캐시와 같은 결). 사이클은 자주 안 바뀌므로 이 정도 TTL로 충분하다.
+캐시는 세션 메모리면 되고 localStorage까지 갈 필요는 없다 — QuickAdd는 짧게 열고
+닫으므로 창 수명 안에서만 유효하면 된다.
+
 **create_issue 명령에 사이클 연결**
 
 `create_issue`에 `cycle_id: Option<String>` 파라미터를 더한다. 온라인 생성이
