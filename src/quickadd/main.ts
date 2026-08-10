@@ -1,16 +1,20 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { createIssue, listProjects, listMembers, getSettings, setLastProject } from "../shared/ipc";
 import type { Project, Member } from "../shared/types";
-import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
+import { DATE_PRESETS } from "../shared/datePresets";
 import { attachWheelCycle } from "../shared/wheelCycle";
 import { resolveDateShortcut } from "../shared/dateShortcut";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
-  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
+  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON,
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
 import { createProjectPicker } from "./projectPicker";
+import {
+  createFormState, dateChoiceLabel, resolveDateChoice, shiftDateField,
+  toggleAssignee, setSingleAssignee, resetFormFields,
+} from "./state";
 import "../shared/app.css";
 
 // Every window focus reloads the project list from the Plane API; a cooldown keeps rapid
@@ -36,18 +40,7 @@ const qaSubmit = document.getElementById("qaSubmit")!;
 const qaTip = document.getElementById("qaTip")!;
 
 let projects: Project[] = [];
-let selectedId: string | null = null;
-let members: Member[] = [];
-let membersLoadedForProject: string | null = null;
-
-let assigneeIds: string[] = []; // empty = server defaults to self
-type DateChoice = DatePresetKey | "custom";
-let startChoice: DateChoice = "today";
-let startCustomDate = ""; // ISO yyyy-mm-dd, used when startChoice === "custom"
-let dueChoice: DateChoice = "today";
-let dueCustomDate = "";
-let priority: Priority = "medium";
-let stateGroup: StateGroup = "unstarted";
+const state = createFormState();
 
 type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
 let openPopover: PopoverKind = null;
@@ -74,12 +67,12 @@ const projectPicker = createProjectPicker({
   button: projBtn,
   host: popupEl,
   getProjects: () => projects,
-  getSelectedId: () => selectedId,
+  getSelectedId: () => state.selectedId,
   onPick: (p) => {
-    selectedId = p.id;
-    members = [];
-    membersLoadedForProject = null;
-    assigneeIds = [];
+    state.selectedId = p.id;
+    state.members = [];
+    state.membersLoadedForProject = null;
+    state.assigneeIds = [];
     renderChips();
     titleEl.focus();
     // 즉시 저장 — 안 그러면 포커스로 다시 도는 load()가 last_project_id를
@@ -88,46 +81,6 @@ const projectPicker = createProjectPicker({
   },
   onResize: () => resizeToFit(),
 });
-
-function dateChoiceLabel(choice: DateChoice, custom: string): string {
-  if (choice === "custom") return custom || "날짜 선택";
-  return DATE_PRESETS.find((d) => d.key === choice)!.label;
-}
-
-function resolveDateChoice(choice: DateChoice, custom: string): string {
-  return choice === "custom" ? custom : resolveDatePreset(choice);
-}
-
-// ISO yyyy-mm-dd strings compare correctly with plain string ordering, so the
-// clamps below don't need Date parsing.
-function shiftDateField(kind: "start" | "due", delta: number) {
-  if (kind === "start") {
-    const current = resolveDateChoice(startChoice, startCustomDate);
-    const next = shiftIsoDate(current, delta);
-    startCustomDate = next;
-    startChoice = "custom";
-    // Pushing the start date past the due date would invert the range —
-    // carry the due date along with it instead.
-    const due = resolveDateChoice(dueChoice, dueCustomDate);
-    if (next > due) {
-      dueCustomDate = next;
-      dueChoice = "custom";
-    }
-  } else {
-    const current = resolveDateChoice(dueChoice, dueCustomDate);
-    const next = shiftIsoDate(current, delta);
-    dueCustomDate = next;
-    dueChoice = "custom";
-    // Same guard in reverse: pulling the due date before the start date
-    // carries the start date back with it.
-    const start = resolveDateChoice(startChoice, startCustomDate);
-    if (start > next) {
-      startCustomDate = next;
-      startChoice = "custom";
-    }
-  }
-  renderChips();
-}
 
 function showError(message: string) {
   errorEl.textContent = message;
@@ -154,20 +107,20 @@ async function submitIssue() {
     showError("제목을 입력하세요");
     return;
   }
-  if (!selectedId) {
+  if (!state.selectedId) {
     showError("프로젝트를 선택하세요");
     return;
   }
   submitting = true;
   try {
     await createIssue(
-      selectedId,
+      state.selectedId,
       name,
-      assigneeIds,
-      resolveDateChoice(startChoice, startCustomDate),
-      resolveDateChoice(dueChoice, dueCustomDate),
-      priority,
-      stateGroup,
+      state.assigneeIds,
+      resolveDateChoice(state.startChoice, state.startCustomDate),
+      resolveDateChoice(state.dueChoice, state.dueCustomDate),
+      state.priority,
+      state.stateGroup,
       descriptionEl.value,
     );
     titleEl.value = "";
@@ -187,17 +140,17 @@ function renderAssigneeChip() {
   const avatar = document.createElement("span");
   avatar.className = "avatar";
   let label: string;
-  if (assigneeIds.length === 0) {
+  if (state.assigneeIds.length === 0) {
     avatar.textContent = "나";
     label = "나";
-  } else if (assigneeIds.length === 1) {
-    const m = members.find((x) => x.id === assigneeIds[0]);
+  } else if (state.assigneeIds.length === 1) {
+    const m = state.members.find((x) => x.id === state.assigneeIds[0]);
     const name = m ? m.display_name : "1명";
     avatar.textContent = name.slice(0, 1);
     label = name;
   } else {
-    avatar.textContent = String(assigneeIds.length);
-    label = `${assigneeIds.length}명`;
+    avatar.textContent = String(state.assigneeIds.length);
+    label = `${state.assigneeIds.length}명`;
   }
   chipAssignee.appendChild(avatar);
   chipAssignee.appendChild(document.createTextNode(" " + label));
@@ -205,11 +158,11 @@ function renderAssigneeChip() {
 
 function renderChips() {
   renderAssigneeChip();
-  chipStart.innerHTML = `${CALENDAR_ICON} ${dateChoiceLabel(startChoice, startCustomDate)}`;
-  chipDue.innerHTML = `${FLAG_ICON} ${dateChoiceLabel(dueChoice, dueCustomDate)}`;
+  chipStart.innerHTML = `${CALENDAR_ICON} ${dateChoiceLabel(state.startChoice, state.startCustomDate)}`;
+  chipDue.innerHTML = `${FLAG_ICON} ${dateChoiceLabel(state.dueChoice, state.dueCustomDate)}`;
   chipPriority.innerHTML =
-    `${priorityIcon(priority)} <span class="${priority === "none" ? "muted" : ""}">${priorityLabel(priority)}</span>`;
-  chipState.innerHTML = `${stateIcon(stateGroup)} ${stateLabel(stateGroup)}`;
+    `${priorityIcon(state.priority)} <span class="${state.priority === "none" ? "muted" : ""}">${priorityLabel(state.priority)}</span>`;
+  chipState.innerHTML = `${stateIcon(state.stateGroup)} ${stateLabel(state.stateGroup)}`;
 }
 
 function autoResizeDescription() {
@@ -305,16 +258,6 @@ function handleDropdownKeydown(container: HTMLElement, isOpen: () => boolean, on
   };
 }
 
-function toggleAssignee(id: string) {
-  if (assigneeIds.includes(id)) {
-    assigneeIds = assigneeIds.filter((x) => x !== id);
-  } else {
-    assigneeIds = [...assigneeIds, id];
-  }
-  renderChips();
-  renderAssigneePopoverItems();
-}
-
 // Mouse click picks a single assignee and closes the popover; Ctrl+click toggles the
 // entry within the multi-select and leaves the popover open (mirrors the Space/Enter
 // keyboard contract below). Picking the "me" member resets to the empty-array default
@@ -322,10 +265,12 @@ function toggleAssignee(id: string) {
 // as "no explicit choice" if the member list is ever re-fetched.
 function handleAssigneeItemClick(e: MouseEvent, m: Member) {
   if (e.ctrlKey) {
-    toggleAssignee(m.id);
+    toggleAssignee(state, m.id);
+    renderChips();
+    renderAssigneePopoverItems();
     return;
   }
-  assigneeIds = m.is_me ? [] : [m.id];
+  setSingleAssignee(state, m);
   renderChips();
   closePopover();
   titleEl.focus();
@@ -336,9 +281,9 @@ function handleAssigneeItemClick(e: MouseEvent, m: Member) {
 // selected whenever assigneeIds is empty (the default-to-self state).
 function renderAssigneePopoverItems() {
   fieldPopover.innerHTML = "";
-  for (const m of members) {
+  for (const m of state.members) {
     const item = document.createElement("div");
-    const selected = assigneeIds.includes(m.id) || (m.is_me && assigneeIds.length === 0);
+    const selected = state.assigneeIds.includes(m.id) || (m.is_me && state.assigneeIds.length === 0);
     item.className = "dd-item" + (selected ? " sel" : "");
     item.textContent = m.is_me ? `${m.display_name} (나)` : m.display_name;
     item.dataset.id = m.id;
@@ -350,13 +295,13 @@ function renderAssigneePopoverItems() {
 }
 
 async function openAssigneePopover() {
-  if (!selectedId) return;
-  if (membersLoadedForProject !== selectedId) {
+  if (!state.selectedId) return;
+  if (state.membersLoadedForProject !== state.selectedId) {
     try {
-      members = await listMembers(selectedId);
-      membersLoadedForProject = selectedId;
+      state.members = await listMembers(state.selectedId);
+      state.membersLoadedForProject = state.selectedId;
     } catch (err) {
-      members = [];
+      state.members = [];
       console.error("listMembers failed:", err);
     }
   }
@@ -368,14 +313,14 @@ async function openAssigneePopover() {
 
 function openDatePopover(kind: "start" | "due") {
   fieldPopover.innerHTML = "";
-  const current = kind === "start" ? startChoice : dueChoice;
+  const current = kind === "start" ? state.startChoice : state.dueChoice;
   for (const preset of DATE_PRESETS) {
     const item = document.createElement("div");
     item.className = "dd-item" + (preset.key === current ? " sel" : "");
     item.textContent = preset.label;
     item.onclick = () => {
-      if (kind === "start") startChoice = preset.key;
-      else dueChoice = preset.key;
+      if (kind === "start") state.startChoice = preset.key;
+      else state.dueChoice = preset.key;
       renderChips();
       closePopover();
       titleEl.focus();
@@ -389,16 +334,16 @@ function openDatePopover(kind: "start" | "due") {
   dateInput.type = "date";
   dateInput.className = "popover-date-input";
   if (current === "custom") {
-    dateInput.value = kind === "start" ? startCustomDate : dueCustomDate;
+    dateInput.value = kind === "start" ? state.startCustomDate : state.dueCustomDate;
   }
   dateInput.onchange = () => {
     if (!dateInput.value) return;
     if (kind === "start") {
-      startChoice = "custom";
-      startCustomDate = dateInput.value;
+      state.startChoice = "custom";
+      state.startCustomDate = dateInput.value;
     } else {
-      dueChoice = "custom";
-      dueCustomDate = dateInput.value;
+      state.dueChoice = "custom";
+      state.dueCustomDate = dateInput.value;
     }
     renderChips();
     closePopover();
@@ -415,10 +360,10 @@ function openPriorityPopover() {
   fieldPopover.innerHTML = "";
   for (const p of PRIORITY_ORDER) {
     const item = document.createElement("div");
-    item.className = "dd-item" + (p === priority ? " sel" : "");
+    item.className = "dd-item" + (p === state.priority ? " sel" : "");
     item.innerHTML = `${priorityIcon(p)} ${priorityLabel(p)}`;
     item.onclick = () => {
-      priority = p;
+      state.priority = p;
       renderChips();
       closePopover();
       titleEl.focus();
@@ -435,10 +380,10 @@ function openStatePopover() {
   fieldPopover.innerHTML = "";
   for (const g of STATE_ORDER) {
     const item = document.createElement("div");
-    item.className = "dd-item" + (g === stateGroup ? " sel" : "");
+    item.className = "dd-item" + (g === state.stateGroup ? " sel" : "");
     item.innerHTML = `${stateIcon(g)} ${stateLabel(g)}`;
     item.onclick = () => {
-      stateGroup = g;
+      state.stateGroup = g;
       renderChips();
       closePopover();
       titleEl.focus();
@@ -481,13 +426,15 @@ chipAssignee.addEventListener("keydown", (e) => {
     const index = keyboardFocusIndex(fieldPopover);
     const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
     if (!focused?.dataset.id) return;
-    toggleAssignee(focused.dataset.id); // re-renders the list, so restore the cursor
+    toggleAssignee(state, focused.dataset.id);
+    renderChips();
+    renderAssigneePopoverItems(); // re-renders the list, so restore the cursor
     setKeyboardFocusIndex(fieldPopover, index);
   } else if (e.key === "Enter") {
     e.preventDefault();
     const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
     if (focused?.dataset.id) {
-      assigneeIds = focused.dataset.self ? [] : [focused.dataset.id];
+      state.assigneeIds = focused.dataset.self ? [] : [focused.dataset.id];
       renderChips();
     }
     closePopover();
@@ -506,36 +453,38 @@ chipState.addEventListener("keydown", fieldPopoverKeydown);
 // Clamped, not wrapped: priority/state are ordered scales (없음..긴급, 백로그..취소), not
 // cyclic lists, so wheel-up stops at the last entry instead of rolling back to the first.
 attachWheelCycle(chipPriority, () => PRIORITY_ORDER.length, (delta) => {
-  const i = PRIORITY_ORDER.indexOf(priority);
-  priority = PRIORITY_ORDER[Math.max(0, Math.min(PRIORITY_ORDER.length - 1, i + delta))];
+  const i = PRIORITY_ORDER.indexOf(state.priority);
+  state.priority = PRIORITY_ORDER[Math.max(0, Math.min(PRIORITY_ORDER.length - 1, i + delta))];
   renderChips();
   if (openPopover === "priority") openPriorityPopover();
 });
 
 attachWheelCycle(chipState, () => STATE_ORDER.length, (delta) => {
-  const i = STATE_ORDER.indexOf(stateGroup);
-  stateGroup = STATE_ORDER[Math.max(0, Math.min(STATE_ORDER.length - 1, i + delta))];
+  const i = STATE_ORDER.indexOf(state.stateGroup);
+  state.stateGroup = STATE_ORDER[Math.max(0, Math.min(STATE_ORDER.length - 1, i + delta))];
   renderChips();
   if (openPopover === "state") openStatePopover();
 });
 
 attachWheelCycle(chipStart, () => 2, (delta) => {
-  shiftDateField("start", delta);
+  shiftDateField(state, "start", delta);
+  renderChips();
   if (openPopover === "start") openDatePopover("start");
 });
 attachWheelCycle(chipDue, () => 2, (delta) => {
-  shiftDateField("due", delta);
+  shiftDateField(state, "due", delta);
+  renderChips();
   if (openPopover === "due") openDatePopover("due");
 });
 
 // Single-select cycle — matches a plain (non-Ctrl) click. Empty assigneeIds means
 // "defaults to me", so start the cycle from the "me" row when nothing is picked yet.
-attachWheelCycle(chipAssignee, () => members.length, (delta) => {
-  const meIndex = members.findIndex((m) => m.is_me);
-  const currentId = assigneeIds[0] ?? members[meIndex]?.id;
-  const i = members.findIndex((m) => m.id === currentId);
-  const next = members[((i === -1 ? meIndex : i) + delta + members.length) % members.length];
-  assigneeIds = next.is_me ? [] : [next.id];
+attachWheelCycle(chipAssignee, () => state.members.length, (delta) => {
+  const meIndex = state.members.findIndex((m) => m.is_me);
+  const currentId = state.assigneeIds[0] ?? state.members[meIndex]?.id;
+  const i = state.members.findIndex((m) => m.id === currentId);
+  const next = state.members[((i === -1 ? meIndex : i) + delta + state.members.length) % state.members.length];
+  setSingleAssignee(state, next);
   renderChips();
   if (openPopover === "assignee") openAssigneePopover();
 });
@@ -558,14 +507,8 @@ function handleChipArrowNav(e: KeyboardEvent) {
 chips.forEach((chip) => chip.addEventListener("keydown", handleChipArrowNav));
 
 function resetFields() {
-  assigneeIds = [];
+  resetFormFields(state);
   projectPicker.close(); // a submit can land while the project dropdown is open
-  startChoice = "today";
-  startCustomDate = "";
-  dueChoice = "today";
-  dueCustomDate = "";
-  priority = "medium";
-  stateGroup = "unstarted";
   descriptionEl.value = "";
   setDescVisible(false);
   clearError();
@@ -578,7 +521,7 @@ async function load() {
   const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
   applyTheme(settings.theme);
   projects = fetched;
-  selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
+  state.selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
   projectPicker.render();
 }
 
@@ -619,7 +562,8 @@ document.addEventListener("keydown", (e) => {
   const shortcut = resolveDateShortcut(e.key, e.ctrlKey);
   if (shortcut && !openPopover && !projectPicker.isOpen()) {
     e.preventDefault();
-    shiftDateField(shortcut.kind, shortcut.delta);
+    shiftDateField(state, shortcut.kind, shortcut.delta);
+    renderChips();
   }
 });
 
@@ -669,10 +613,10 @@ win.listen("tauri://focus", () => {
 // reset. load() (if the focus event triggers it) re-reads last_project_id which
 // the command already persisted to the same value.
 win.listen<string>("select-project", (e) => {
-  selectedId = e.payload;
-  members = [];
-  membersLoadedForProject = null;
-  assigneeIds = [];
+  state.selectedId = e.payload;
+  state.members = [];
+  state.membersLoadedForProject = null;
+  state.assigneeIds = [];
   projectPicker.render();
   renderChips();
 });
