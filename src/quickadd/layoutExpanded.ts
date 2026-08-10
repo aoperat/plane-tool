@@ -148,14 +148,25 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
   }
 
   // 담당자 행이 늘 보이므로 v1처럼 팝오버를 열 때까지 기다리지 않고 바로 받아온다.
-  // 다만 마운트 시점에는 아직 프로젝트가 정해지지 않았을 수 있고(main.ts의 load()가
-  // 비동기다) 프로젝트를 바꾸면 목록도 갈아야 하므로, 그릴 때마다 "이 프로젝트 것을
-  // 아직 안 청했으면 청한다". 요청한 프로젝트를 기억해 두어 실패해도 되풀이하지 않는다.
-  let membersRequestedFor: string | null = null;
+  // 마운트 시점에는 아직 프로젝트가 정해지지 않았을 수 있어(main.ts의 load()가 비동기다)
+  // 그릴 때마다 확인한다. 기준은 "청한 적 있는가"가 아니라 **"지금 든 목록이 이 프로젝트
+  // 것인가"**다 — main.ts는 이미 고른 프로젝트를 다시 골라도 members를 비우고
+  // membersLoadedForProject를 null로 되돌리므로, 청한 이력만 보면 그 뒤로 담당자 행이
+  // 영영 빈 채로 남는다. inFlight는 응답을 기다리는 사이의 중복 요청을, failedFor는
+  // 실패한 프로젝트를 렌더마다 다시 두드리는 것을 막는다.
+  let inFlight = false;
+  let failedFor: string | null = null;
   function requestMembers() {
-    if (!state.selectedId || membersRequestedFor === state.selectedId) return;
-    membersRequestedFor = state.selectedId;
-    ctx.loadMembers().then(render);
+    const id = state.selectedId;
+    if (!id || inFlight || failedFor === id || state.membersLoadedForProject === id) return;
+    inFlight = true;
+    ctx.loadMembers().then(() => {
+      inFlight = false;
+      // ctx.loadMembers는 에러를 삼키고 언제나 resolve 하므로 성패는 이 값으로 읽는다.
+      // 기다리는 사이 프로젝트가 바뀌었다면 이 결과로 실패를 기록하지 않는다.
+      if (state.selectedId === id) failedFor = state.membersLoadedForProject === id ? null : id;
+      render();
+    });
   }
 
   function renderPeople() {
