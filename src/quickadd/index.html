@@ -17,17 +17,10 @@
       <div class="popup-top" data-tauri-drag-region>
         <div class="accent-bar" data-tauri-drag-region></div>
         <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
+        <span id="titleTrailing"></span>
       </div>
       <textarea id="description" class="description-input" placeholder="설명을 입력하세요…" rows="1" hidden></textarea>
-      <div class="chip-row" id="chipRow">
-        <button type="button" class="chip" id="chipAssignee"></button>
-        <button type="button" class="chip" id="chipStart"></button>
-        <button type="button" class="chip" id="chipDue"></button>
-        <button type="button" class="chip" id="chipState"></button>
-        <button type="button" class="chip" id="chipPriority"></button>
-        <button type="button" class="chip chip-desc-toggle" id="chipDesc" title="설명 추가"></button>
-        <div id="fieldPopover" class="field-popover" hidden></div>
-      </div>
+      <div id="fieldsHost"></div>
       <p class="em-error" id="qaError" hidden></p>
       <div class="popup-bottom">
         <button id="projBtn" class="proj-select" type="button">

@@ -87,6 +87,9 @@ kbd {
   z-index: 30; overflow: visible;
 }
 .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
+/* 제목 줄 오른쪽 자리는 레이아웃이 채운다 — 비어 있으면 flex gap까지 사라지게
+   숨긴다. 안 그러면 아무것도 없는데 제목 입력이 12px 좁아진다. */
+#titleTrailing:empty { display: none; }
 .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); }
 .title-input {
   flex: 1; background: transparent; border: none; outline: none;
