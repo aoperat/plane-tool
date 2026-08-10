@@ -132,6 +132,9 @@ export function createProjectPicker(opts: {
     } else if (e.key === "Escape") {
       e.preventDefault();
       close();
+      // close()는 dd를 hidden 처리한다 — input이 그 안에 있어 포커스가 그대로면
+      // 브라우저가 document.body로 떨어뜨려 이후 키 입력이 아무 데도 안 먹는다.
+      button.focus();
     }
   });
 
