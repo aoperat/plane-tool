@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>빠른 추가 v2 — 목업</title>
+<style>
+  /* 실제 앱(src/shared/app.css)의 변수·스타일을 그대로 복사 */
+  :root {
+    color-scheme: dark;
+    --bg: #0d0e12;
+    --panel: #16181d;
+    --panel-2: #1c1f26;
+    --border: #2a2e37;
+    --text: #e6e8ec;
+    --muted: #8a909c;
+    --muted-2: #5c626d;
+    --accent: #4f7cff;
+    --accent-soft: rgba(79,124,255,0.14);
+    --accent-ring: rgba(79,124,255,0.4);
+    --green: #2ecc71;
+    --amber: #f5a623;
+    --red: #ef4d56;
+    --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+    --page-bg: radial-gradient(1200px 600px at 18% -10%, #232a45 0%, transparent 55%),
+               radial-gradient(1000px 700px at 110% 120%, #2a2438 0%, transparent 50%),
+               #0a0b0f;
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --panel-2: #eef0f3;
+    --border: #dfe2e7;
+    --text: #1c1f26;
+    --muted: #6b7280;
+    --muted-2: #9aa1ac;
+    --accent: #3f68e0;
+    --accent-soft: rgba(63,104,224,0.12);
+    --accent-ring: rgba(63,104,224,0.35);
+    --green: #1f9d55;
+    --amber: #b06a00;
+    --red: #d6414d;
+    --shadow: 0 12px 40px rgba(15,23,42,0.12), 0 2px 8px rgba(15,23,42,0.08);
+    --page-bg: radial-gradient(1200px 600px at 18% -10%, #dfe6ff 0%, transparent 55%),
+               radial-gradient(1000px 700px at 110% 120%, #ece2ff 0%, transparent 50%),
+               #eceef2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    background: var(--page-bg);
+    padding: 78px 40px 80px;
+  }
+
+  /* ===== 목업 전용 크롬(앱에는 없음) ===== */
+  .hint-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; gap: 18px; align-items: center;
+    padding: 10px 22px; font-size: 12.5px; color: var(--muted);
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border); z-index: 200;
+  }
+  .hint-bar b { color: var(--text); font-weight: 600; }
+  .hint-bar .spacer { margin-left: auto; }
+  .theme-toggle {
+    font-family: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 5px 13px;
+  }
+  .theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+  h2.sec {
+    font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 4px;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .sec-wrap { max-width: 1500px; margin: 0 auto 66px; }
+  .sec-desc { font-size: 12.5px; color: var(--muted); line-height: 1.65; margin: 0 0 26px; max-width: 720px; }
+  .sec-desc b { color: var(--text); }
+  .grid { display: flex; flex-wrap: wrap; gap: 44px 40px; align-items: flex-start; }
+  .cell { display: flex; flex-direction: column; gap: 11px; }
+  .caption {
+    align-self: flex-start; font-size: 11px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid var(--accent-ring);
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .caption.grey { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+  .note { font-size: 11.5px; color: var(--muted); max-width: 660px; line-height: 1.6; }
+  .note b { color: var(--text); }
+  kbd {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px;
+    font-size: 11.5px; color: var(--text); font-family: inherit;
+  }
+
+  /* ===== QuickAdd 팝업 공통(실제 앱 스타일) ===== */
+  .popup {
+    width: 540px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); position: relative;
+  }
+  .popup.v2 { width: 660px; }
+  .qa-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px 6px 13px;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    cursor: grab; user-select: none;
+  }
+  .qa-grip { width: 13px; height: 13px; color: var(--muted-2); flex: none; }
+  .qa-header-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .qa-close {
+    flex: none; width: 24px; height: 24px; border-radius: 7px;
+    display: grid; place-items: center; background: transparent;
+    border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+  .qa-close:hover { background: var(--panel); color: var(--text); border-color: var(--accent); }
+  .qa-close svg { width: 12px; height: 12px; }
+
+  .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
+  .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); flex: none; }
+  .title-input { flex: 1; color: var(--text); font-size: 17px; font-weight: 500; min-width: 0; }
+  .title-input .ph { color: var(--muted-2); }
+  .caret {
+    display: inline-block; width: 1.5px; height: 20px; background: var(--accent);
+    vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .description-input {
+    display: block; width: 100%; padding: 0 18px 12px;
+    color: var(--text); font-size: 13px; line-height: 1.5;
+  }
+  .description-input .ph { color: var(--muted-2); }
+  .description-input[hidden] { display: none; }
+
+  .popup-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .proj-select {
+    display: flex; align-items: center; gap: 8px; padding: 6px 11px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; cursor: pointer; color: var(--text); font-family: inherit;
+  }
+  .proj-select .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .proj-select .chev { color: var(--muted); margin-left: 2px; }
+  .qa-submit {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer; flex: none;
+  }
+  .qa-submit:hover { filter: brightness(1.08); }
+  .qa-submit .bk {
+    font-size: 10px; font-weight: 500; padding: 1px 5px;
+    border: 1px solid rgba(255,255,255,0.35); border-radius: 4px; opacity: 0.85;
+  }
+
+  /* ===== v1: 접힌 칩 행(비교용) ===== */
+  .chip-row { display: flex; flex-wrap: nowrap; gap: 8px; padding: 0 18px 14px; align-items: center; }
+  .chip {
+    display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+    font-size: 12.5px; color: var(--text); cursor: pointer; font-family: inherit;
+    flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip .muted { color: var(--muted-2); }
+  .chip .avatar {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 8px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .chip-desc-toggle { margin-left: auto; flex: none; color: var(--muted); }
+  .v1-dd {
+    position: absolute; left: 18px; top: 100%; margin-top: -10px; width: 200px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 6px; z-index: 20;
+  }
+  .dd-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+    border-radius: 7px; font-size: 12.5px; cursor: pointer; color: var(--text);
+  }
+  .dd-item:hover { background: var(--accent-soft); }
+  .dd-item.sel { background: var(--accent-soft); }
+  .dd-item.sel::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 12px; }
+  .dd-item.kbd-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .dd-item .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+  .dd-item .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 0 1px; }
+
+  /* ===== 검색되는 프로젝트 드롭다운 ===== */
+  .dropdown {
+    position: absolute; top: calc(100% + 6px); left: 14px; width: 272px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 6px; z-index: 40;
+  }
+  .dropdown[hidden] { display: none; }
+  .dd-search {
+    display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 5px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  }
+  .dd-search:focus-within { border-color: var(--accent); }
+  .dd-search .sicon { flex: none; color: var(--muted); display: flex; }
+  .dd-search input {
+    flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 12.5px; font-family: inherit; padding: 0;
+  }
+  .dd-search input::placeholder { color: var(--muted-2); }
+  .dd-search .cnt {
+    flex: none; font-size: 10.5px; color: var(--muted-2);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  /* 6개까지 보이고 그 아래로는 스크롤 — 목록이 길어져도 창 높이가 계속 자라지 않는다. */
+  .dd-list { max-height: 208px; overflow-y: auto; }
+  .dd-list::-webkit-scrollbar { width: 8px; }
+  .dd-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+  .dd-empty { padding: 16px 9px; font-size: 12px; color: var(--muted-2); text-align: center; }
+  .dd-foot {
+    display: flex; gap: 12px; margin-top: 5px; padding: 6px 9px 2px;
+    border-top: 1px solid var(--border); font-size: 10.5px; color: var(--muted-2);
+  }
+  .dd-foot kbd { font-size: 9.5px; padding: 0 4px; border-bottom-width: 1px; border-radius: 4px; }
+
+  /* ===== v2: 라벨 + 필드 행 ===== */
+  .qa2-fields {
+    display: flex; flex-direction: column;
+    padding: 2px 18px 12px;
+  }
+  .qa2-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
+  /* 행 사이 실선 대신 라벨 열 정렬만으로 묶는다 — 5줄 위에 4개의 선을 그으면
+     팝업 하나가 표처럼 무거워진다. */
+  .qa2-row + .qa2-row { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+  .qa2-label {
+    flex: none; width: 56px; font-size: 11.5px; color: var(--muted); user-select: none;
+  }
+
+  /* 단일 선택 = 오목한 트랙 안의 세그먼트 */
+  .seg-track {
+    display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .seg {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 24px; padding: 0 8px; border: none; border-radius: 6px;
+    background: transparent; color: var(--muted);
+    font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .seg svg { flex: none; }
+  .seg:hover { background: var(--panel-2); color: var(--text); }
+  .seg.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .seg.on:hover { background: var(--accent-soft); }
+
+  /* 다중 선택 = 트랙 없는 낱개 칩(단일 선택과 형태로 구분한다) */
+  .qa2-people { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+  .person {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 10px 0 4px; border-radius: 999px;
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .person:hover { border-color: var(--accent); color: var(--text); }
+  .person .avatar {
+    width: 20px; height: 20px; border-radius: 50%; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9.5px; font-weight: 700; color: #fff; background: var(--muted-2);
+  }
+  .person.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .person.more { padding: 0 11px; color: var(--muted-2); border-style: dashed; }
+  .person.more:hover { color: var(--accent); border-color: var(--accent); }
+  .person.more .cnt { font-weight: 700; }
+
+  /* 날짜: 프리셋 트랙 + 실제 값 스테퍼 */
+  .date-stepper {
+    display: inline-flex; align-items: center; gap: 1px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    padding: 1px;
+  }
+  .date-stepper .step {
+    width: 20px; height: 24px; border: none; background: transparent; border-radius: 5px;
+    color: var(--muted-2); cursor: pointer; font-size: 12px; line-height: 1;
+    display: grid; place-items: center; font-family: inherit;
+  }
+  .date-stepper .step:hover { background: var(--panel-2); color: var(--accent); }
+  .date-stepper .val {
+    min-width: 92px; text-align: center; font-size: 11.5px; color: var(--text);
+    font-variant-numeric: tabular-nums; padding: 0 4px; cursor: pointer;
+  }
+  .date-stepper .val:hover { color: var(--accent); }
+  .date-stepper .val .dow { color: var(--muted-2); margin-left: 3px; }
+  .qa2-hint { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted-2); white-space: nowrap; }
+
+  /* 설명 토글은 제목 줄 오른쪽 끝 — 필드 격자를 어지럽히지 않는다 */
+  .desc-toggle {
+    flex: none; display: inline-flex; align-items: center; gap: 5px;
+    height: 26px; padding: 0 9px; border-radius: 7px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); font-size: 11.5px; font-family: inherit; cursor: pointer;
+  }
+  .desc-toggle:hover { color: var(--text); border-color: var(--accent); }
+  .desc-toggle.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-ring); }
+
+  /* 담당자 "+N" 팝오버 */
+  .people-pop {
+    position: absolute; z-index: 30; width: 210px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 6px;
+  }
+  .people-pop[hidden] { display: none; }
+  .people-pop .pp-head {
+    padding: 4px 8px 6px; font-size: 10px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted-2);
+  }
+  .people-pop .dd-item .avatar {
+    width: 18px; height: 18px; border-radius: 50%; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: #fff; background: var(--muted-2);
+  }
+
+  /* ===== 설정 카드(실제 앱 스타일) ===== */
+  .set-card {
+    width: 470px; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .set-head {
+    display: flex; align-items: center; gap: 8px; flex: none;
+    padding: 7px 8px 7px 13px;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  .set-head-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .set-tabs {
+    display: flex; gap: 2px; padding: 8px 16px 0;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .set-tab {
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); font-size: 12.5px; font-weight: 600; font-family: inherit;
+    cursor: pointer; padding: 8px 10px; margin-bottom: -1px;
+  }
+  .set-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .settings { padding: 18px 24px 20px; }
+  .settings h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+  .settings h2 + h2 { margin-top: 22px; }
+  .settings label {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12.5px; color: var(--muted); margin-bottom: 8px;
+  }
+  .settings select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 13.5px; padding: 8px 12px; outline: none;
+    font-family: inherit; width: 100%;
+  }
+  .settings .help { font-size: 11.5px; color: var(--muted-2); line-height: 1.5; margin: 2px 0 0; }
+</style>
+</head>
+<body>
+
+<div class="hint-bar">
+  <b>빠른 추가 v2 — 목업</b>
+  <span>세그먼트를 눌러보세요. 담당자는 클릭=단독 지정, <kbd>Ctrl</kbd>+클릭=여러 명.</span>
+  <span class="spacer"></span>
+  <button class="theme-toggle" id="themeBtn">☀ 라이트로 보기</button>
+</div>
+
+<!-- ================= 1. v1 vs v2 ================= -->
+<div class="sec-wrap">
+  <h2 class="sec">1 · 현재(v1)와 나란히</h2>
+  <p class="sec-desc">
+    v1은 <b>담당자·시작일·마감일·상태·우선순위가 전부 칩 하나</b>로 접혀 있고, 값을 바꾸려면
+    칩을 눌러 드롭다운을 열어야 합니다. 게다가 팝오버가 하나뿐이라 <b>한 번에 한 항목만</b>
+    펼칠 수 있습니다. v2는 다섯 항목을 <b>라벨 붙은 다섯 줄</b>로 펼쳐, 현재 값 확인도 변경도
+    클릭 한 번에 끝납니다.
+  </p>
+  <div class="grid">
+
+    <!-- v1 -->
+    <div class="cell">
+      <span class="caption grey">v1 · 컴팩트 (540px) — 상태를 바꾸려면 눌러야 한다</span>
+      <div class="popup">
+        <div class="qa-header">
+          <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="qa-header-title">빠른 추가</span>
+          <button class="qa-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input">릴리스 노트 초안 작성<span class="caret"></span></div>
+        </div>
+        <div class="chip-row">
+          <div class="chip"><span class="avatar">나</span> 나</div>
+          <div class="chip" data-icon="calendar"> 오늘</div>
+          <div class="chip" data-icon="flag"> 오늘</div>
+          <div class="chip" data-icon="state:unstarted"> Todo</div>
+          <div class="chip" data-icon="prio:medium"> 보통</div>
+          <div class="chip chip-desc-toggle" data-icon="desc"> 설명</div>
+        </div>
+        <div class="popup-bottom">
+          <button class="proj-select"><span class="dot" style="background:#6d8fd6"></span> <span data-proj-name>Plane Quick Dock</span> <span class="chev">▾</span></button>
+          <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+        </div>
+        <div class="v1-dd">
+          <div class="dd-item" data-icon="state:backlog"> Backlog</div>
+          <div class="dd-item sel" data-icon="state:unstarted"> Todo</div>
+          <div class="dd-item" data-icon="state:started"> In Progress</div>
+          <div class="dd-item" data-icon="state:completed"> Done</div>
+          <div class="dd-item" data-icon="state:cancelled"> Cancelled</div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:150px">
+        상태 하나를 바꾸는 동안 <b>담당자·날짜·우선순위는 가려집니다.</b> 확인하려면 닫고 다시 열어야 합니다.
+      </p>
+    </div>
+
+    <!-- v2 -->
+    <div class="cell">
+      <span class="caption">v2 · 한눈에 보기 (660px) — 다섯 항목이 항상 보인다</span>
+      <div class="popup v2" data-qa2>
+        <div class="qa-header">
+          <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="qa-header-title">빠른 추가</span>
+          <button class="qa-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input">릴리스 노트 초안 작성<span class="caret"></span></div>
+          <button class="desc-toggle" data-desc-toggle><span data-icon="desc"></span> 설명</button>
+        </div>
+        <div class="description-input" hidden data-desc-body><span class="ph">설명을 입력하세요…</span></div>
+
+        <div class="qa2-fields">
+          <div class="qa2-row">
+            <span class="qa2-label">담당자</span>
+            <div class="qa2-people" data-multi>
+              <button class="person on"><span class="avatar" style="background:#4f7cff">정</span> 나</button>
+              <button class="person"><span class="avatar" style="background:#e2795e">김</span> 김민수</button>
+              <button class="person"><span class="avatar" style="background:#59a869">이</span> 이서연</button>
+              <button class="person"><span class="avatar" style="background:#a97ed6">박</span> 박준호</button>
+              <button class="person more" data-more><span class="cnt">+4</span></button>
+            </div>
+            <span class="qa2-hint">Ctrl+클릭 다중</span>
+          </div>
+
+          <div class="qa2-row">
+            <span class="qa2-label">상태</span>
+            <div class="seg-track" data-single>
+              <button class="seg" data-icon="state:backlog">Backlog</button>
+              <button class="seg on" data-icon="state:unstarted">Todo</button>
+              <button class="seg" data-icon="state:started">In Progress</button>
+              <button class="seg" data-icon="state:completed">Done</button>
+              <button class="seg" data-icon="state:cancelled">Cancelled</button>
+            </div>
+          </div>
+
+          <div class="qa2-row">
+            <span class="qa2-label">우선순위</span>
+            <div class="seg-track" data-single>
+              <button class="seg" data-icon="prio:none">없음</button>
+              <button class="seg" data-icon="prio:low">낮음</button>
+              <button class="seg on" data-icon="prio:medium">보통</button>
+              <button class="seg" data-icon="prio:high">높음</button>
+              <button class="seg" data-icon="prio:urgent">긴급</button>
+            </div>
+          </div>
+
+          <div class="qa2-row" data-date="start">
+            <span class="qa2-label">시작일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg on" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button>
+              <span class="val" data-val></span>
+              <button class="step" data-step="1">›</button>
+            </div>
+            <span class="qa2-hint">PgUp/Dn</span>
+          </div>
+
+          <div class="qa2-row" data-date="due">
+            <span class="qa2-label">마감일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg on" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button>
+              <span class="val" data-val></span>
+              <button class="step" data-step="1">›</button>
+            </div>
+            <span class="qa2-hint">Ctrl+PgUp/Dn</span>
+          </div>
+        </div>
+
+        <div class="popup-bottom">
+          <button class="proj-select"><span class="dot" style="background:#6d8fd6"></span> <span data-proj-name>Plane Quick Dock</span> <span class="chev">▾</span></button>
+          <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+        </div>
+
+        <div class="people-pop" hidden data-people-pop>
+          <div class="pp-head">나머지 멤버</div>
+          <div class="dd-item"><span class="avatar" style="background:#d69b4f">최</span> 최유진</div>
+          <div class="dd-item"><span class="avatar" style="background:#4fb8c9">한</span> 한지우</div>
+          <div class="dd-item"><span class="avatar" style="background:#c95f8f">오</span> 오세훈</div>
+          <div class="dd-item"><span class="avatar" style="background:#7d8ad6">윤</span> 윤아름</div>
+        </div>
+      </div>
+      <p class="note">
+        드롭다운이 열리는 곳은 <b>프로젝트</b>와 <b>담당자 +N</b> 둘뿐입니다. 나머지는 전부 제자리 클릭입니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 2. 상태들 ================= -->
+<div class="sec-wrap">
+  <h2 class="sec">2 · v2의 나머지 상태</h2>
+  <p class="sec-desc">
+    담당자가 많은 프로젝트에서는 <b>"나"를 맨 앞에 둔 4칸</b>만 인라인으로 두고 나머지는 <code>+N</code>으로 접습니다.
+    설명은 v1처럼 <b>토글</b>로 남깁니다 — 늘 펼쳐두면 팝업이 항상 높아지는데, 실제로 설명을 쓰는 비율은 낮습니다.
+  </p>
+  <div class="grid">
+    <div class="cell">
+      <span class="caption">담당자 +N 펼침 · 여러 명 지정</span>
+      <div class="popup v2" data-qa2 data-variant="people">
+        <div class="qa-header">
+          <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="qa-header-title">빠른 추가</span>
+          <button class="qa-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input">배포 전 회귀 테스트 돌리기<span class="caret"></span></div>
+          <button class="desc-toggle" data-desc-toggle><span data-icon="desc"></span> 설명</button>
+        </div>
+        <div class="description-input" hidden data-desc-body><span class="ph">설명을 입력하세요…</span></div>
+        <div class="qa2-fields">
+          <div class="qa2-row">
+            <span class="qa2-label">담당자</span>
+            <div class="qa2-people" data-multi>
+              <button class="person on"><span class="avatar" style="background:#4f7cff">정</span> 나</button>
+              <button class="person on"><span class="avatar" style="background:#e2795e">김</span> 김민수</button>
+              <button class="person"><span class="avatar" style="background:#59a869">이</span> 이서연</button>
+              <button class="person"><span class="avatar" style="background:#a97ed6">박</span> 박준호</button>
+              <button class="person more" data-more><span class="cnt">+4</span></button>
+            </div>
+            <span class="qa2-hint">2명 지정됨</span>
+          </div>
+          <div class="qa2-row">
+            <span class="qa2-label">상태</span>
+            <div class="seg-track" data-single>
+              <button class="seg" data-icon="state:backlog">Backlog</button>
+              <button class="seg" data-icon="state:unstarted">Todo</button>
+              <button class="seg on" data-icon="state:started">In Progress</button>
+              <button class="seg" data-icon="state:completed">Done</button>
+              <button class="seg" data-icon="state:cancelled">Cancelled</button>
+            </div>
+          </div>
+          <div class="qa2-row">
+            <span class="qa2-label">우선순위</span>
+            <div class="seg-track" data-single>
+              <button class="seg" data-icon="prio:none">없음</button>
+              <button class="seg" data-icon="prio:low">낮음</button>
+              <button class="seg" data-icon="prio:medium">보통</button>
+              <button class="seg" data-icon="prio:high">높음</button>
+              <button class="seg on" data-icon="prio:urgent">긴급</button>
+            </div>
+          </div>
+          <div class="qa2-row" data-date="start">
+            <span class="qa2-label">시작일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg on" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button><span class="val" data-val></span><button class="step" data-step="1">›</button>
+            </div>
+          </div>
+          <div class="qa2-row" data-date="due">
+            <span class="qa2-label">마감일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button><span class="val" data-val></span><button class="step" data-step="1">›</button>
+            </div>
+          </div>
+        </div>
+        <div class="popup-bottom">
+          <button class="proj-select"><span class="dot" style="background:#6d8fd6"></span> <span data-proj-name>Plane Quick Dock</span> <span class="chev">▾</span></button>
+          <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+        </div>
+        <div class="people-pop" data-people-pop>
+          <div class="pp-head">나머지 멤버</div>
+          <div class="dd-item"><span class="avatar" style="background:#d69b4f">최</span> 최유진</div>
+          <div class="dd-item"><span class="avatar" style="background:#4fb8c9">한</span> 한지우</div>
+          <div class="dd-item"><span class="avatar" style="background:#c95f8f">오</span> 오세훈</div>
+          <div class="dd-item"><span class="avatar" style="background:#7d8ad6">윤</span> 윤아름</div>
+        </div>
+      </div>
+      <p class="note" style="margin-top:26px">
+        지정된 담당자는 <b>인라인 칩에서 바로 채워진 상태</b>로 보입니다. 몇 명이 붙었는지 세러 어딘가를 열 필요가 없습니다.
+      </p>
+    </div>
+
+    <div class="cell">
+      <span class="caption">설명 펼침 · 마감일 직접 지정</span>
+      <div class="popup v2" data-qa2 data-variant="desc">
+        <div class="qa-header">
+          <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="qa-header-title">빠른 추가</span>
+          <button class="qa-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <div class="popup-top">
+          <div class="accent-bar"></div>
+          <div class="title-input">사이드바 폭 조절 버그 수정</div>
+          <button class="desc-toggle on" data-desc-toggle><span data-icon="desc"></span> 설명</button>
+        </div>
+        <div class="description-input" data-desc-body>드래그 중 패널이 최소 폭 아래로 내려가면 접기 탭이 화면 밖으로 나감<span class="caret"></span></div>
+        <div class="qa2-fields">
+          <div class="qa2-row">
+            <span class="qa2-label">담당자</span>
+            <div class="qa2-people" data-multi>
+              <button class="person on"><span class="avatar" style="background:#4f7cff">정</span> 나</button>
+              <button class="person"><span class="avatar" style="background:#e2795e">김</span> 김민수</button>
+              <button class="person"><span class="avatar" style="background:#59a869">이</span> 이서연</button>
+              <button class="person"><span class="avatar" style="background:#a97ed6">박</span> 박준호</button>
+              <button class="person more" data-more><span class="cnt">+4</span></button>
+            </div>
+          </div>
+          <div class="qa2-row">
+            <span class="qa2-label">상태</span>
+            <div class="seg-track" data-single>
+              <button class="seg on" data-icon="state:backlog">Backlog</button>
+              <button class="seg" data-icon="state:unstarted">Todo</button>
+              <button class="seg" data-icon="state:started">In Progress</button>
+              <button class="seg" data-icon="state:completed">Done</button>
+              <button class="seg" data-icon="state:cancelled">Cancelled</button>
+            </div>
+          </div>
+          <div class="qa2-row">
+            <span class="qa2-label">우선순위</span>
+            <div class="seg-track" data-single>
+              <button class="seg" data-icon="prio:none">없음</button>
+              <button class="seg on" data-icon="prio:low">낮음</button>
+              <button class="seg" data-icon="prio:medium">보통</button>
+              <button class="seg" data-icon="prio:high">높음</button>
+              <button class="seg" data-icon="prio:urgent">긴급</button>
+            </div>
+          </div>
+          <div class="qa2-row" data-date="start">
+            <span class="qa2-label">시작일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg on" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button><span class="val" data-val></span><button class="step" data-step="1">›</button>
+            </div>
+          </div>
+          <div class="qa2-row" data-date="due" data-offset="12">
+            <span class="qa2-label">마감일</span>
+            <div class="seg-track" data-single data-presets>
+              <button class="seg" data-preset="0">오늘</button>
+              <button class="seg" data-preset="1">내일</button>
+              <button class="seg" data-preset="7">다음 주</button>
+            </div>
+            <div class="date-stepper">
+              <button class="step" data-step="-1">‹</button><span class="val" data-val></span><button class="step" data-step="1">›</button>
+            </div>
+            <span class="qa2-hint">프리셋 밖 날짜</span>
+          </div>
+        </div>
+        <div class="popup-bottom">
+          <button class="proj-select"><span class="dot" style="background:#c98f5f"></span> <span data-proj-name>Plane 내부툴</span> <span class="chev">▾</span></button>
+          <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+        </div>
+        <div class="people-pop" hidden data-people-pop>
+          <div class="pp-head">나머지 멤버</div>
+          <div class="dd-item"><span class="avatar" style="background:#d69b4f">최</span> 최유진</div>
+          <div class="dd-item"><span class="avatar" style="background:#4fb8c9">한</span> 한지우</div>
+          <div class="dd-item"><span class="avatar" style="background:#c95f8f">오</span> 오세훈</div>
+          <div class="dd-item"><span class="avatar" style="background:#7d8ad6">윤</span> 윤아름</div>
+        </div>
+      </div>
+      <p class="note">
+        프리셋에 없는 날짜를 고르면 <b>프리셋 3개는 모두 꺼지고</b> 스테퍼의 실제 값만 남습니다 —
+        지금 무엇이 들어갈지 헷갈릴 여지가 없습니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 3. 프로젝트 검색 ================= -->
+<div class="sec-wrap">
+  <h2 class="sec">3 · 프로젝트 검색 드롭다운</h2>
+  <p class="sec-desc">
+    프로젝트 목록은 지금 <b>그냥 나열</b>됩니다 — 프로젝트가 늘면 스크롤해서 눈으로 찾아야 합니다.
+    검색창을 목록 맨 위에 붙여, 열자마자 커서가 거기 놓이고 <b>타자를 치면 좁혀지게</b> 합니다.
+    이 자리는 v1·v2가 공유하므로 <b>두 버전에 함께 적용</b>됩니다.
+  </p>
+  <div class="grid">
+    <div class="cell">
+      <span class="caption">열자마자 — 커서는 검색창, 현재 선택에 ✓</span>
+      <div data-clone data-open-query="" data-title="주간 회고 정리"></div>
+      <p class="note" style="margin-top:300px">
+        검색어가 없으면 <b>전체 목록</b>입니다. 지금 하던 대로 그냥 눌러 고르는 흐름은 그대로고,
+        검색은 <b>원할 때만 쓰는 추가 경로</b>입니다.
+      </p>
+    </div>
+    <div class="cell">
+      <span class="caption">"자" 입력 — 이름 중간에 걸려도 남는다</span>
+      <div data-clone data-open-query="자" data-title="주간 회고 정리"></div>
+      <p class="note" style="margin-top:170px">
+        앞글자만이 아니라 <b>이름 어디에 있든</b> 걸립니다(<code>디<mark>자</mark>인 시스템</code>,
+        <code>QA <mark>자</mark>동화</code>). 영문은 대소문자를 가리지 않습니다.
+        결과가 없으면 <b>"일치하는 프로젝트가 없습니다"</b>가 뜹니다.
+      </p>
+      <p class="note">
+        <b>키보드</b> — <kbd>↑</kbd><kbd>↓</kbd> 이동, <kbd>↵</kbd> 선택, <kbd>Esc</kbd> 닫기.
+        커서는 <b>검색창에 머물러</b> 있어서 좁히다가 바로 <kbd>↵</kbd>로 고를 수 있습니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 4. 설정 ================= -->
+<div class="sec-wrap">
+  <h2 class="sec">4 · 설정에서 버전 선택</h2>
+  <p class="sec-desc">
+    설정 › 일반 › <b>화면</b> 아래에 테마와 같은 형태의 선택 항목을 하나 더 둡니다.
+    바꾸면 다음에 빠른 추가를 열 때부터 적용됩니다.
+  </p>
+  <div class="grid">
+    <div class="cell">
+      <span class="caption">설정 › 일반</span>
+      <div class="set-card">
+        <div class="set-head">
+          <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+          <span class="set-head-title">설정</span>
+          <button class="qa-close" style="border:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <div class="set-tabs">
+          <button class="set-tab active">일반</button>
+          <button class="set-tab">단축키</button>
+          <button class="set-tab">자동화</button>
+          <button class="set-tab">AI 브리핑</button>
+        </div>
+        <div class="settings">
+          <h2>화면</h2>
+          <label>테마
+            <select><option>시스템 설정 따르기</option><option>라이트</option><option>다크</option></select>
+          </label>
+          <label>빠른 추가 화면
+            <select id="qaVersion">
+              <option value="v1">컴팩트 — 칩을 눌러 값 바꾸기</option>
+              <option value="v2" selected>한눈에 보기 — 모든 항목 펼쳐 보기</option>
+            </select>
+          </label>
+          <p class="help" id="qaVersionHelp">담당자·상태·우선순위·날짜를 접지 않고 한 화면에 보여줍니다. 창이 660px로 넓어집니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell" style="max-width:520px">
+      <span class="caption grey">설계 메모</span>
+      <p class="note">
+        <b>왜 설정으로 가르나</b> — v2는 창이 660px로 넓고 세로도 깁니다. 작은 노트북이나
+        제목만 빠르게 던져 넣는 사용 패턴에는 v1이 여전히 낫습니다. 한쪽으로 갈아엎지 않고
+        고를 수 있게 둡니다.
+      </p>
+      <p class="note">
+        <b>공유되는 것</b> — 두 버전은 같은 상태(선택한 프로젝트, 담당자, 날짜, 우선순위, 상태,
+        설명)를 다루고 <b>제출 경로도 하나</b>입니다. 다른 것은 그 상태를 그리는 방식뿐입니다.
+      </p>
+      <p class="note">
+        <b>키보드 계약</b> — <kbd>Ctrl+Enter</kbd> 제출, <kbd>Esc</kbd> 닫기,
+        <kbd>PgUp/Dn</kbd> 시작일 ±1일, <kbd>Ctrl+PgUp/Dn</kbd> 마감일 ±1일은 v1과 동일하게 유지합니다.
+        v1의 <kbd>←</kbd><kbd>→</kbd> 칩 이동은 v2에서 <b>행 안의 세그먼트 이동</b>으로,
+        <kbd>Tab</kbd>은 <b>행 사이 이동</b>으로 바뀝니다.
+      </p>
+      <p class="note">
+        <b>아직 안 정한 것</b> — 담당자 인라인 정렬 순서(가나다 vs 최근 지정순),
+        상태·우선순위에 숫자 단축키(<kbd>Alt+1..5</kbd>)를 줄지 여부,
+        프로젝트 검색에 <b>초성 검색</b>(<code>ㄷㅈㅇ</code> → 디자인 시스템)과
+        <b>영타 오타 보정</b>(<code>ejwkdls</code> → 디자인)까지 넣을지 여부.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 목업 편의: 3번 섹션의 시연 팝업은 1번 섹션의 v2 팝업을 복제해서 만든다.
+   같은 마크업을 네 번 적어두면 한 곳만 고쳐 서로 어긋나기 쉽다. 아이콘 주입과
+   이벤트 배선보다 먼저 돌아야 복제본에도 똑같이 걸린다. */
+document.querySelectorAll("[data-clone]").forEach((slot) => {
+  const clone = document.querySelector("[data-qa2]").cloneNode(true);
+  clone.dataset.openQuery = slot.dataset.openQuery;
+  clone.querySelector(".title-input").innerHTML = slot.dataset.title + '<span class="caret"></span>';
+  slot.replaceWith(clone);
+});
+
+/* ===== 아이콘: src/shared/planeIcons.ts 를 그대로 옮겨옴 ===== */
+const PRIORITY_COLORS = { urgent:"#D7443E", high:"#DB7A2A", medium:"#D9A916", low:"#3D6FD9", none:"#8C9199" };
+const PRIORITY_PATHS = {
+  urgent: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  high:   '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/>',
+  medium: '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/>',
+  low:    '<path d="M2 20h.01"/><path d="M7 20v-4"/>',
+  none:   '<circle cx="12" cy="12" r="10"/><path d="M4.929 4.929 19.07 19.071"/>',
+};
+const priorityIcon = (p) =>
+  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="${PRIORITY_COLORS[p]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PRIORITY_PATHS[p]}</svg>`;
+
+const STATE_COLORS = { backlog:"#60646C", unstarted:"#60646C", started:"#F59E0B", completed:"#46A758", cancelled:"#9AA4BC" };
+const CENTER = 8, RADIUS = 6, CIRC = 2 * Math.PI * RADIUS;
+function dashed(color, percentage, total = 15) {
+  let out = "";
+  for (let i = 0; i < total; i++) {
+    const angle = i * (360 / total) - 90;
+    if ((i / total) * 100 >= percentage) {
+      out += `<g transform="translate(${CENTER} ${CENTER}) rotate(${angle})"><line x1="5.75" y1="0" x2="6.5" y2="0" stroke="${color}" stroke-width="1.21" stroke-linecap="round"/></g>`;
+    }
+  }
+  return out;
+}
+const ring = (c, w, off) =>
+  `<circle cx="${CENTER}" cy="${CENTER}" r="${RADIUS}" fill="none" stroke="${c}" stroke-width="${w}" stroke-dasharray="${CIRC}" stroke-dashoffset="${off}" stroke-linecap="round" transform="rotate(-90 ${CENTER} ${CENTER})"/>`;
+const COMPLETED_PATH = 'fill-rule="evenodd" d="M8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15ZM11.3587 6.18828C11.6007 5.85214 11.5244 5.38343 11.1882 5.14141C10.8521 4.89938 10.3834 4.97568 10.1414 5.31183L7.03706 9.62335L5.25956 7.97751C4.95563 7.69609 4.4811 7.71434 4.19968 8.01828C3.91826 8.32221 3.93651 8.79673 4.24045 9.07815L6.64045 11.3004C6.79816 11.4464 7.01095 11.5178 7.22481 11.4963C7.43868 11.4749 7.63307 11.3627 7.75865 11.1883L11.3587 6.18828Z"';
+const CANCELLED_PATH = 'fill-rule="evenodd" d="M8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15ZM11.1018 4.89826C11.3947 5.19115 11.3947 5.66603 11.1018 5.95892L9.06068 8.00002L11.1018 10.0411C11.3947 10.334 11.3947 10.8089 11.1018 11.1018C10.8089 11.3947 10.334 11.3947 10.0411 11.1018L8.00002 9.06068L5.95892 11.1018C5.66603 11.3947 5.19115 11.3947 4.89826 11.1018C4.60537 10.8089 4.60537 10.334 4.89826 10.0411L6.93936 8.00002L4.89826 5.95892C4.60537 5.66603 4.60537 5.19115 4.89826 4.89826C5.19115 4.60537 5.66603 4.60537 5.95892 4.89826L8.00002 6.93936L10.0411 4.89826C10.334 4.60537 10.8089 4.60537 11.1018 4.89826Z"';
+function stateIcon(g) {
+  const c = STATE_COLORS[g];
+  let inner;
+  if (g === "backlog") inner = dashed(c, 0);
+  else if (g === "started") inner = dashed(c, 100) + `<circle cx="6" cy="6" r="3" stroke-width="1.5" stroke-linecap="round" fill="none" transform="rotate(-90 8 6)" stroke-dasharray="${CIRC}" stroke-dashoffset="0" stroke="${c}"/>` + ring(c, 1.5, 0);
+  else if (g === "completed") inner = `<path fill="${c}" ${COMPLETED_PATH}/>`;
+  else if (g === "cancelled") inner = `<path fill="${c}" ${CANCELLED_PATH}/>`;
+  else inner = dashed(c, 100) + ring(c, 1.5, 0);
+  return `<svg width="13" height="13" viewBox="0 0 16 16">${inner}</svg>`;
+}
+const CALENDAR_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a909c" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`;
+const FLAG_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a909c" stroke-width="2"><path d="M5 21V4h13l-3 4 3 4H5"/></svg>`;
+const DESCRIPTION_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></svg>`;
+
+document.querySelectorAll("[data-icon]").forEach((el) => {
+  const key = el.dataset.icon;
+  let svg = "";
+  if (key === "calendar") svg = CALENDAR_ICON;
+  else if (key === "flag") svg = FLAG_ICON;
+  else if (key === "desc") svg = DESCRIPTION_ICON;
+  else if (key.startsWith("state:")) svg = stateIcon(key.slice(6));
+  else if (key.startsWith("prio:")) svg = priorityIcon(key.slice(5));
+  el.insertAdjacentHTML("afterbegin", svg);
+});
+
+/* ===== 상호작용 ===== */
+const TODAY = new Date(2026, 7, 10); // 목업 기준일 2026-08-10
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+const fmt = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}<span class="dow">(${DOW[d.getDay()]})</span>`;
+const addDays = (n) => { const d = new Date(TODAY); d.setDate(d.getDate() + n); return d; };
+
+// 각 날짜 행이 "오늘로부터 며칠" 인지를 하나의 진실로 들고 간다 —
+// 프리셋 버튼과 스테퍼 값이 따로 놀지 않게 항상 이 값에서 다시 그린다.
+document.querySelectorAll("[data-date]").forEach((row) => {
+  row.dataset.offset = row.dataset.offset ?? "0";
+  const render = () => {
+    const off = Number(row.dataset.offset);
+    row.querySelector("[data-val]").innerHTML = fmt(addDays(off));
+    row.querySelectorAll("[data-preset]").forEach((b) => b.classList.toggle("on", Number(b.dataset.preset) === off));
+  };
+  row.querySelectorAll("[data-preset]").forEach((b) =>
+    b.addEventListener("click", () => { row.dataset.offset = b.dataset.preset; render(); }));
+  row.querySelectorAll("[data-step]").forEach((b) =>
+    b.addEventListener("click", () => {
+      row.dataset.offset = String(Number(row.dataset.offset) + Number(b.dataset.step));
+      render();
+    }));
+  render();
+});
+
+// 단일 선택 트랙(상태·우선순위). 날짜 프리셋은 위에서 직접 다루므로 제외한다.
+document.querySelectorAll("[data-single]:not([data-presets]) .seg").forEach((seg) => {
+  seg.addEventListener("click", () => {
+    seg.closest("[data-single]").querySelectorAll(".seg").forEach((s) => s.classList.remove("on"));
+    seg.classList.add("on");
+  });
+});
+
+// 담당자: 클릭 = 단독 지정, Ctrl+클릭 = 토글(여러 명)
+document.querySelectorAll("[data-multi] .person:not(.more)").forEach((p) => {
+  p.addEventListener("click", (e) => {
+    const row = p.closest("[data-multi]");
+    if (e.ctrlKey) {
+      p.classList.toggle("on");
+    } else {
+      row.querySelectorAll(".person").forEach((x) => x.classList.remove("on"));
+      p.classList.add("on");
+    }
+    const hint = row.parentElement.querySelector(".qa2-hint");
+    const n = row.querySelectorAll(".person.on").length;
+    if (hint) hint.textContent = n > 1 ? `${n}명 지정됨` : "Ctrl+클릭 다중";
+  });
+});
+
+// "+N" 팝오버 — 담당자 칩 바로 아래에 띄운다
+document.querySelectorAll("[data-more]").forEach((btn) => {
+  const popup = btn.closest("[data-qa2]");
+  const pop = popup.querySelector("[data-people-pop]");
+  const place = () => {
+    const b = btn.getBoundingClientRect(), p = popup.getBoundingClientRect();
+    pop.style.left = `${Math.min(b.left - p.left, p.width - 220)}px`;
+    pop.style.top = `${b.bottom - p.top + 6}px`;
+  };
+  place();
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    place();
+    pop.hidden = !pop.hidden;
+  });
+});
+document.addEventListener("click", () => {
+  document.querySelectorAll("[data-people-pop]").forEach((p) => {
+    if (p.closest("[data-variant='people']")) return; // 이 셀은 열린 상태를 보여주는 용도
+    p.hidden = true;
+  });
+});
+
+// 설명 토글
+document.querySelectorAll("[data-desc-toggle]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const body = btn.closest("[data-qa2]").querySelector("[data-desc-body]");
+    body.hidden = !body.hidden;
+    btn.classList.toggle("on", !body.hidden);
+  });
+});
+
+/* ===== 검색되는 프로젝트 드롭다운 ===== */
+const SEARCH_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
+const PROJECTS = [
+  { name: "Plane Quick Dock", color: "#6d8fd6" },
+  { name: "Plane 내부툴", color: "#c98f5f" },
+  { name: "웹 리뉴얼", color: "#59a869" },
+  { name: "모바일 앱", color: "#a97ed6" },
+  { name: "데이터 파이프라인", color: "#4fb8c9" },
+  { name: "디자인 시스템", color: "#c95f8f" },
+  { name: "인프라 운영", color: "#d69b4f" },
+  { name: "고객 지원 봇", color: "#7d8ad6" },
+  { name: "QA 자동화", color: "#e2795e" },
+  { name: "사내 위키 개편", color: "#8fb35f" },
+];
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// 맞은 구간만 <mark> 로 감싼다 — 앞글자가 아니라 이름 어디에 걸렸는지 눈에 보이게.
+function highlight(name, q) {
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if (!q || i === -1) return esc(name);
+  return esc(name.slice(0, i)) + "<mark>" + esc(name.slice(i, i + q.length)) + "</mark>" + esc(name.slice(i + q.length));
+}
+
+function initProjectDropdown(popup) {
+  const btn = popup.querySelector(".proj-select");
+  const nameEl = btn.querySelector("[data-proj-name]");
+  const dotEl = btn.querySelector(".dot");
+  let selected = nameEl.textContent.trim();
+
+  const dd = document.createElement("div");
+  dd.className = "dropdown";
+  dd.hidden = true;
+  dd.innerHTML =
+    `<div class="dd-search"><span class="sicon">${SEARCH_ICON}</span>` +
+    `<input placeholder="프로젝트 검색…" /><span class="cnt"></span></div>` +
+    `<div class="dd-list"></div>` +
+    `<div class="dd-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 이동</span><span><kbd>↵</kbd> 선택</span><span><kbd>Esc</kbd> 닫기</span></div>`;
+  popup.appendChild(dd);
+
+  const input = dd.querySelector("input");
+  const list = dd.querySelector(".dd-list");
+  const cnt = dd.querySelector(".cnt");
+  let hits = [];
+
+  function render() {
+    const q = input.value.trim();
+    hits = PROJECTS.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
+    cnt.textContent = q ? `${hits.length}/${PROJECTS.length}` : `${PROJECTS.length}개`;
+    list.innerHTML = hits.length
+      ? hits.map((p) =>
+          `<div class="dd-item${p.name === selected ? " sel" : ""}">` +
+          `<span class="dot" style="background:${p.color}"></span>` +
+          `<span class="nm">${highlight(p.name, q)}</span></div>`).join("")
+      : `<div class="dd-empty">일치하는 프로젝트가 없습니다</div>`;
+    // 키보드 커서는 현재 선택 위에, 걸러져 사라졌으면 첫 줄에 둔다.
+    const items = [...list.querySelectorAll(".dd-item")];
+    (items.find((el) => el.classList.contains("sel")) ?? items[0])?.classList.add("kbd-focus");
+    items.forEach((el, i) => el.addEventListener("click", () => pick(hits[i])));
+  }
+
+  function pick(p) {
+    if (!p) return;
+    selected = p.name;
+    nameEl.textContent = p.name;
+    dotEl.style.background = p.color;
+    close();
+  }
+  function move(delta) {
+    const items = [...list.querySelectorAll(".dd-item")];
+    if (!items.length) return;
+    const cur = items.findIndex((el) => el.classList.contains("kbd-focus"));
+    const next = (cur + delta + items.length) % items.length;
+    items.forEach((el) => el.classList.remove("kbd-focus"));
+    items[next].classList.add("kbd-focus");
+    items[next].scrollIntoView({ block: "nearest" });
+  }
+  function open() {
+    dd.hidden = false;
+    input.value = "";
+    render();
+    input.focus();
+  }
+  function close() { dd.hidden = true; }
+
+  btn.addEventListener("click", (e) => { e.stopPropagation(); dd.hidden ? open() : close(); });
+  dd.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("input", render);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); move(e.key === "ArrowDown" ? 1 : -1); }
+    else if (e.key === "Enter") { e.preventDefault(); pick(hits[[...list.querySelectorAll(".dd-item")].findIndex((el) => el.classList.contains("kbd-focus"))]); }
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+  });
+
+  // 3번 섹션의 시연 팝업은 열린 채로 둔다(바깥 클릭에도 닫히지 않게 표시).
+  if (popup.dataset.openQuery !== undefined) {
+    dd.dataset.keepOpen = "1";
+    dd.hidden = false;
+    input.value = popup.dataset.openQuery;
+    render();
+  }
+}
+document.querySelectorAll(".popup").forEach(initProjectDropdown);
+document.addEventListener("click", () => {
+  document.querySelectorAll(".dropdown:not([data-keep-open])").forEach((d) => { d.hidden = true; });
+});
+
+// 라이트/다크 전환. ?theme=light 로도 열 수 있다(스크린샷용).
+const themeBtn = document.getElementById("themeBtn");
+if (new URLSearchParams(location.search).get("theme") === "light") {
+  document.documentElement.setAttribute("data-theme", "light");
+  themeBtn.textContent = "🌙 다크로 보기";
+}
+themeBtn.addEventListener("click", () => {
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
+  themeBtn.textContent = light ? "☀ 라이트로 보기" : "🌙 다크로 보기";
+});
+
+// 설정 셀렉트: 고른 버전에 맞춰 설명문을 바꾼다
+const qaVersion = document.getElementById("qaVersion");
+const qaVersionHelp = document.getElementById("qaVersionHelp");
+qaVersion.addEventListener("change", () => {
+  qaVersionHelp.textContent = qaVersion.value === "v2"
+    ? "담당자·상태·우선순위·날짜를 접지 않고 한 화면에 보여줍니다. 창이 660px로 넓어집니다."
+    : "제목만 빠르게 넣기 좋은 좁은 창(540px)입니다. 나머지 항목은 칩을 눌러 바꿉니다.";
+});
+</script>
+</body>
+</html>
