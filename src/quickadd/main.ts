@@ -9,6 +9,7 @@ import { createProjectPicker } from "./projectPicker";
 import { createFormState, resolveDateChoice, shiftDateField, resetFormFields } from "./state";
 import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
 import { mountCompact } from "./layoutCompact";
+import { mountExpanded } from "./layoutExpanded";
 import "../shared/app.css";
 
 // Every window focus reloads the project list from the Plane API; a cooldown keeps rapid
@@ -83,7 +84,24 @@ const ctx: LayoutContext = {
   focusTitle: () => titleEl.focus(),
 };
 
+type LayoutKind = "compact" | "expanded";
+let layoutKind: LayoutKind = "compact";
 let layout: LayoutHandle = mountCompact(hosts, ctx);
+
+/** 설정이 가리키는 레이아웃으로 갈아끼운다. 폼 상태는 state.ts에 있고 제목·설명은
+ *  index.html의 입력칸에 있으므로, 작성 중이던 초안은 그대로 살아남는다. */
+function applyLayout(kind: LayoutKind) {
+  if (kind === layoutKind) return;
+  layout.destroy();
+  layoutKind = kind;
+  layout = kind === "expanded" ? mountExpanded(hosts, ctx) : mountCompact(hosts, ctx);
+  layout.render();
+  resizeToFit();
+}
+
+function layoutKindOf(setting: string): LayoutKind {
+  return setting === "expanded" ? "expanded" : "compact";
+}
 
 function showError(message: string) {
   errorEl.textContent = message;
@@ -151,9 +169,13 @@ async function load() {
   lastLoadAt = Date.now();
   const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
   applyTheme(settings.theme);
+  applyLayout(layoutKindOf(settings.quickadd_layout));
   projects = fetched;
   state.selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
   projectPicker.render();
+  // 프로젝트가 방금 정해졌다 — 한눈에 보기의 담당자 행은 이 값에 딸려 있으므로
+  // 여기서 한 번 더 그려야 목록을 받아온다.
+  layout.render();
 }
 
 /** Flashes the submit button — plain Enter no longer submits, so this teaches Ctrl+Enter. */
@@ -227,6 +249,13 @@ win.listen<string>("select-project", (e) => {
   state.assigneeIds = [];
   projectPicker.render();
   layout.render();
+});
+
+// 설정 창이 저장하면 즉시 반영한다 — 이 창은 트레이에 살아 있어 재로드되지 않는다.
+win.listen("settings-changed", async () => {
+  const s = await getSettings();
+  applyTheme(s.theme);
+  applyLayout(layoutKindOf(s.quickadd_layout));
 });
 layout.render();
 resizeToFit(); // 설명이 접혀 있는 첫 화면에서는 autoResizeDescription과 같은 일을 한다

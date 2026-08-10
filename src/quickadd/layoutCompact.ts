@@ -5,6 +5,10 @@ import {
   CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON,
 } from "../shared/planeIcons";
 import { bindTip } from "../shared/tooltip";
+import {
+  initKeyboardFocus, moveKeyboardFocus, keyboardFocusIndex, setKeyboardFocusIndex,
+  handleDropdownKeydown,
+} from "../shared/dropdownKeyboard";
 import type { Member } from "../shared/types";
 import { dateChoiceLabel, shiftDateField, toggleAssignee, setSingleAssignee } from "./state";
 import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
@@ -96,70 +100,6 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
     fieldPopover.hidden = true;
     fieldPopover.innerHTML = "";
     ctx.onResize();
-  }
-
-  /** Puts the keyboard cursor on `container`'s current `.sel` item, or its first item if none is selected. */
-  function initKeyboardFocus(container: HTMLElement) {
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
-    items.forEach((el) => el.classList.remove("kbd-focus"));
-    const current = items.find((el) => el.classList.contains("sel")) ?? items[0];
-    current?.classList.add("kbd-focus");
-  }
-
-  /** Moves the keyboard cursor to the next/previous `.dd-item` in `container`, wrapping at either end. */
-  function moveKeyboardFocus(container: HTMLElement, delta: 1 | -1) {
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
-    if (items.length === 0) return;
-    const currentIndex = items.findIndex((el) => el.classList.contains("kbd-focus"));
-    const nextIndex =
-      currentIndex === -1 ? (delta > 0 ? 0 : items.length - 1) : (currentIndex + delta + items.length) % items.length;
-    items.forEach((el) => el.classList.remove("kbd-focus"));
-    items[nextIndex].classList.add("kbd-focus");
-    items[nextIndex].scrollIntoView({ block: "nearest" });
-  }
-
-  /** Clicks `container`'s current keyboard-cursor item, reusing its existing onclick handler. */
-  function selectKeyboardFocus(container: HTMLElement) {
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
-    items.find((el) => el.classList.contains("kbd-focus"))?.click();
-  }
-
-  function keyboardFocusIndex(container: HTMLElement): number {
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
-    return items.findIndex((el) => el.classList.contains("kbd-focus"));
-  }
-
-  /** Puts the keyboard cursor on the `index`-th `.dd-item` (clamped to the last item), bypassing
-   *  `initKeyboardFocus`'s jump-to-selection default — keeps the cursor in place across a re-render. */
-  function setKeyboardFocusIndex(container: HTMLElement, index: number) {
-    const items = Array.from(container.querySelectorAll<HTMLElement>(".dd-item"));
-    if (items.length === 0 || index < 0) return;
-    items.forEach((el) => el.classList.remove("kbd-focus"));
-    items[Math.min(index, items.length - 1)].classList.add("kbd-focus");
-  }
-
-  /** Builds a keydown handler for a dropdown trigger button: arrow keys move, Enter selects, Escape closes.
-   *  Does nothing (and doesn't call preventDefault) while `isOpen()` is false, so the trigger button's own
-   *  native Enter-activates-click behavior still opens the dropdown as before. */
-  function handleDropdownKeydown(container: HTMLElement, isOpen: () => boolean, onClose: () => void) {
-    return (e: KeyboardEvent) => {
-      if (!isOpen()) return;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        moveKeyboardFocus(container, e.key === "ArrowDown" ? 1 : -1);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const trigger = e.currentTarget as HTMLElement;
-        selectKeyboardFocus(container);
-        // The selected item's own onclick moves focus to titleEl (matching mouse-click
-        // behavior) — pull it back to the trigger chip so ArrowLeft/ArrowRight chip
-        // navigation can continue right after a keyboard selection.
-        trigger.focus();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
   }
 
   // Mouse click picks a single assignee and closes the popover; Ctrl+click toggles the
@@ -419,6 +359,9 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
       descriptionEl.removeEventListener("input", autoResizeDescription);
       hosts.fields.innerHTML = "";
       hosts.titleTrailing.innerHTML = "";
+      // 설명 표시 여부는 레이아웃마다 따로 들고 있다 — 펼친 채로 넘기면 새 레이아웃의
+      // 토글은 꺼져 있는데 입력칸만 남아 어긋난다. 입력한 값은 그대로 둔다.
+      hosts.description.hidden = true;
     },
   };
 }

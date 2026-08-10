@@ -149,6 +149,101 @@ kbd {
 }
 .popover-date-input:focus { border-color: var(--accent); }
 
+/* ===== 한눈에 보기(빠른 추가): 라벨 + 필드 행 ===== */
+.qa2-fields {
+  display: flex; flex-direction: column;
+  padding: 2px 18px 12px;
+}
+.qa2-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
+/* 행 사이는 아주 옅은 선으로만 나눈다 — 5줄 위에 진한 선 4개를 그으면
+   팝업 하나가 표처럼 무거워진다. */
+.qa2-row + .qa2-row { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+.qa2-label {
+  flex: none; width: 56px; font-size: 11.5px; color: var(--muted); user-select: none;
+}
+
+/* 단일 선택 = 오목한 트랙 안의 세그먼트 */
+.seg-track {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+}
+.seg {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 8px; border: none; border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.seg svg { flex: none; }
+.seg:hover { background: var(--panel-2); color: var(--text); }
+.seg.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg.on:hover { background: var(--accent-soft); }
+
+/* 다중 선택 = 트랙 없는 낱개 칩(단일 선택과 형태로 구분한다) */
+.qa2-people { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+.person {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px 0 4px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.person:hover { border-color: var(--accent); color: var(--text); }
+.person .avatar {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 700; color: #fff; background: var(--muted-2);
+}
+.person.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.person.more { padding: 0 11px; color: var(--muted-2); border-style: dashed; }
+.person.more:hover { color: var(--accent); border-color: var(--accent); }
+.person.more .cnt { font-weight: 700; }
+
+/* 날짜: 프리셋 트랙 + 실제 값 스테퍼 */
+.date-stepper {
+  display: inline-flex; align-items: center; gap: 1px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+  padding: 1px;
+}
+.date-stepper .step {
+  width: 20px; height: 24px; border: none; background: transparent; border-radius: 5px;
+  color: var(--muted-2); cursor: pointer; font-size: 12px; line-height: 1;
+  display: grid; place-items: center; font-family: inherit;
+}
+.date-stepper .step:hover { background: var(--panel-2); color: var(--accent); }
+.date-stepper .val {
+  min-width: 92px; text-align: center; font-size: 11.5px; color: var(--text);
+  font-variant-numeric: tabular-nums; padding: 0 4px; cursor: pointer;
+}
+.date-stepper .val:hover { color: var(--accent); }
+.date-stepper .val .dow { color: var(--muted-2); margin-left: 3px; }
+.qa2-hint { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted-2); white-space: nowrap; }
+
+/* 설명 토글은 제목 줄 오른쪽 끝 — 필드 격자를 어지럽히지 않는다 */
+.desc-toggle {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 9px; border-radius: 7px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--muted); font-size: 11.5px; font-family: inherit; cursor: pointer;
+}
+.desc-toggle:hover { color: var(--text); border-color: var(--accent); }
+.desc-toggle.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-ring); }
+
+/* 담당자 "+N" 팝오버 */
+.people-pop {
+  position: absolute; z-index: 30; width: 210px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 6px;
+}
+.people-pop[hidden] { display: none; }
+.people-pop .pp-head {
+  padding: 4px 8px 6px; font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted-2);
+}
+.people-pop .dd-item .avatar {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: #fff; background: var(--muted-2);
+}
+
 .popup-bottom {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
