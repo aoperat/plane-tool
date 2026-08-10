@@ -4,6 +4,7 @@ import type { Project } from "../shared/types";
 import { resolveDateShortcut } from "../shared/dateShortcut";
 import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
+import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
 import { createFormState, resolveDateChoice, shiftDateField, resetFormFields } from "./state";
 import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
@@ -23,7 +24,6 @@ const descriptionEl = document.getElementById("description") as HTMLTextAreaElem
 const errorEl = document.getElementById("qaError")!;
 const qaClose = document.getElementById("qaClose")!;
 const qaSubmit = document.getElementById("qaSubmit")!;
-const qaTip = document.getElementById("qaTip")!;
 
 let projects: Project[] = [];
 const state = createFormState();
@@ -205,25 +205,6 @@ qaClose.addEventListener("click", () => {
   win.hide();
 });
 
-// Shortcut tooltip: one body-level pill moved under whichever trigger is hovered/focused.
-function bindTip(el: HTMLElement, html: string, placement: "above" | "below") {
-  const show = () => {
-    qaTip.innerHTML = html;
-    qaTip.hidden = false;
-    const r = el.getBoundingClientRect();
-    const left = Math.max(6, Math.min(r.left + r.width / 2 - qaTip.offsetWidth / 2,
-      window.innerWidth - qaTip.offsetWidth - 6));
-    qaTip.style.left = `${left}px`;
-    // The window is sized to the popup exactly, so the close button (top edge) tips downward.
-    qaTip.style.top = placement === "above" ? `${r.top - qaTip.offsetHeight - 6}px` : `${r.bottom + 6}px`;
-  };
-  const hide = () => { qaTip.hidden = true; };
-  el.addEventListener("mouseenter", show);
-  el.addEventListener("mouseleave", hide);
-  el.addEventListener("focus", show);
-  el.addEventListener("blur", hide);
-  el.addEventListener("click", hide);
-}
 bindTip(qaClose, "닫기 <kbd>Esc</kbd>", "below");
 
 // Focus fires both when the window is summoned and when the user merely clicks
