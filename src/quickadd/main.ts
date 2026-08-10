@@ -1,6 +1,5 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { createIssue, listProjects, listMembers, getSettings, setLastProject } from "../shared/ipc";
-import { colorForId } from "../shared/color";
 import type { Project, Member } from "../shared/types";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
 import { attachWheelCycle } from "../shared/wheelCycle";
@@ -11,6 +10,7 @@ import {
 } from "../shared/planeIcons";
 import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
+import { createProjectPicker } from "./projectPicker";
 import "../shared/app.css";
 
 // Every window focus reloads the project list from the Plane API; a cooldown keeps rapid
@@ -22,9 +22,6 @@ let lastLoadAt = 0;
 const win = getCurrentWindow();
 const titleEl = document.getElementById("title") as HTMLInputElement;
 const projBtn = document.getElementById("projBtn")!;
-const projName = document.getElementById("projName")!;
-const projDot = document.getElementById("projDot")!;
-const dropdown = document.getElementById("dropdown")!;
 const chipAssignee = document.getElementById("chipAssignee")!;
 const chipStart = document.getElementById("chipStart")!;
 const chipDue = document.getElementById("chipDue")!;
@@ -66,22 +63,31 @@ function resizeToFit() {
     const popoverBottom = Math.ceil(fieldPopover.getBoundingClientRect().bottom);
     height = Math.max(height, popoverBottom);
   }
-  if (!dropdown.hidden) {
-    height = Math.max(height, Math.ceil(dropdown.getBoundingClientRect().bottom));
-  }
+  height = Math.max(height, projectPicker.bottom());
   height += 4; // small buffer so a border/shadow pixel never gets clipped
   win.setSize(new LogicalSize(540, height)).catch((err) => {
     console.error("resizeToFit failed:", err);
   });
 }
 
-// The dropdown hangs below the popup, so every open/close changes the window's
-// required height — funnel all visibility flips through here to keep them in sync.
-function setDropdownOpen(open: boolean) {
-  dropdown.hidden = !open;
-  if (open) initKeyboardFocus(dropdown);
-  resizeToFit();
-}
+const projectPicker = createProjectPicker({
+  button: projBtn,
+  host: popupEl,
+  getProjects: () => projects,
+  getSelectedId: () => selectedId,
+  onPick: (p) => {
+    selectedId = p.id;
+    members = [];
+    membersLoadedForProject = null;
+    assigneeIds = [];
+    renderChips();
+    titleEl.focus();
+    // 즉시 저장 — 안 그러면 포커스로 다시 도는 load()가 last_project_id를
+    // 이 창에서 바꾸기 전 값으로 되돌린다.
+    setLastProject(p.id).catch((err) => console.error("setLastProject failed:", err));
+  },
+  onResize: () => resizeToFit(),
+});
 
 function dateChoiceLabel(choice: DateChoice, custom: string): string {
   if (choice === "custom") return custom || "날짜 선택";
@@ -173,41 +179,6 @@ async function submitIssue() {
     console.error(err);
   } finally {
     submitting = false;
-  }
-}
-
-function renderSelected() {
-  const p = projects.find((x) => x.id === selectedId);
-  projName.textContent = p ? p.name : "프로젝트 선택";
-  (projDot as HTMLElement).style.background = p ? colorForId(p.id) : "transparent";
-}
-
-function renderDropdown() {
-  dropdown.innerHTML = "";
-  for (const p of projects) {
-    const item = document.createElement("div");
-    item.className = "dd-item" + (p.id === selectedId ? " sel" : "");
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    dot.style.background = colorForId(p.id);
-    item.appendChild(dot);
-    item.appendChild(document.createTextNode(p.name));
-    item.onclick = () => {
-      selectedId = p.id;
-      members = [];
-      membersLoadedForProject = null;
-      assigneeIds = [];
-      renderSelected();
-      renderDropdown();
-      renderChips();
-      setDropdownOpen(false);
-      titleEl.focus();
-      // Persist immediately — otherwise a focus-triggered load() (window re-summoned
-      // after switching away and back) resolves last_project_id back to the project
-      // that was selected before this in-window switch.
-      setLastProject(p.id).catch((err) => console.error("setLastProject failed:", err));
-    };
-    dropdown.appendChild(item);
   }
 }
 
@@ -588,7 +559,7 @@ chips.forEach((chip) => chip.addEventListener("keydown", handleChipArrowNav));
 
 function resetFields() {
   assigneeIds = [];
-  setDropdownOpen(false); // a submit can land while the project dropdown is open
+  projectPicker.close(); // a submit can land while the project dropdown is open
   startChoice = "today";
   startCustomDate = "";
   dueChoice = "today";
@@ -608,20 +579,8 @@ async function load() {
   applyTheme(settings.theme);
   projects = fetched;
   selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
-  renderSelected();
-  renderDropdown();
+  projectPicker.render();
 }
-
-projBtn.onclick = () => {
-  setDropdownOpen(dropdown.hidden);
-};
-projBtn.addEventListener(
-  "keydown",
-  handleDropdownKeydown(dropdown, () => !dropdown.hidden, () => {
-    setDropdownOpen(false);
-    titleEl.focus();
-  }),
-);
 
 /** Flashes the submit button — plain Enter no longer submits, so this teaches Ctrl+Enter. */
 function pulseSubmit() {
@@ -635,7 +594,7 @@ titleEl.addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") clearError();
   if (e.key === "Escape") {
     if (openPopover) { closePopover(); return; }
-    if (!dropdown.hidden) { setDropdownOpen(false); return; }
+    if (projectPicker.isOpen()) { projectPicker.close(); return; }
     await win.hide();
     return;
   }
@@ -653,12 +612,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.ctrlKey) {
     e.preventDefault();
     if (openPopover) closePopover();
-    setDropdownOpen(false);
+    projectPicker.close();
     submitIssue();
     return;
   }
   const shortcut = resolveDateShortcut(e.key, e.ctrlKey);
-  if (shortcut && !openPopover && dropdown.hidden) {
+  if (shortcut && !openPopover && !projectPicker.isOpen()) {
     e.preventDefault();
     shiftDateField(shortcut.kind, shortcut.delta);
   }
@@ -667,7 +626,7 @@ document.addEventListener("keydown", (e) => {
 qaSubmit.addEventListener("click", () => { submitIssue(); });
 qaClose.addEventListener("click", () => {
   if (openPopover) closePopover();
-  setDropdownOpen(false);
+  projectPicker.close();
   win.hide();
 });
 
@@ -714,8 +673,7 @@ win.listen<string>("select-project", (e) => {
   members = [];
   membersLoadedForProject = null;
   assigneeIds = [];
-  renderSelected();
-  renderDropdown();
+  projectPicker.render();
   renderChips();
 });
 renderChips();

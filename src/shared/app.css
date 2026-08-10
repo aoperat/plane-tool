@@ -221,7 +221,7 @@ kbd {
    see resizeToFit) — opening upward ran past the window's top edge with many
    projects, leaving the overflow unclickable. Long lists scroll instead. */
 .dropdown {
-  position: absolute; top: calc(100% + 6px); left: 14px; width: 230px;
+  position: absolute; top: calc(100% + 6px); left: 14px; width: 272px;
   max-height: 240px; overflow-y: auto;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: var(--shadow); padding: 6px; z-index: 40;
@@ -231,6 +231,35 @@ kbd {
 .dd-item.sel::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 12px; }
 .dd-item .dot { width: 9px; height: 9px; border-radius: 50%; }
 .dd-item.kbd-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.dd-item .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 검색창은 목록 위에 붙어 있고 드롭다운을 열면 커서가 여기 놓인다. 그냥 눌러
+   고르던 흐름은 그대로고, 검색은 원할 때만 쓰는 추가 경로다. */
+.dd-search {
+  display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 5px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+}
+.dd-search:focus-within { border-color: var(--accent); }
+.dd-search .sicon { flex: none; color: var(--muted); display: flex; }
+.dd-search input {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+  color: var(--text); font-size: 12.5px; font-family: inherit; padding: 0;
+}
+.dd-search input::placeholder { color: var(--muted-2); }
+.dd-search .cnt {
+  flex: none; font-size: 10.5px; color: var(--muted-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* 7줄까지 보이고 그 아래는 스크롤 — 프로젝트가 늘어도 창이 계속 자라지 않는다. */
+.dd-list { max-height: 208px; overflow-y: auto; }
+.dd-list::-webkit-scrollbar { width: 8px; }
+.dd-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+.dd-empty { padding: 16px 9px; font-size: 12px; color: var(--muted-2); text-align: center; }
+.dd-foot {
+  display: flex; gap: 12px; margin-top: 5px; padding: 6px 9px 2px;
+  border-top: 1px solid var(--border); font-size: 10.5px; color: var(--muted-2);
+}
+.dd-foot kbd { font-size: 9.5px; padding: 0 4px; border-bottom-width: 1px; border-radius: 4px; }
 
 /* shared dot used across surfaces */
 .dot { display: inline-block; border-radius: 50%; }
