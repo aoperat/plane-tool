@@ -4,6 +4,7 @@ import type { LayoutHandle, LayoutContext, LayoutHosts } from "./layout";
 import { DATE_PRESETS, type DatePresetKey } from "../shared/datePresets";
 import { attachWheelCycle } from "../shared/wheelCycle";
 import { colorForId } from "../shared/color";
+import { initKeyboardFocus, moveKeyboardFocus, selectKeyboardFocus } from "../shared/dropdownKeyboard";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   DESCRIPTION_ICON, type Priority, type StateGroup,
@@ -72,6 +73,31 @@ function onSegClick(track: HTMLElement, key: "value" | "preset", handler: (v: st
   });
 }
 
+/** 행마다 포커스 받는 요소를 하나로 줄인다 — 그래야 Tab이 칩 하나하나가 아니라
+ *  행 단위로 움직인다. 활성 요소는 선택된 것, 없으면 첫 번째. `render()` 끝에서
+ *  매번 다시 매긴다 — render()가 행 내용을 다시 그리기 때문이다. */
+function applyRovingTabindex(row: HTMLElement): void {
+  const items = [...row.querySelectorAll<HTMLElement>(".seg, .person")];
+  if (items.length === 0) return;
+  const active = items.find((el) => el.classList.contains("on")) ?? items[0];
+  items.forEach((el) => { el.tabIndex = el === active ? 0 : -1; });
+}
+
+/** 행 컨테이너에 위임으로 건다 — ←/→로 세그먼트·담당자 칩을 옮긴다. 양 끝에서
+ *  멈춘다(순환 없음): 순환하면 어디까지 왔는지 감이 안 온다. */
+function handleRowKeydown(row: HTMLElement, e: KeyboardEvent): void {
+  const items = [...row.querySelectorAll<HTMLElement>(".seg, .person")];
+  const current = items.indexOf(document.activeElement as HTMLElement);
+  if (current === -1) return;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    e.preventDefault();
+    const next = Math.max(0, Math.min(items.length - 1, current + (e.key === "ArrowRight" ? 1 : -1)));
+    items[next].tabIndex = 0;
+    items[current].tabIndex = -1;
+    items[next].focus();
+  }
+}
+
 /** 다섯 항목을 라벨 붙은 다섯 줄로 펼쳐두는 "한눈에 보기" 레이아웃. */
 export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHandle {
   hosts.fields.innerHTML = FIELDS_HTML;
@@ -85,6 +111,7 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
   const stateTrack = hosts.fields.querySelector<HTMLElement>("[data-state]")!;
   const priorityTrack = hosts.fields.querySelector<HTMLElement>("[data-priority]")!;
   const peoplePop = hosts.fields.querySelector<HTMLElement>("[data-people-pop]")!;
+  const peopleRow = peopleEl.closest<HTMLElement>(".qa2-row")!;
   const descToggle = hosts.titleTrailing.querySelector<HTMLElement>("[data-desc-toggle]")!;
   // 팝오버는 카드(.popup) 기준으로 절대 배치한다 — 담당자 행이 아니라 카드가
   // 위치 기준 조상이라, 목업의 place()와 같은 좌표 계산을 그대로 쓴다.
@@ -200,10 +227,32 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
       more.addEventListener("click", () => {
         if (peoplePop.hidden) {
           fillPeoplePop(more, overflow);
+          initKeyboardFocus(peoplePop);
           peoplePop.hidden = false;
           ctx.onResize();
         } else {
           closePeoplePop();
+        }
+      });
+      // "+N" 버튼에 포커스가 있는 동안만 반응한다 — dd-item은 실제 DOM 포커스를
+      // 받지 않고 .kbd-focus 표시만 옮겨 다니므로(컴팩트 레이아웃의 담당자
+      // 팝오버와 같은 방식), 키 이벤트는 이 버튼에서만 잡힌다.
+      more.addEventListener("keydown", (e) => {
+        if (peoplePop.hidden) return;
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          moveKeyboardFocus(peoplePop, e.key === "ArrowDown" ? 1 : -1);
+        } else if (e.key === "Enter" && !e.ctrlKey) {
+          // Ctrl+Enter(제출)는 여기서 가로채지 않는다 — document의 전역 핸들러가
+          // 잡아야 하므로, 일반 Enter만 받는다.
+          e.preventDefault();
+          // 항목의 onclick(handlePersonClick)을 그대로 재사용한다 — 단독 지정,
+          // 팝오버 닫기, 제목으로 포커스 이동까지 그 안에서 다 처리된다.
+          selectKeyboardFocus(peoplePop);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          closePeoplePop();
+          more.focus();
         }
       });
       peopleEl.appendChild(more);
@@ -221,6 +270,25 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
     assigneeHint.textContent =
       state.assigneeIds.length >= 2 ? `${state.assigneeIds.length}명 지정됨` : "Ctrl+클릭 다중";
   }
+
+  // 담당자 칩은 <button>이라 Enter는 기본 click(=단독 지정)으로 충분하다. Space만은
+  // 토글이어야 하므로 여기서 가로챈다 — 기본 click이 나면 단독 지정이 되어버린다.
+  peopleRow.addEventListener("keydown", (e) => {
+    const el = document.activeElement as HTMLElement;
+    const id = el?.dataset.memberId;
+    if (!id || e.key !== " ") return;
+    e.preventDefault();
+    toggleAssignee(state, id);
+    render();
+    // render()가 담당자 행 DOM을 통째로 다시 만들므로 같은 사람의 칩으로 포커스를
+    // 되돌린다. roving tabindex도 그 칩에 맞춰 다시 잡는다 — applyRovingTabindex는
+    // 다중 지정 중 첫 "on" 칩을 고르므로 방금 토글한 칩과 다를 수 있다.
+    const chip = peopleRow.querySelector<HTMLElement>(`[data-member-id="${id}"]`);
+    if (chip) {
+      peopleRow.querySelectorAll<HTMLElement>(".person").forEach((c) => { c.tabIndex = c === chip ? 0 : -1; });
+      chip.focus();
+    }
+  });
 
   // ===== 상태 / 우선순위 =====
 
@@ -266,6 +334,9 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
     });
 
     row.querySelectorAll<HTMLElement>("[data-step]").forEach((btn) => {
+      // Tab 흐름에서 뺀다 — 버튼은 기본 tabIndex가 0이라 두면 행마다 하나여야 할
+      // Tab 정지점이 늘어난다. PgUp/Dn이 이미 같은 일을 하므로 마우스로만 쓴다.
+      btn.tabIndex = -1;
       btn.addEventListener("click", () => {
         shiftDateField(state, kind, Number(btn.dataset.step));
         render();
@@ -278,6 +349,9 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
     const picker = document.createElement("input");
     picker.type = "date";
     picker.style.cssText = "position:absolute;opacity:0;pointer-events:none";
+    // 안 보이는 입력칸이 Tab에 걸리면 키보드 사용자가 어디로 갔는지 알 수 없다 —
+    // 클릭으로만 연다.
+    picker.tabIndex = -1;
     row.appendChild(picker);
     valEl.addEventListener("click", () => {
       picker.value = resolveDateChoice(choice(), custom());
@@ -302,6 +376,13 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
 
   const renderStartRow = setupDateRow("start");
   const renderDueRow = setupDateRow("due");
+
+  // ===== 행 사이 키보드 이동 =====
+
+  // `.qa2-row`는 마운트 때 한 번 만들어지고 다시 만들어지지 않는다(행 안 내용만
+  // render()가 새로 그린다) — 그래서 위임 리스너를 여기서 한 번만 건다.
+  const rows = [...hosts.fields.querySelectorAll<HTMLElement>(".qa2-row")];
+  rows.forEach((row) => row.addEventListener("keydown", (e) => handleRowKeydown(row, e)));
 
   // ===== 설명 토글 =====
 
@@ -331,6 +412,8 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
     markSegOn(priorityTrack, (seg) => seg.dataset.value === state.priority);
     renderStartRow();
     renderDueRow();
+    // `.on` 표시가 다 끝난 뒤에 매긴다 — roving tabindex의 "활성 요소"가 그걸 본다.
+    rows.forEach(applyRovingTabindex);
   }
 
   render();
