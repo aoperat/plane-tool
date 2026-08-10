@@ -153,15 +153,21 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
   // 것인가"**다 — main.ts는 이미 고른 프로젝트를 다시 골라도 members를 비우고
   // membersLoadedForProject를 null로 되돌리므로, 청한 이력만 보면 그 뒤로 담당자 행이
   // 영영 빈 채로 남는다. inFlight는 응답을 기다리는 사이의 중복 요청을, failedFor는
-  // 실패한 프로젝트를 렌더마다 다시 두드리는 것을 막는다.
-  let inFlight = false;
+  // 실패한 프로젝트를 렌더마다 다시 두드리는 것을 막는다. 둘 다 **어느 프로젝트에 대한
+  // 것인지**를 함께 들고 있어야 한다 — 단순 불리언으로 두면 A의 응답을 기다리는 사이
+  // B로 갈아탔을 때 B의 요청이 아예 나가지 않는다.
+  let inFlightFor: string | null = null;
   let failedFor: string | null = null;
   function requestMembers() {
     const id = state.selectedId;
-    if (!id || inFlight || failedFor === id || state.membersLoadedForProject === id) return;
-    inFlight = true;
+    if (!id) return;
+    // 다른 프로젝트를 거쳐 돌아오면 실패 기록은 잊는다 — 한 번의 네트워크 실패가
+    // 영구히 빈 담당자 행으로 굳으면 안 된다.
+    if (failedFor !== null && failedFor !== id) failedFor = null;
+    if (inFlightFor === id || failedFor === id || state.membersLoadedForProject === id) return;
+    inFlightFor = id;
     ctx.loadMembers().then(() => {
-      inFlight = false;
+      if (inFlightFor === id) inFlightFor = null;
       // ctx.loadMembers는 에러를 삼키고 언제나 resolve 하므로 성패는 이 값으로 읽는다.
       // 기다리는 사이 프로젝트가 바뀌었다면 이 결과로 실패를 기록하지 않는다.
       if (state.selectedId === id) failedFor = state.membersLoadedForProject === id ? null : id;

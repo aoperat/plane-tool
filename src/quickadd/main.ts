@@ -72,11 +72,18 @@ const ctx: LayoutContext = {
   state,
   onResize: () => resizeToFit(),
   loadMembers: async () => {
-    if (!state.selectedId || state.membersLoadedForProject === state.selectedId) return;
+    // 어느 프로젝트에 대한 요청인지 await 전에 붙잡아 둔다. 응답이 오는 사이 사용자가
+    // 프로젝트를 바꿨다면 늦게 온 목록은 버린다 — 그대로 넣으면 A의 담당자가 B의
+    // 목록으로 둔갑하고, membersLoadedForProject까지 B로 찍혀 되돌릴 길이 없어진다.
+    const id = state.selectedId;
+    if (!id || state.membersLoadedForProject === id) return;
     try {
-      state.members = await listMembers(state.selectedId);
-      state.membersLoadedForProject = state.selectedId;
+      const members = await listMembers(id);
+      if (state.selectedId !== id) return;
+      state.members = members;
+      state.membersLoadedForProject = id;
     } catch (err) {
+      if (state.selectedId !== id) return;
       state.members = [];
       console.error("listMembers failed:", err);
     }
