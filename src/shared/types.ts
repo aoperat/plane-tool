@@ -32,6 +32,7 @@ export interface SettingsDto {
   assign_notify_enabled: boolean; assign_remind_hours: number;
   deadline_notify_enabled: boolean; deadline_notify_time: string; deadline_lead_days: number;
   show_delegated_tab: boolean;
+  quickadd_layout: string;
 }
 export interface BriefingItem {
   id: string; name: string; project_id: string; project_identifier: string;

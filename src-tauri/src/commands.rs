@@ -32,6 +32,7 @@ pub struct SettingsDto {
     pub deadline_notify_time: String,
     pub deadline_lead_days: u32,
     pub show_delegated_tab: bool,
+    pub quickadd_layout: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -233,6 +234,7 @@ pub fn get_settings(app: tauri::AppHandle) -> SettingsDto {
         deadline_notify_time: s.deadline_notify_time,
         deadline_lead_days: s.deadline_lead_days,
         show_delegated_tab: s.show_delegated_tab,
+        quickadd_layout: s.quickadd_layout,
     }
 }
 
@@ -258,6 +260,7 @@ pub fn save_settings(
     deadline_notify_time: Option<String>,
     deadline_lead_days: Option<u32>,
     show_delegated_tab: Option<bool>,
+    quickadd_layout: Option<String>,
 ) -> Result<(), String> {
     let mut s = config::load_settings(&app);
     s.base_url = base_url.trim_end_matches('/').to_string();
@@ -293,12 +296,17 @@ pub fn save_settings(
     }
     if let Some(v) = deadline_lead_days { if v >= 1 { s.deadline_lead_days = v; } }
     if let Some(v) = show_delegated_tab { s.show_delegated_tab = v; }
+    if let Some(v) = quickadd_layout {
+        if v == "compact" || v == "expanded" { s.quickadd_layout = v; }
+    }
     // 재시작 없이 즉시 반영. 등록에 실패하면(다른 앱이 선점 등) 아무것도
     // 저장하지 않고 에러를 돌려줘서 설정 파일과 실제 등록 상태를 일치시킨다.
     if shortcuts_changed {
         crate::reapply_shortcuts(&app, &s.quickadd_shortcut, &s.sidebar_shortcut)?;
     }
     config::save_settings(&app, &s)?;
+    // 빠른 추가 창은 재로드되지 않는다 — 설정이 바뀌었음을 알려 렌더러를 갈아끼우게 한다.
+    let _ = app.emit_to("quickadd", "settings-changed", ());
     if let Some(t) = token {
         if !t.is_empty() {
             config::set_token(&t)?;

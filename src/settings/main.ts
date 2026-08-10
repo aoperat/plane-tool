@@ -102,6 +102,7 @@ function attachShortcutCapture(input: HTMLInputElement) {
 attachShortcutCapture(qaShortcut);
 attachShortcutCapture(sbShortcut);
 const theme = document.getElementById("theme") as HTMLSelectElement;
+const quickaddLayout = document.getElementById("quickaddLayout") as HTMLSelectElement;
 const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
 const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputElement;
 const idleOpenMinutes = document.getElementById("idleOpenMinutes") as HTMLInputElement;
@@ -221,6 +222,7 @@ async function load() {
   sbShortcut.value = s.sidebar_shortcut;
   theme.value = s.theme;
   applyTheme(s.theme);
+  quickaddLayout.value = s.quickadd_layout;
   idleOpenEnabled.checked = s.idle_open_enabled;
   idleOpenMinutes.value = String(s.idle_open_minutes);
   hasOpenaiKey = s.has_openai_key;
@@ -272,6 +274,7 @@ document.getElementById("save")!.onclick = async () => {
       deadlineNotifyTime.value || undefined,
       Math.max(1, Math.floor(Number(deadlineLeadDays.value) || 3)),
       showDelegatedTab.checked,
+      quickaddLayout.value,
     );
     if (token.value) hasToken = true;
     token.value = "";

@@ -22,6 +22,7 @@ export const saveSettings = (
   deadlineNotifyTime?: string,
   deadlineLeadDays?: number,
   showDelegatedTab?: boolean,
+  quickaddLayout?: string,
 ) =>
   invoke<void>("save_settings", {
     baseUrl: base_url,
@@ -43,6 +44,7 @@ export const saveSettings = (
     deadlineNotifyTime,
     deadlineLeadDays,
     showDelegatedTab,
+    quickaddLayout,
   });
 export const verifyDelegatedTabPassword = (password: string) =>
   invoke<boolean>("verify_delegated_tab_password", { password });

@@ -60,6 +60,10 @@ pub struct Settings {
     /// 앱 바이너리에 상수로 박혀 있어 디컴파일하면 알아낼 수 있다.
     #[serde(default)]
     pub show_delegated_tab: bool,
+    /// 빠른 추가 레이아웃. "compact"(칩 행) | "expanded"(한눈에 보기).
+    /// 기본이 compact인 이유: 자동 업데이트로 창 모양이 말없이 바뀌면 안 된다.
+    #[serde(default = "default_quickadd_layout")]
+    pub quickadd_layout: String,
 }
 
 fn default_quickadd_shortcut() -> String { "F1".into() }
@@ -75,6 +79,7 @@ fn default_assign_remind_hours() -> u32 { 2 }
 fn default_deadline_notify_enabled() -> bool { true }
 fn default_deadline_notify_time() -> String { "09:00".into() }
 fn default_deadline_lead_days() -> u32 { 3 }
+fn default_quickadd_layout() -> String { "compact".into() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -100,6 +105,7 @@ impl Default for Settings {
             deadline_notify_time: default_deadline_notify_time(),
             deadline_lead_days: default_deadline_lead_days(),
             show_delegated_tab: false,
+            quickadd_layout: default_quickadd_layout(),
         }
     }
 }
