@@ -10,9 +10,6 @@ use futures::stream::{self, StreamExt};
 /// 서버의 rate limit(429)에 걸리기 쉬워지므로 적당한 값으로 고정한다.
 const SYNC_CONCURRENCY: usize = 6;
 
-/// 작업 항목 브라우저 팝업 크기 (width, height).
-const ISSUE_POPUP_SIZE: (i32, i32) = (1320, 720);
-
 #[derive(Serialize)]
 pub struct SettingsDto {
     pub base_url: String,
@@ -861,23 +858,11 @@ pub fn open_conflict_window(app: tauri::AppHandle) {
     let _ = app.emit_to("conflict", "conflicts-open", ());
 }
 
-/// 작업 항목 URL을 연다. 기본 브라우저가 Chromium 계열이면 탭 없는 앱 모드
-/// 팝업으로, 아니면(감지 실패 포함) 기존 방식(`tauri-plugin-opener`)으로 연다.
+/// 작업 항목 URL을 기본 브라우저로 연다.
 #[tauri::command]
 pub fn open_issue_popup(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
-    let popup_launched = crate::browser_popup::default_browser_exe()
-        .filter(|exe| crate::browser_popup::is_chromium_browser(exe))
-        .and_then(|exe| {
-            let position = crate::browser_popup::popup_position(&app, ISSUE_POPUP_SIZE)?;
-            crate::browser_popup::open_popup_window(&app, &exe, &url, position, ISSUE_POPUP_SIZE)
-        })
-        .is_some();
-
-    if popup_launched {
-        return Ok(());
-    }
     app.opener().open_url(url, None::<String>).map_err(|e| e.to_string())
 }
 
