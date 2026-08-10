@@ -266,7 +266,9 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
       renderChips();
       renderAssigneePopoverItems(); // re-renders the list, so restore the cursor
       setKeyboardFocusIndex(fieldPopover, index);
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && !e.ctrlKey) {
+      // Ctrl+Enter(제출)는 여기서 가로채지 않는다 — document의 전역 핸들러가
+      // 잡아야 하므로, 일반 Enter만 받는다.
       e.preventDefault();
       const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
       if (focused?.dataset.id) {

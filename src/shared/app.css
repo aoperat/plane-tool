@@ -185,6 +185,10 @@ kbd {
   height: 28px; padding: 0 10px 0 4px; border-radius: 999px;
   background: transparent; border: 1px solid var(--border); color: var(--muted);
   font-size: 11.5px; font-family: inherit; cursor: pointer; white-space: nowrap;
+  /* splitAssigneeSlots는 지정된 사람 전원을 인라인으로 올린다(칸 수는 상한이
+     아니다) — .chip과 같은 이치로, 칩이 줄어들며 잘리게 해야 창 밖으로
+     밀려나지 않는다. */
+  flex: 0 1 auto; min-width: 0; overflow: hidden;
 }
 .person:hover { border-color: var(--accent); color: var(--text); }
 .person .avatar {

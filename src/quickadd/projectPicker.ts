@@ -34,8 +34,12 @@ export function createProjectPicker(opts: {
   onPick: (project: Project) => void;
   /** 드롭다운이 열리고 닫힐 때마다 창 높이를 다시 재게 한다. */
   onResize: () => void;
+  /** Esc로 닫을 때 포커스를 돌려받을 곳 — 목록 안(input)에 있던 포커스가
+   *  버튼으로 가면 다시 Esc를 눌러도 닫을 게 없고, 곧바로 타이핑해도 갈 곳이
+   *  없다. 피커는 titleEl을 몰라야 하므로 호출부가 이 콜백으로 넘긴다. */
+  onDismiss: () => void;
 }): ProjectPickerHandle {
-  const { button, host, getProjects, getSelectedId, onPick, onResize } = opts;
+  const { button, host, getProjects, getSelectedId, onPick, onResize, onDismiss } = opts;
 
   const dd = document.createElement("div");
   dd.className = "dropdown";
@@ -134,7 +138,10 @@ export function createProjectPicker(opts: {
       close();
       // close()는 dd를 hidden 처리한다 — input이 그 안에 있어 포커스가 그대로면
       // 브라우저가 document.body로 떨어뜨려 이후 키 입력이 아무 데도 안 먹는다.
-      button.focus();
+      // 버튼이 아니라 제목으로 돌려보낸다 — 이 앱의 주 경로(F1 → 입력 →
+      // Ctrl+Enter)가 곧바로 타이핑을 이어가고, 버튼에 남으면 Esc를 한 번 더
+      // 눌러도 닫을 팝오버가 없어 창이 닫히지 않는다.
+      onDismiss();
     }
   });
 

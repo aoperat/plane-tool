@@ -51,7 +51,9 @@ export function handleDropdownKeydown(container: HTMLElement, isOpen: () => bool
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       moveKeyboardFocus(container, e.key === "ArrowDown" ? 1 : -1);
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && !e.ctrlKey) {
+      // Ctrl+Enter(제출)는 여기서 가로채지 않는다 — document의 전역 핸들러가
+      // 잡아야 하므로, 일반 Enter만 받는다.
       e.preventDefault();
       const trigger = e.currentTarget as HTMLElement;
       selectKeyboardFocus(container);

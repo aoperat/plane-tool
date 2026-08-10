@@ -65,11 +65,20 @@ function markSegOn(track: HTMLElement, isOn: (seg: HTMLElement) => boolean): voi
 }
 
 /** 세그먼트 클릭을 트랙에서 위임으로 받는다 — 버튼이 아이콘 SVG를 품고 있어
- *  e.target이 버튼 자신이 아닐 수 있다. */
-function onSegClick(track: HTMLElement, key: "value" | "preset", handler: (v: string) => void): void {
+ *  e.target이 버튼 자신이 아닐 수 있다. 마우스로 눌렀을 때만(`e.detail > 0`)
+ *  제목으로 포커스를 되돌린다 — 컴팩트 레이아웃과 같은 계약이다. 키보드
+ *  활성화(Enter/Space, detail === 0)는 그대로 두어 ←/→ 행 이동이 이어지게 한다. */
+function onSegClick(
+  track: HTMLElement,
+  key: "value" | "preset",
+  focusTitle: () => void,
+  handler: (v: string) => void,
+): void {
   track.addEventListener("click", (e) => {
     const v = (e.target as Element).closest<HTMLElement>(".seg")?.dataset[key];
-    if (v) handler(v);
+    if (!v) return;
+    handler(v);
+    if (e.detail > 0) focusTitle();
   });
 }
 
@@ -295,8 +304,8 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
   buildSegTrack(stateTrack, STATE_ORDER, stateIcon, stateLabel);
   buildSegTrack(priorityTrack, PRIORITY_ORDER, priorityIcon, priorityLabel);
 
-  onSegClick(stateTrack, "value", (v) => { state.stateGroup = v as StateGroup; render(); });
-  onSegClick(priorityTrack, "value", (v) => { state.priority = v as Priority; render(); });
+  onSegClick(stateTrack, "value", ctx.focusTitle, (v) => { state.stateGroup = v as StateGroup; render(); });
+  onSegClick(priorityTrack, "value", ctx.focusTitle, (v) => { state.priority = v as Priority; render(); });
 
   // 순환이 아니라 양 끝에서 멈춘다 — 상태·우선순위는 순서 있는 척도(백로그..취소,
   // 없음..긴급)라 위로 굴리다 처음으로 되감기면 값이 튄 것처럼 보인다. 휠은 세그먼트가
@@ -327,7 +336,7 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
       .map((p) => `<button type="button" class="seg" data-preset="${p.key}">${p.label}</button>`)
       .join("");
 
-    onSegClick(presets, "preset", (key) => {
+    onSegClick(presets, "preset", ctx.focusTitle, (key) => {
       if (kind === "start") state.startChoice = key as DatePresetKey;
       else state.dueChoice = key as DatePresetKey;
       render();
@@ -337,9 +346,14 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
       // Tab 흐름에서 뺀다 — 버튼은 기본 tabIndex가 0이라 두면 행마다 하나여야 할
       // Tab 정지점이 늘어난다. PgUp/Dn이 이미 같은 일을 하므로 마우스로만 쓴다.
       btn.tabIndex = -1;
-      btn.addEventListener("click", () => {
+      // 이 버튼은 Tab 흐름 밖이라(tabIndex=-1) 키보드로는 절대 활성화되지 않는다
+      // — 그래도 e.detail(마우스 클릭 수)로 구분해 다른 세그먼트들과 같은 규칙을
+      // 따르게 한다. 스크린리더 등 detail이 0으로 오는 비마우스 활성화 경로가
+      // 있어도 제목 포커스를 건너뛸 뿐 값 변경 자체는 그대로 적용된다.
+      btn.addEventListener("click", (e) => {
         shiftDateField(state, kind, Number(btn.dataset.step));
         render();
+        if (e.detail > 0) ctx.focusTitle();
       });
     });
     attachWheelCycle(stepper, () => 2, (delta) => { shiftDateField(state, kind, delta); render(); });

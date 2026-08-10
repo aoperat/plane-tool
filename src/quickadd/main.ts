@@ -60,6 +60,7 @@ const projectPicker = createProjectPicker({
     setLastProject(p.id).catch((err) => console.error("setLastProject failed:", err));
   },
   onResize: () => resizeToFit(),
+  onDismiss: () => titleEl.focus(),
 });
 
 const hosts: LayoutHosts = {
