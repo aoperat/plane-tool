@@ -303,18 +303,17 @@ git commit -m "feat: 유휴 시 작업 전광판 창 표시"
 **Files:**
 - Modify: `src-tauri/tauri.conf.json`
 - Modify: `src-tauri/capabilities/default.json`
-- Modify: `vite.config.ts`
 - Modify: `src-tauri/src/lib.rs`
 - Modify: `src-tauri/src/commands.rs`
 - Modify: `src/shared/types.ts`
 - Modify: `src/sidebar/main.ts`
 
 **Interfaces:**
-- Adds window label `ticker` and Vite entry `src/ticker/index.html`.
+- Adds window label `ticker`; the Vite entry is deferred to Task 4 when its HTML exists.
 - Produces shared TypeScript `ItemChange` with optional `priority`, `state_group`, `start_date`, `target_date`, and `assignee_ids` fields matching Rust JSON payloads.
 - Emits `refresh-sidebar`, `item-updated`, and `item-deleted` with identical payloads to both `sidebar` and `ticker`.
 
-- [ ] **Step 1: Add the window declarations and build entry**
+- [ ] **Step 1: Add the Tauri window declarations**
 
 Add this Tauri window beside sidebar:
 
@@ -334,7 +333,8 @@ Add this Tauri window beside sidebar:
 }
 ```
 
-Add `ticker` to the capability window array and `ticker: resolve(__dirname, "src/ticker/index.html")` to Vite input.
+Add `ticker` to the capability window array. Do not add the Vite input until Task 4 creates
+`src/ticker/index.html`, so Task 3 remains independently buildable.
 
 - [ ] **Step 2: Extract the shared update payload type**
 
@@ -375,22 +375,22 @@ In the sidebar shortcut branch, call `hide_ticker(app)` before emitting `toggle-
 
 Delete `autoOpened`, the `open-sidebar`/`idle-ended` listeners, and the pointer reset listener in `src/sidebar/main.ts`. Change blur hiding back to `if (!pinned) hideSidebar()`; leave manual pin behavior unchanged.
 
-- [ ] **Step 6: Run backend tests and frontend build**
+- [ ] **Step 6: Run backend tests**
 
 Run:
 
 ```powershell
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml
-pnpm build
 ```
 
-Expected: all commands PASS. The build must contain a ticker HTML entry and TypeScript must accept the shared `ItemChange` import.
+Expected: Rust tests PASS. If the repository-wide format check still reports pre-existing files,
+verify the changed Rust blocks separately and record the baseline debt.
 
 - [ ] **Step 7: Commit the wiring**
 
 ```powershell
-git add src-tauri/tauri.conf.json src-tauri/capabilities/default.json vite.config.ts src-tauri/src/lib.rs src-tauri/src/commands.rs src/shared/types.ts src/sidebar/main.ts
+git add src-tauri/tauri.conf.json src-tauri/capabilities/default.json src-tauri/src/lib.rs src-tauri/src/commands.rs src/shared/types.ts src/sidebar/main.ts
 git commit -m "feat: 작업 전광판 창과 이벤트 연결"
 ```
 
@@ -400,6 +400,7 @@ git commit -m "feat: 작업 전광판 창과 이벤트 연결"
 - Create: `src/ticker/index.html`
 - Create: `src/ticker/ticker.css`
 - Create: `src/ticker/main.ts`
+- Modify: `vite.config.ts`
 - Modify: `src/settings/index.html`
 - Modify: `CHANGELOG.md`
 
@@ -411,6 +412,7 @@ git commit -m "feat: 작업 전광판 창과 이벤트 연결"
 - [ ] **Step 1: Create semantic ticker markup**
 
 Use buttons for previous, task body, next, retry, and close. Provide `aria-label` values, a `role="status"` failure/empty region, project/meta/count elements, and a bottom progress element. Import `../shared/app.css`, then `./ticker.css`, then `./main.ts` as a module.
+Add `ticker: resolve(__dirname, "src/ticker/index.html")` to the Vite multi-page input now that the HTML exists.
 
 - [ ] **Step 2: Implement visual states**
 
@@ -465,7 +467,7 @@ Expected: all commands PASS.
 - [ ] **Step 7: Commit the UI**
 
 ```powershell
-git add src/ticker/index.html src/ticker/ticker.css src/ticker/main.ts src/settings/index.html CHANGELOG.md
+git add src/ticker/index.html src/ticker/ticker.css src/ticker/main.ts vite.config.ts src/settings/index.html CHANGELOG.md
 git commit -m "feat: 작업 전광판 캐러셀 UI 추가"
 ```
 
