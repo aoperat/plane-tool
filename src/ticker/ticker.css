@@ -83,7 +83,7 @@ body {
 }
 
 .ticker-close {
-  color: var(--muted-2);
+  color: var(--muted);
 }
 
 .ticker-task {
