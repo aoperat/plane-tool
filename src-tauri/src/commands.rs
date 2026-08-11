@@ -900,6 +900,22 @@ pub fn set_last_project(app: tauri::AppHandle, project_id: String) -> Result<(),
     config::set_last_project(&app, &project_id)
 }
 
+/// 빠른 추가 헤더의 레이아웃 토글. 설정 화면의 "빠른 추가 화면" 항목과 **같은 값**을
+/// 쓴다 — 진실을 둘로 만들지 않는다.
+///
+/// 저장 뒤 설정 창에 알리는 이유: 설정 창이 열려 있는 동안 헤더에서 토글하면 그쪽
+/// `<select>`가 낡은 값을 들고 있게 되고, 그 상태로 "저장"을 누르면 방금 바꾼 값을
+/// 되돌려 버린다. 빠른 추가 창에는 알리지 않는다 — 변경을 시작한 쪽이라 이미 안다.
+#[tauri::command]
+pub fn set_quickadd_layout(app: tauri::AppHandle, layout: String) -> Result<(), String> {
+    if layout != "compact" && layout != "expanded" {
+        return Err(format!("알 수 없는 레이아웃: {layout}"));
+    }
+    config::set_quickadd_layout(&app, &layout)?;
+    let _ = app.emit_to("settings", "quickadd-layout-changed", layout);
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct ReleaseNoteDto {
     pub version: String,

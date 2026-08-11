@@ -132,6 +132,14 @@ pub fn set_last_project(app: &tauri::AppHandle, project_id: &str) -> Result<(), 
     save_settings(app, &s)
 }
 
+/// 빠른 추가 헤더 토글이 부른다. `save_settings`는 인자가 20개라 토글 하나 때문에
+/// 부르기엔 무겁고, 설정 화면이 열려 있을 때 그쪽 값으로 덮어쓸 위험도 있다.
+pub fn set_quickadd_layout(app: &tauri::AppHandle, layout: &str) -> Result<(), String> {
+    let mut s = load_settings(app);
+    s.quickadd_layout = layout.to_string();
+    save_settings(app, &s)
+}
+
 pub fn get_token() -> Option<String> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
         .ok()

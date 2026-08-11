@@ -103,6 +103,12 @@ attachShortcutCapture(qaShortcut);
 attachShortcutCapture(sbShortcut);
 const theme = document.getElementById("theme") as HTMLSelectElement;
 const quickaddLayout = document.getElementById("quickaddLayout") as HTMLSelectElement;
+// 빠른 추가 헤더의 토글도 같은 값을 바꾼다. 이 창이 열려 있는 동안 저쪽에서 바꾸면
+// 여기 select가 낡은 값을 들고 있게 되고, 그대로 "저장"을 누르면 방금 바꾼 것을
+// 되돌려 버린다 — 그래서 그쪽 변경을 듣고 따라간다.
+getCurrentWindow().listen<string>("quickadd-layout-changed", (e) => {
+  quickaddLayout.value = e.payload;
+});
 const displaySelect = document.getElementById("displaySelect") as HTMLSelectElement;
 const idleOpenEnabled = document.getElementById("idleOpenEnabled") as HTMLInputElement;
 const idleOpenMinutes = document.getElementById("idleOpenMinutes") as HTMLInputElement;

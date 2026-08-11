@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>빠른 추가 헤더 토글 — 목업</title>
+<style>
+  /* 실제 앱(src/shared/app.css)의 변수·스타일을 그대로 복사 */
+  :root {
+    color-scheme: dark;
+    --bg: #0d0e12; --panel: #16181d; --panel-2: #1c1f26; --border: #2a2e37;
+    --text: #e6e8ec; --muted: #8a909c; --muted-2: #5c626d;
+    --accent: #4f7cff; --accent-soft: rgba(79,124,255,0.14); --accent-ring: rgba(79,124,255,0.4);
+    --green: #2ecc71; --amber: #f5a623; --red: #ef4d56;
+    --radius: 12px;
+    --shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+    --page-bg: radial-gradient(1200px 600px at 18% -10%, #232a45 0%, transparent 55%),
+               radial-gradient(1000px 700px at 110% 120%, #2a2438 0%, transparent 50%), #0a0b0f;
+    font-family: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f5f7; --panel: #ffffff; --panel-2: #eef0f3; --border: #dfe2e7;
+    --text: #1c1f26; --muted: #6b7280; --muted-2: #9aa1ac;
+    --accent: #3f68e0; --accent-soft: rgba(63,104,224,0.12); --accent-ring: rgba(63,104,224,0.35);
+    --green: #1f9d55; --amber: #b06a00; --red: #d6414d;
+    --shadow: 0 12px 40px rgba(15,23,42,0.12), 0 2px 8px rgba(15,23,42,0.08);
+    --page-bg: radial-gradient(1200px 600px at 18% -10%, #dfe6ff 0%, transparent 55%),
+               radial-gradient(1000px 700px at 110% 120%, #ece2ff 0%, transparent 50%), #eceef2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; color: var(--text); background: var(--page-bg); padding: 78px 40px 80px; }
+
+  /* ===== 목업 전용 크롬 ===== */
+  .hint-bar {
+    position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 18px; align-items: center;
+    padding: 10px 22px; font-size: 12.5px; color: var(--muted);
+    background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border); z-index: 200;
+  }
+  .hint-bar b { color: var(--text); font-weight: 600; }
+  .hint-bar .spacer { margin-left: auto; }
+  .btn-ghost {
+    font-family: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  h2.sec { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 4px; letter-spacing: .06em; text-transform: uppercase; }
+  .sec-wrap { max-width: 1500px; margin: 0 auto 70px; }
+  .sec-desc { font-size: 12.5px; color: var(--muted); line-height: 1.65; margin: 0 0 26px; max-width: 760px; }
+  .sec-desc b { color: var(--text); }
+  .grid { display: flex; flex-wrap: wrap; gap: 46px 40px; align-items: flex-start; }
+  .cell { display: flex; flex-direction: column; gap: 11px; }
+  .caption {
+    align-self: flex-start; font-size: 11px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid var(--accent-ring); padding: 3px 10px; border-radius: 20px;
+  }
+  .caption.grey { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+  .note { font-size: 11.5px; color: var(--muted); max-width: 560px; line-height: 1.6; }
+  .note b { color: var(--text); }
+  .note + .note { margin-top: -4px; }
+  kbd { background: var(--panel-2); border: 1px solid var(--border); border-bottom-width: 2px;
+        border-radius: 6px; padding: 2px 7px; font-size: 11.5px; color: var(--text); font-family: inherit; }
+
+  /* ===== 팝업(실제 앱 스타일) ===== */
+  .popup { width: 540px; background: var(--panel); border: 1px solid var(--border);
+           border-radius: var(--radius); box-shadow: var(--shadow); position: relative; }
+  .popup.wide { width: 660px; }
+  .qa-header {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 13px;
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0; cursor: grab; user-select: none;
+  }
+  .qa-grip { width: 13px; height: 13px; color: var(--muted-2); flex: none; }
+  .qa-header-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .qa-close {
+    flex: none; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+    background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+  .qa-close:hover { background: var(--panel); color: var(--text); border-color: var(--accent); }
+  .qa-close svg { width: 12px; height: 12px; }
+
+  .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
+  .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); flex: none; }
+  .title-input { flex: 1; color: var(--text); font-size: 17px; font-weight: 500; min-width: 0; }
+  .title-input .ph { color: var(--muted-2); }
+  .caret { display: inline-block; width: 1.5px; height: 20px; background: var(--accent);
+           vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .popup-bottom {
+    display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+    border-top: 1px solid var(--border); background: var(--panel-2); border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .proj-select { display: flex; align-items: center; gap: 8px; padding: 6px 11px; background: var(--bg);
+                 border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); font-family: inherit; }
+  .proj-select .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #6d8fd6; }
+  .proj-select .chev { color: var(--muted); margin-left: 2px; }
+  .qa-submit { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; background: var(--accent);
+               color: #fff; border: none; border-radius: 8px; font-size: 12.5px; font-weight: 600; font-family: inherit; flex: none; }
+  .qa-submit .bk { font-size: 10px; font-weight: 500; padding: 1px 5px; border: 1px solid rgba(255,255,255,0.35); border-radius: 4px; opacity: .85; }
+
+  /* ===== 컴팩트 본문(칩 한 줄) ===== */
+  .chip-row { display: flex; flex-wrap: nowrap; gap: 8px; padding: 0 18px 14px; align-items: center; }
+  .chip { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel-2);
+          border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px; color: var(--text);
+          font-family: inherit; flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .chip .avatar { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); color: #fff;
+                  font-size: 8px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .chip-desc-toggle { margin-left: auto; flex: none; color: var(--muted); }
+
+  /* ===== 한눈에 보기 본문(필드 격자) ===== */
+  .qa2-fields { display: flex; flex-direction: column; padding: 2px 18px 12px; }
+  .qa2-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
+  .qa2-row + .qa2-row { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+  .qa2-label { flex: none; width: 56px; font-size: 11.5px; color: var(--muted); }
+  .seg-track { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .seg { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border: none;
+         border-radius: 6px; background: transparent; color: var(--muted); font-size: 11.5px; font-family: inherit;
+         cursor: pointer; white-space: nowrap; }
+  .seg.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .qa2-people { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .person { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 4px;
+            border-radius: 999px; background: transparent; border: 1px solid var(--border); color: var(--muted);
+            font-size: 11.5px; font-family: inherit; flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .person .avatar { width: 20px; height: 20px; border-radius: 50%; flex: none; display: inline-flex;
+                    align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; color: #fff; }
+  .person.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .person.more { padding: 0 11px; color: var(--muted-2); border-style: dashed; }
+  .date-stepper { display: inline-flex; align-items: center; gap: 1px; border: 1px solid var(--border);
+                  border-radius: 8px; background: var(--bg); padding: 1px; }
+  .date-stepper .step { width: 20px; height: 24px; border: none; background: transparent; border-radius: 5px;
+                        color: var(--muted-2); font-size: 12px; display: grid; place-items: center; font-family: inherit; }
+  .date-stepper .val { min-width: 92px; text-align: center; font-size: 11.5px; color: var(--text);
+                       font-variant-numeric: tabular-nums; padding: 0 4px; }
+  .date-stepper .val .dow { color: var(--muted-2); margin-left: 3px; }
+  .qa2-hint { margin-left: auto; flex: none; font-size: 10.5px; color: var(--muted-2); white-space: nowrap; }
+
+  /* ============================================================
+     ★ 이번 설계 대상 — 헤더 레이아웃 토글
+     ============================================================ */
+
+  /* A안: 아이콘 2단 세그먼트. 필드 격자의 .seg-track 문법을 헤더 크기로 줄인 것이라
+     앱 안에서 새 패턴이 아니다. */
+  .qa-layout-toggle {
+    flex: none; display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+  }
+  .qa-layout-toggle button {
+    display: grid; place-items: center; width: 24px; height: 20px; padding: 0;
+    border: none; border-radius: 5px; background: transparent; color: var(--muted-2); cursor: pointer;
+  }
+  .qa-layout-toggle button:hover { background: var(--panel); color: var(--text); }
+  .qa-layout-toggle button.on { background: var(--accent-soft); color: var(--accent); }
+  .qa-layout-toggle button.on:hover { background: var(--accent-soft); }
+  .qa-layout-toggle svg { width: 14px; height: 14px; display: block; }
+
+  /* B안: 텍스트 2단 */
+  .qa-layout-toggle.text button { width: auto; padding: 0 9px; font-size: 11px; font-family: inherit; }
+
+  /* C안: 단일 아이콘 버튼 */
+  .qa-layout-btn {
+    flex: none; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+    background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+  .qa-layout-btn:hover { background: var(--panel); color: var(--text); border-color: var(--accent); }
+  .qa-layout-btn svg { width: 13px; height: 13px; display: block; }
+
+  /* ===== 코치마크(신규 안내) ===== */
+  .coach {
+    position: absolute; z-index: 60; width: 268px;
+    background: var(--panel); border: 1px solid var(--accent-ring); border-radius: 10px;
+    box-shadow: var(--shadow), 0 0 0 4px var(--accent-soft);
+    padding: 12px 13px 10px;
+  }
+  .coach[hidden] { display: none; }
+  .coach::before {
+    content: ""; position: absolute; top: -7px; width: 12px; height: 12px;
+    background: var(--panel); border-left: 1px solid var(--accent-ring); border-top: 1px solid var(--accent-ring);
+    transform: rotate(45deg);
+  }
+  .coach .ch-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .coach p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text); }
+  .coach .ch-foot { display: flex; margin-top: 10px; }
+  .coach .ch-ok {
+    margin-left: auto; background: var(--accent); color: #fff; border: none; border-radius: 7px;
+    font-size: 11.5px; font-weight: 600; padding: 5px 12px; cursor: pointer; font-family: inherit;
+  }
+  .coach .ch-ok:hover { filter: brightness(1.08); }
+  /* 안내가 가리키는 대상은 잠깐 링을 두른다 — 말풍선과 토글을 눈으로 잇는다. */
+  .qa-layout-toggle.spot, .qa-layout-btn.spot { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="hint-bar">
+  <b>빠른 추가 헤더 토글 — 목업</b>
+  <span>토글을 눌러보세요. 본문이 실제로 바뀝니다.</span>
+  <span class="spacer"></span>
+  <button class="btn-ghost" id="replayBtn">↻ 코치마크 다시 보기</button>
+  <button class="btn-ghost" id="themeBtn">☀ 라이트로 보기</button>
+</div>
+
+<!-- ============ 1. 토글 모양 세 가지 ============ -->
+<div class="sec-wrap">
+  <h2 class="sec">1 · 토글 모양 세 가지</h2>
+  <p class="sec-desc">
+    헤더는 <code>grip + 제목 + 닫기</code>로 비어 있는 편이라 자리는 넉넉합니다. 세 안 모두
+    닫기 버튼 왼쪽에 붙습니다. 헤더 전체가 창을 끄는 드래그 영역이라, 토글은 닫기 버튼처럼
+    <b>드래그에서 빠지는 예외</b>로 둡니다.
+  </p>
+  <div class="grid">
+
+    <div class="cell">
+      <span class="caption">A · 아이콘 2단 세그먼트 (폭 ~56px)</span>
+      <div class="popup" data-demo data-variant="icon"></div>
+      <p class="note">
+        <b>현재 상태가 항상 보입니다.</b> 켜진 쪽이 accent로 차 있어 "지금 어느 모양인지"를
+        누르지 않고 압니다. 필드 격자의 <code>.seg-track</code>을 헤더 크기로 줄인 것이라
+        앱 안에서 <b>새 문법이 아닙니다</b> — 이미 상태·우선순위 줄에서 쓰는 모양입니다.
+      </p>
+      <p class="note">아이콘이 무슨 뜻인지는 호버 툴팁이 받쳐줍니다.</p>
+    </div>
+
+    <div class="cell">
+      <span class="caption grey">B · 텍스트 2단 세그먼트 (폭 ~112px)</span>
+      <div class="popup" data-demo data-variant="text"></div>
+      <p class="note">
+        해석할 것이 없어 가장 명확합니다. 대신 헤더 폭을 두 배 차지하고, 제목 "빠른 추가"와
+        <b>시각적으로 경쟁</b>합니다 — 헤더에서 가장 눈에 띄는 것이 창 이름이 아니라 설정
+        스위치가 됩니다.
+      </p>
+    </div>
+
+    <div class="cell">
+      <span class="caption grey">C · 단일 아이콘 버튼 (폭 24px)</span>
+      <div class="popup" data-demo data-variant="single"></div>
+      <p class="note">
+        가장 좁지만 <b>아이콘 하나가 두 가지를 뜻해야 합니다</b> — 지금 상태인지, 누르면 될
+        상태인지. 게다가 닫기 버튼과 크기·테두리가 같아 나란히 있으면 한 벌로 보입니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. 코치마크 ============ -->
+<div class="sec-wrap">
+  <h2 class="sec">2 · 업데이트 후 첫 안내 (확정: 코치마크)</h2>
+  <p class="sec-desc">
+    업데이트를 받고 <b>빠른 추가를 처음 열 때 한 번만</b> 뜹니다. 토글을 화살표로 직접 가리키고,
+    대상에도 잠깐 링을 둘러 말풍선과 토글을 눈으로 잇습니다. <kbd>알겠어요</kbd>를 누르거나
+    토글을 직접 조작하면 사라지고 <b>다시 뜨지 않습니다</b>.
+  </p>
+  <div class="grid">
+    <div class="cell">
+      <span class="caption">첫 실행 — 코치마크가 뜬 상태</span>
+      <div class="popup" data-demo data-variant="icon" data-coach></div>
+      <p class="note" style="margin-top:150px">
+        제목 입력은 <b>막지 않습니다</b> — 말풍선은 헤더 아래에 겹쳐 뜨지만 커서는 그대로
+        제목 칸에 있어, 안내를 무시하고 바로 타이핑해도 흐름이 끊기지 않습니다.
+        그렇게 무시한 경우에는 다음에 한 번 더 보여줍니다.
+      </p>
+    </div>
+
+    <div class="cell" style="max-width:560px">
+      <span class="caption grey">설계 메모</span>
+      <p class="note">
+        <b>언제 뜨는가</b> — "본 적 있다" 표시를 남겨두고, 없을 때만 띄웁니다. 새로 설치한
+        사용자도 한 번 보게 되는데, 이 기능을 알려주는 게 목적이라 그대로 둡니다.
+      </p>
+      <p class="note">
+        <b>어디에 저장하는가</b> — 화면 취향이므로 백엔드 설정이 아니라 빠른 추가 창의
+        <code>localStorage</code>에 둡니다. 사이드바가 접힘 상태·탭 선택을 두는 방식과 같습니다.
+      </p>
+      <p class="note">
+        <b>토글과 설정 화면은 같은 값을 봅니다</b> — 헤더에서 바꾸면 설정 › 일반 › 화면의
+        "빠른 추가 화면" 항목도 따라 바뀌고, 반대도 마찬가지입니다. 두 개의 진실을 만들지
+        않습니다.
+      </p>
+      <p class="note">
+        <b>아직 안 정한 것</b> — 안내를 무시하고 지나갔을 때 몇 번까지 다시 보여줄지(지금 안:
+        2회), 그리고 헤더 토글에 단축키를 줄지 여부.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== 아이콘 ===== */
+// 컴팩트: 칩이 한 줄로 늘어선 모양. 한눈에 보기: 라벨 + 값이 여러 줄로 쌓인 모양.
+// 두 아이콘이 "한 줄이냐 여러 줄이냐"만으로 갈리게 그려 서로 헷갈리지 않게 한다.
+// 칩은 정사각형이 아니라 가로로 길어야 한다 — 폭과 높이가 같으면 13px에서 점 세 개로
+// 뭉개져 사이드바의 "더보기" 버튼과 뜻이 겹친다.
+const ICON_COMPACT = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <rect x="1.5" y="9.5" width="8" height="5" rx="2"/><rect x="11" y="9.5" width="6" height="5" rx="2"/><rect x="18.5" y="9.5" width="4" height="5" rx="2"/>
+</svg>`;
+const ICON_EXPANDED = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <rect x="2" y="4"  width="5" height="3.4" rx="1.2"/><rect x="9" y="4"  width="13" height="3.4" rx="1.2"/>
+  <rect x="2" y="10.3" width="5" height="3.4" rx="1.2"/><rect x="9" y="10.3" width="13" height="3.4" rx="1.2"/>
+  <rect x="2" y="16.6" width="5" height="3.4" rx="1.2"/><rect x="9" y="16.6" width="13" height="3.4" rx="1.2"/>
+</svg>`;
+const GRIP = `<svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>`;
+const X = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+
+/* ===== 본문 두 가지 ===== */
+const BODY_COMPACT = `
+  <div class="popup-top">
+    <div class="accent-bar"></div>
+    <div class="title-input">릴리스 노트 초안 작성<span class="caret"></span></div>
+  </div>
+  <div class="chip-row">
+    <div class="chip"><span class="avatar">나</span> 나</div>
+    <div class="chip">📅 오늘</div>
+    <div class="chip">🏳 오늘</div>
+    <div class="chip">◌ Todo</div>
+    <div class="chip">▂ 보통</div>
+    <div class="chip chip-desc-toggle">☰ 설명</div>
+  </div>`;
+
+const BODY_EXPANDED = `
+  <div class="popup-top">
+    <div class="accent-bar"></div>
+    <div class="title-input">릴리스 노트 초안 작성<span class="caret"></span></div>
+  </div>
+  <div class="qa2-fields">
+    <div class="qa2-row"><span class="qa2-label">담당자</span>
+      <div class="qa2-people">
+        <button class="person on"><span class="avatar" style="background:#4f7cff">정</span> 나</button>
+        <button class="person"><span class="avatar" style="background:#e2795e">김</span> 김민수</button>
+        <button class="person"><span class="avatar" style="background:#59a869">이</span> 이서연</button>
+        <button class="person more">+4</button>
+      </div>
+      <span class="qa2-hint">Ctrl+클릭 다중</span></div>
+    <div class="qa2-row"><span class="qa2-label">상태</span>
+      <div class="seg-track"><button class="seg">Backlog</button><button class="seg on">Todo</button><button class="seg">In Progress</button><button class="seg">Done</button><button class="seg">Cancelled</button></div></div>
+    <div class="qa2-row"><span class="qa2-label">우선순위</span>
+      <div class="seg-track"><button class="seg">없음</button><button class="seg">낮음</button><button class="seg on">보통</button><button class="seg">높음</button><button class="seg">긴급</button></div></div>
+    <div class="qa2-row"><span class="qa2-label">시작일</span>
+      <div class="seg-track"><button class="seg on">오늘</button><button class="seg">내일</button><button class="seg">다음 주</button></div>
+      <div class="date-stepper"><button class="step">‹</button><span class="val">2026-08-11<span class="dow">(화)</span></span><button class="step">›</button></div>
+      <span class="qa2-hint">PgUp/Dn</span></div>
+    <div class="qa2-row"><span class="qa2-label">마감일</span>
+      <div class="seg-track"><button class="seg on">오늘</button><button class="seg">내일</button><button class="seg">다음 주</button></div>
+      <div class="date-stepper"><button class="step">‹</button><span class="val">2026-08-11<span class="dow">(화)</span></span><button class="step">›</button></div>
+      <span class="qa2-hint">Ctrl+PgUp/Dn</span></div>
+  </div>`;
+
+const FOOT = `
+  <div class="popup-bottom">
+    <button class="proj-select"><span class="dot"></span> Plane Quick Dock <span class="chev">▾</span></button>
+    <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+  </div>`;
+
+/* ===== 토글 마크업 세 가지 ===== */
+function toggleHtml(variant, layout) {
+  const c = layout === "compact" ? " on" : "";
+  const e = layout === "expanded" ? " on" : "";
+  if (variant === "icon") {
+    return `<div class="qa-layout-toggle" data-toggle>
+      <button data-set="compact" class="${c.trim()}" title="컴팩트 — 칩을 눌러 값 바꾸기">${ICON_COMPACT}</button>
+      <button data-set="expanded" class="${e.trim()}" title="한눈에 보기 — 모든 항목 펼쳐 보기">${ICON_EXPANDED}</button>
+    </div>`;
+  }
+  if (variant === "text") {
+    return `<div class="qa-layout-toggle text" data-toggle>
+      <button data-set="compact" class="${c.trim()}">컴팩트</button>
+      <button data-set="expanded" class="${e.trim()}">한눈에 보기</button>
+    </div>`;
+  }
+  // single: 누르면 반대쪽으로 넘어간다. 아이콘은 "지금 상태"를 그린다.
+  return `<button class="qa-layout-btn" data-toggle data-set="${layout === "compact" ? "expanded" : "compact"}"
+    title="${layout === "compact" ? "한눈에 보기로 바꾸기" : "컴팩트로 바꾸기"}">${layout === "compact" ? ICON_COMPACT : ICON_EXPANDED}</button>`;
+}
+
+/* ===== 데모 팝업 렌더 ===== */
+function renderDemo(el) {
+  const layout = el.dataset.layout || "compact";
+  const variant = el.dataset.variant;
+  el.classList.toggle("wide", layout === "expanded");
+  el.innerHTML =
+    `<div class="qa-header">${GRIP}<span class="qa-header-title">빠른 추가</span>` +
+    toggleHtml(variant, layout) +
+    `<button class="qa-close">${X}</button></div>` +
+    (layout === "expanded" ? BODY_EXPANDED : BODY_COMPACT) + FOOT +
+    (el.hasAttribute("data-coach") ? coachHtml() : "");
+
+  el.querySelectorAll("[data-set]").forEach((b) => {
+    b.addEventListener("click", () => {
+      el.dataset.layout = b.dataset.set;
+      // 토글을 직접 조작하면 안내는 제 역할을 다한 것이므로 사라진다.
+      el.removeAttribute("data-coach");
+      renderDemo(el);
+    });
+  });
+
+  const coach = el.querySelector("[data-coach-box]");
+  if (coach) {
+    placeCoach(el, coach);
+    coach.querySelector(".ch-ok").addEventListener("click", () => {
+      el.removeAttribute("data-coach");
+      renderDemo(el);
+    });
+  }
+}
+
+function coachHtml() {
+  return `<div class="coach" data-coach-box>
+    <div class="ch-head">✨ 새로워졌어요</div>
+    <p>담당자·상태·우선순위·날짜를 <b>접지 않고 한 화면에</b> 펼쳐 보는 모양이 생겼습니다.
+       여기서 바로 바꿀 수 있어요.</p>
+    <div class="ch-foot"><button class="ch-ok">알겠어요</button></div>
+  </div>`;
+}
+
+// 말풍선과 화살표를 토글 바로 아래에 맞춘다.
+function placeCoach(popup, coach) {
+  const t = popup.querySelector("[data-toggle]");
+  if (!t) return;
+  t.classList.add("spot");
+  const tr = t.getBoundingClientRect(), pr = popup.getBoundingClientRect();
+  const centre = tr.left - pr.left + tr.width / 2;
+  const left = Math.max(8, Math.min(centre - 134, pr.width - 276));
+  coach.style.left = `${left}px`;
+  coach.style.top = `${tr.bottom - pr.top + 10}px`;
+  coach.style.setProperty("--arrow", `${centre - left - 6}px`);
+  const arrow = coach.querySelector("style") || document.createElement("style");
+  arrow.textContent = "";
+  coach.querySelectorAll(".coach-arrow").forEach((n) => n.remove());
+  coach.style.setProperty("position", "absolute");
+  // ::before의 left를 인라인으로 못 주므로 보조 규칙을 하나 만들어 붙인다.
+  coach.id = coach.id || `coach-${Math.floor(centre)}-${Math.floor(left)}`;
+  let rule = document.getElementById(`rule-${coach.id}`);
+  if (!rule) { rule = document.createElement("style"); rule.id = `rule-${coach.id}`; document.head.appendChild(rule); }
+  rule.textContent = `#${coach.id}::before { left: ${centre - left - 6}px; }`;
+}
+
+document.querySelectorAll("[data-demo]").forEach(renderDemo);
+
+document.getElementById("replayBtn").addEventListener("click", () => {
+  document.querySelectorAll("[data-demo]").forEach((el) => {
+    if (el.dataset.variant === "icon" && el.closest(".sec-wrap").querySelector("h2").textContent.includes("2 ·")) {
+      el.setAttribute("data-coach", "");
+      renderDemo(el);
+    }
+  });
+});
+
+const themeBtn = document.getElementById("themeBtn");
+if (new URLSearchParams(location.search).get("theme") === "light") {
+  document.documentElement.setAttribute("data-theme", "light");
+  themeBtn.textContent = "🌙 다크로 보기";
+}
+themeBtn.addEventListener("click", () => {
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
+  themeBtn.textContent = light ? "☀ 라이트로 보기" : "🌙 다크로 보기";
+  document.querySelectorAll("[data-demo]").forEach(renderDemo);
+});
+</script>
+</body>
+</html>

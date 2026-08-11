@@ -277,6 +277,56 @@ kbd {
 .qa-header-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); pointer-events: none; }
 .qa-header .qa-close { width: 24px; height: 24px; border: none; }
 
+/* 헤더의 레이아웃 토글. 필드 격자의 .seg-track을 헤더 크기로 줄인 것이라 앱 안에서
+   새 문법이 아니다 — 상태·우선순위 줄에서 이미 쓰는 모양이다. 켜진 쪽이 accent로
+   차 있어 "지금 어느 모양인지"를 누르지 않고 안다. */
+.qa-layout-toggle {
+  flex: none; display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+}
+.qa-layout-toggle button {
+  display: grid; place-items: center; width: 24px; height: 20px; padding: 0;
+  border: none; border-radius: 5px; background: transparent; color: var(--muted-2);
+  cursor: pointer; font-family: inherit;
+}
+.qa-layout-toggle button:hover { background: var(--panel); color: var(--text); }
+.qa-layout-toggle button.on { background: var(--accent-soft); color: var(--accent); }
+.qa-layout-toggle button.on:hover { background: var(--accent-soft); }
+.qa-layout-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 칩은 가로로 길어야 한다 — 폭과 높이가 같으면 14px에서 점 세 개로 뭉개져
+   사이드바의 "더보기" 버튼과 뜻이 겹친다. */
+.qa-layout-toggle svg { width: 14px; height: 14px; display: block; }
+
+/* 업데이트 후 한 번 뜨는 안내 말풍선. 팝업 안에 절대 위치로 겹쳐 뜨고 포커스를
+   가져가지 않는다 — 안내를 무시하고 바로 제목을 쳐도 흐름이 끊기지 않아야 한다. */
+.qa-coach {
+  position: absolute; z-index: 60; width: 268px;
+  background: var(--panel); border: 1px solid var(--accent-ring); border-radius: 10px;
+  box-shadow: var(--shadow), 0 0 0 4px var(--accent-soft);
+  padding: 12px 13px 10px;
+}
+.qa-coach[hidden] { display: none; }
+/* 화살표의 left는 토글 위치에 따라 달라지므로 main.ts가 --arrow로 넣어준다. */
+.qa-coach::before {
+  content: ""; position: absolute; top: -7px; left: var(--arrow, 50%);
+  width: 12px; height: 12px; background: var(--panel);
+  border-left: 1px solid var(--accent-ring); border-top: 1px solid var(--accent-ring);
+  transform: rotate(45deg);
+}
+.qa-coach-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px;
+}
+.qa-coach p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text); }
+.qa-coach-foot { display: flex; margin-top: 10px; }
+.qa-coach-ok {
+  margin-left: auto; background: var(--accent); color: #fff; border: none; border-radius: 7px;
+  font-size: 11.5px; font-weight: 600; padding: 5px 12px; cursor: pointer; font-family: inherit;
+}
+.qa-coach-ok:hover { filter: brightness(1.08); }
+/* 안내가 가리키는 대상에 잠깐 링을 둘러 말풍선과 토글을 눈으로 잇는다. */
+.qa-layout-toggle.spotlight { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+
 .qa-close {
   flex: none; width: 28px; height: 28px; border-radius: 7px;
   display: grid; place-items: center; background: transparent;

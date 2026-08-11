@@ -46,6 +46,10 @@ export const saveSettings = (
     showDelegatedTab,
     quickaddLayout,
   });
+/** 빠른 추가 헤더 토글. 설정 화면과 같은 값(quickadd_layout)을 쓰되, 인자 20개짜리
+ *  saveSettings 대신 이 전용 명령으로 그 한 값만 바꾼다. */
+export const setQuickaddLayout = (layout: string) =>
+  invoke<void>("set_quickadd_layout", { layout });
 export const verifyDelegatedTabPassword = (password: string) =>
   invoke<boolean>("verify_delegated_tab_password", { password });
 export const openIssuePopup = (url: string) => invoke<void>("open_issue_popup", { url });
