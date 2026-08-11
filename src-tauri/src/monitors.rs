@@ -171,7 +171,12 @@ mod tests {
     #[test]
     fn bottom_right_uses_work_area_and_margin() {
         let p = bottom_right_position(
-            PhysicalRect { left: 0, top: 0, right: 1920, bottom: 1040 },
+            PhysicalRect {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1040,
+            },
             PhysicalSize::new(540, 64),
             16,
         );
@@ -181,7 +186,12 @@ mod tests {
     #[test]
     fn bottom_right_supports_negative_monitor_origins() {
         let p = bottom_right_position(
-            PhysicalRect { left: -1920, top: 0, right: 0, bottom: 1040 },
+            PhysicalRect {
+                left: -1920,
+                top: 0,
+                right: 0,
+                bottom: 1040,
+            },
             PhysicalSize::new(675, 80),
             20,
         );
@@ -191,7 +201,12 @@ mod tests {
     #[test]
     fn bottom_right_uses_work_area_reduced_by_left_and_top_taskbars() {
         let p = bottom_right_position(
-            PhysicalRect { left: 48, top: 24, right: 1920, bottom: 1080 },
+            PhysicalRect {
+                left: 48,
+                top: 24,
+                right: 1920,
+                bottom: 1080,
+            },
             PhysicalSize::new(540, 64),
             16,
         );
@@ -201,7 +216,12 @@ mod tests {
     #[test]
     fn bottom_right_small_work_area_returns_negative_coordinates_without_panicking() {
         let p = bottom_right_position(
-            PhysicalRect { left: 0, top: 0, right: 100, bottom: 50 },
+            PhysicalRect {
+                left: 0,
+                top: 0,
+                right: 100,
+                bottom: 50,
+            },
             PhysicalSize::new(540, 64),
             16,
         );

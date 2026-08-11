@@ -719,7 +719,9 @@ pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
 /// 처음 표시할 때 포커스를 받을 수 없게 해 현재 작업 흐름을 방해하지 않되,
 /// 표시 직후에는 다시 클릭 가능한 창으로 복구한다.
 pub(crate) fn show_ticker_without_focus(app: &tauri::AppHandle) {
-    let Some(win) = app.get_webview_window("ticker") else { return };
+    let Some(win) = app.get_webview_window("ticker") else {
+        return;
+    };
 
     if let Ok(available) = win.available_monitors() {
         let positions: Vec<(i32, i32)> = available
