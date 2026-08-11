@@ -262,9 +262,14 @@ function resetFields() {
 
 async function load() {
   lastLoadAt = Date.now();
-  const [settings, fetched] = await Promise.all([getSettings(), listProjects().catch(() => [])]);
+  // 설정은 로컬 파일이라 바로 온다. 프로젝트 목록(Plane API)과 한데 묶어 기다리면
+  // 네트워크가 느릴 때 큰 창으로 쓰던 사용자에게 작은 창이 먼저 뜨고 뒤늦게 넓어진다
+  // — 모양은 기다릴 이유가 없으므로 먼저 적용한다.
+  const settings = await getSettings();
   applyTheme(settings.theme);
   applyLayout(layoutKindOf(settings.quickadd_layout));
+
+  const fetched = await listProjects().catch(() => []);
   projects = fetched;
   state.selectedId = settings.last_project_id ?? projects[0]?.id ?? null;
   projectPicker.render();
