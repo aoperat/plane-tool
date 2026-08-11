@@ -11,7 +11,7 @@ import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate } from "../shared/datePresets";
-import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment, CycleData } from "../shared/types";
+import type { SidebarData, Project, ReleaseNote, WorkItem, ProjectState, PendingAssignment, CycleData, ItemChange } from "../shared/types";
 import "../shared/app.css";
 
 // The window is wider than the panel so the collapse tab can sit outside the
@@ -76,12 +76,6 @@ let pinned = false;
 let searchQuery = "";
 let statusFilter: string | null = null;
 let priorityFilter: string | null = null;
-// 유휴 자동 열림 보호: true인 동안은 blur 자동 숨김을 무시한다. 사용자가
-// 자리에 없을 때 열린 사이드바는 키보드/마우스 입력 없이는 닫히면 안 되고,
-// 무인 상태에서는 화면 잠금·알림·다른 앱 활성화 등이 얼마든지 blur를
-// 일으킬 수 있기 때문. 입력이 재개되면(백엔드 idle-ended, 또는 사이드바
-// 직접 조작) 해제되어 평소 규칙으로 복귀한다.
-let autoOpened = false;
 let themePref = "auto";
 let lastRefreshAt = 0;
 // 접어둔 프로젝트는 webview의 localStorage에 남겨 앱을 껐다 켜도 유지된다
@@ -326,18 +320,7 @@ function renderFromLastData() {
 
 // 백엔드가 수정/삭제 성공 시 보내는 로컬 패치 이벤트의 payload. 전체
 // 재동기화 대신 이미 받아둔 데이터에 변경분만 반영한다 — 서버 요청이 없다.
-type ItemChange = {
-  project_id: string;
-  item_id: string;
-  name: string | null;
-  assignee_ids: string[] | null;
-  start_date: string | null;
-  target_date: string | null;
-  priority: string | null;
-  state_group: string | null;
-};
-
-function applyItemChange(c: ItemChange) {
+function applyItemChange(c: ItemChange & { name?: string | null }) {
   if (!lastSidebarData) return;
   // 담당자 변경으로 항목이 내 목록에서 빠지거나 탭 간 이동해야 하는 경우는
   // 여기서 판별할 수 없다(내 user id를 모름) — 다음 전체 새로고침이 맞춘다.
@@ -1633,29 +1616,11 @@ win.listen("offline-conflicts-changed", (e) => {
   renderConflictBadge();
 });
 win.listen("tauri://blur", () => {
-  if (!pinned && !autoOpened) hideSidebar();
+  if (!pinned) hideSidebar();
 });
 win.listen("toggle-sidebar", () => {
   toggleSidebar();
 });
-// 백엔드 유휴 워처(spawn_idle_watcher)가 보내는 열기 전용 이벤트.
-// toggle과 달리 이미 열려 있으면 아무것도 하지 않는다 — 폴링이 토글로
-// 이어지면 열려 있던 사이드바를 닫아 버릴 수 있어서 이벤트를 분리했다.
-win.listen("open-sidebar", async () => {
-  if (await win.isVisible()) return;
-  autoOpened = true;
-  await showSidebar(false);
-  // 포커스 없이 열었으니 tauri://focus 기반 갱신이 안 돈다 — 직접 갱신.
-  refreshIfStale();
-});
-// 입력 재개(폴링 5초 이내 감지) — 자동 열림 보호 해제.
-win.listen("idle-ended", () => {
-  autoOpened = false;
-});
-// 사이드바를 직접 조작하기 시작하면 idle-ended 폴링을 기다리지 않고 즉시 해제.
-document.addEventListener("pointerdown", () => {
-  autoOpened = false;
-}, true);
 getOfflineStatus().then((s) => { pendingCount = s.pending; }).catch(() => {});
 getConflicts().then((cs) => {
   conflictCount = cs.length;

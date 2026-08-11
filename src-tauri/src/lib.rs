@@ -41,6 +41,27 @@ const MORNING_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 /// version the user already declined. A newer release prompts again.
 static LAST_OFFERED_VERSION: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+const SHARED_ITEM_EVENT_TARGETS: [&str; 2] = ["sidebar", "ticker"];
+
+pub(crate) fn emit_shared_item_event<T>(app: &tauri::AppHandle, event: &str, payload: T)
+where
+    T: serde::Serialize + Clone,
+{
+    let [sidebar, ticker] = SHARED_ITEM_EVENT_TARGETS;
+    let _ = app.emit_to(sidebar, event, payload.clone());
+    let _ = app.emit_to(ticker, event, payload);
+}
+
+#[cfg(test)]
+mod shared_item_event_tests {
+    use super::SHARED_ITEM_EVENT_TARGETS;
+
+    #[test]
+    fn shared_item_events_target_sidebar_and_ticker() {
+        assert_eq!(SHARED_ITEM_EVENT_TARGETS, ["sidebar", "ticker"]);
+    }
+}
+
 /// 현재 등록되어 있는 전역 단축키 쌍. 단축키 핸들러가 시작 시점 값을
 /// 클로저에 캡처하는 대신 매 이벤트마다 이 상태를 읽기 때문에, 설정 저장
 /// 시 재시작 없이 단축키를 교체할 수 있다 (`reapply_shortcuts`).
@@ -587,7 +608,7 @@ async fn replay_queue(app: &tauri::AppHandle) {
         "offline-conflicts-changed",
         serde_json::json!({ "count": conflict_count }),
     );
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    emit_shared_item_event(app, "refresh-sidebar", ());
 }
 
 /// `replay_one`의 결과. `Applied(Some(id))`는 `CreateIssue`가 성공해 실제
@@ -748,7 +769,6 @@ pub(crate) fn show_ticker_without_focus(app: &tauri::AppHandle) {
 }
 
 /// 작업 전광판에 닫기 애니메이션을 알리고 창을 숨긴다.
-#[allow(dead_code)] // F2 wiring is added in the following task.
 pub(crate) fn hide_ticker(app: &tauri::AppHandle) {
     let _ = app.emit_to("ticker", "close-ticker", ());
     if let Some(win) = app.get_webview_window("ticker") {
@@ -799,7 +819,10 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     // Sidebar animates its own show/hide, so ask it to toggle itself
                     // instead of driving show()/hide() here (mirrors the global shortcut).
-                    "sidebar" => { let _ = app.emit_to("sidebar", "toggle-sidebar", ()); }
+                    "sidebar" => {
+                        hide_ticker(app);
+                        let _ = app.emit_to("sidebar", "toggle-sidebar", ());
+                    }
                     "quickadd" => toggle_quickadd(app),
                     "settings" => show_window(app, "settings"),
                     "quit" => app.exit(0),
@@ -820,6 +843,7 @@ pub fn run() {
                             // The sidebar animates its own show/hide (slide in/out
                             // from the screen edge), so just ask it to toggle
                             // itself instead of driving show()/hide() here.
+                            hide_ticker(app);
                             let _ = app.emit_to("sidebar", "toggle-sidebar", ());
                         }
                     })

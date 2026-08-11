@@ -392,7 +392,7 @@ pub async fn create_issue(
             // 새 항목은 서버가 id 등을 부여하므로 로컬 패치로는 표현할 수 없어
             // 전체 재동기화를 요청한다 — 생성은 드물어서 rate limit에 부담이 없고,
             // 포커스 갱신 쿨다운이 길어진 뒤에도 새 항목이 바로 보이게 한다.
-            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            crate::emit_shared_item_event(&app, "refresh-sidebar", ());
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
@@ -418,7 +418,7 @@ pub async fn create_issue(
             config::set_last_project(&app, &project_id)?;
             // 오프라인 새로고침은 방금 placeholder가 삽입된 캐시를 그대로
             // 돌려주므로, 여기서도 새 항목이 즉시 보인다.
-            let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+            crate::emit_shared_item_event(&app, "refresh-sidebar", ());
             Ok(())
         }
         Err(e) => Err(e),
@@ -734,7 +734,7 @@ pub async fn update_work_item_fields(
     });
     match result {
         Ok(()) => {
-            let _ = app.emit_to("sidebar", "item-updated", changed);
+            crate::emit_shared_item_event(&app, "item-updated", changed);
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
@@ -765,7 +765,7 @@ pub async fn update_work_item_fields(
             .await?;
             // 오프라인 큐잉도 화면 반영은 동일하게 — 캐시는 위에서 패치됐고,
             // 열려 있는 사이드바에는 이 이벤트가 즉시 반영한다.
-            let _ = app.emit_to("sidebar", "item-updated", changed);
+            crate::emit_shared_item_event(&app, "item-updated", changed);
             Ok(())
         }
         Err(e) => Err(e),
@@ -779,12 +779,12 @@ pub async fn delete_work_item(app: tauri::AppHandle, project_id: String, item_id
     let removed = serde_json::json!({ "project_id": project_id, "item_id": item_id });
     match client.delete_work_item(&project_id, &item_id).await {
         Ok(()) => {
-            let _ = app.emit_to("sidebar", "item-deleted", removed);
+            crate::emit_shared_item_event(&app, "item-deleted", removed);
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
             crate::offline::queue_delete_and_remove(&app, &project_id, &item_id).await?;
-            let _ = app.emit_to("sidebar", "item-deleted", removed);
+            crate::emit_shared_item_event(&app, "item-deleted", removed);
             Ok(())
         }
         Err(e) => Err(e),
@@ -1232,7 +1232,7 @@ pub async fn resolve_conflict(
         "offline-conflicts-changed",
         serde_json::json!({ "count": conflicts.items.len() }),
     );
-    let _ = app.emit_to("sidebar", "refresh-sidebar", ());
+    crate::emit_shared_item_event(&app, "refresh-sidebar", ());
     Ok(())
 }
 

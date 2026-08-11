@@ -27,6 +27,13 @@
         "skipTaskbar": true, "visible": false, "resizable": false
       },
       {
+        "label": "ticker",
+        "url": "src/ticker/index.html",
+        "width": 540, "height": 64,
+        "decorations": false, "transparent": true, "alwaysOnTop": true,
+        "shadow": false, "skipTaskbar": true, "visible": false, "resizable": false
+      },
+      {
         "label": "settings",
         "url": "src/settings/index.html",
         "width": 460, "height": 560,

@@ -15,6 +15,15 @@ export interface WorkItemDetail {
   start_date: string | null; target_date: string | null;
   priority: string; state_group: string; project_id: string;
 }
+export interface ItemChange {
+  item_id: string;
+  project_id: string;
+  priority?: string;
+  state_group?: string;
+  start_date?: string | null;
+  target_date?: string | null;
+  assignee_ids?: string[];
+}
 export interface SidebarData {
   projects: Project[]; assigned: WorkItem[]; delegated: WorkItem[]; delegated_members: Member[];
   states: ProjectState[]; is_cached: boolean; cached_at_ms: number | null;
