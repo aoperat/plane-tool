@@ -2,6 +2,8 @@
   --ticker-panel: rgba(22, 24, 29, 0.94);
   --ticker-border: rgba(255, 255, 255, 0.13);
   --ticker-hover: rgba(255, 255, 255, 0.07);
+  --ticker-muted-text: var(--muted);
+  --ticker-action-text: #668aff;
   --ticker-overdue: #ff9278;
   --ticker-today: #f2b84b;
   --ticker-started: #80a9ff;
@@ -13,6 +15,8 @@
   --ticker-panel: rgba(255, 255, 255, 0.95);
   --ticker-border: rgba(28, 31, 38, 0.18);
   --ticker-hover: rgba(28, 31, 38, 0.07);
+  --ticker-muted-text: #5c6571;
+  --ticker-action-text: #345bc8;
   --ticker-overdue: #a93625;
   --ticker-today: #815000;
   --ticker-started: #2859b8;
@@ -125,7 +129,7 @@ body {
   flex: 0 1 auto;
   max-width: 116px;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ticker-muted-text);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -147,13 +151,13 @@ body {
 
 .ticker-meta-row {
   gap: 8px;
-  color: var(--muted);
+  color: var(--ticker-muted-text);
   font-size: 10.5px;
   line-height: 14px;
 }
 
 .ticker-metadata {
-  color: var(--muted);
+  color: var(--ticker-muted-text);
   font-weight: 600;
 }
 
@@ -170,14 +174,14 @@ body {
 }
 
 .ticker-position {
-  color: var(--muted);
+  color: var(--ticker-muted-text);
   font-variant-numeric: tabular-nums;
 }
 
 .ticker-position::before {
   content: "·";
   margin-right: 8px;
-  color: var(--muted-2);
+  color: var(--ticker-muted-text);
 }
 
 .ticker-offline {
@@ -212,7 +216,7 @@ body {
 
 .ticker-status {
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ticker-muted-text);
   font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -238,8 +242,8 @@ body {
 
 .ticker-retry:hover,
 .ticker-retry:focus-visible {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--ticker-action-text);
+  border-color: var(--ticker-action-text);
 }
 
 .ticker-retry[hidden] {
