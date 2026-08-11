@@ -219,7 +219,7 @@ fn update_message(version: &str, notes: &str) -> String {
 }
 
 /// PC 유휴 시간을 폴링하다가 설정 기준(idle_open_minutes)을 넘으면
-/// 사이드바에 열기 전용 이벤트를 보낸다. 설정은 매 tick 다시 읽어
+/// 작업 전광판에 열기 전용 이벤트를 보낸다. 설정은 매 tick 다시 읽어
 /// 재시작 없이 반영된다. 유휴 세션당 1회 발화는 IdleOpenGate가 보장.
 fn spawn_idle_watcher(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -230,11 +230,12 @@ fn spawn_idle_watcher(app: tauri::AppHandle) {
             let s = config::load_settings(&app);
             let threshold_ms = u64::from(s.idle_open_minutes) * 60_000;
             match gate.tick(s.idle_open_enabled, idle_ms, threshold_ms) {
-                idle::IdleAction::OpenSidebar => {
-                    let _ = app.emit_to("sidebar", "open-sidebar", ());
+                idle::IdleAction::OpenTicker => {
+                    show_ticker_without_focus(&app);
+                    let _ = app.emit_to("ticker", "open-ticker", ());
                 }
                 idle::IdleAction::IdleEnded => {
-                    let _ = app.emit_to("sidebar", "idle-ended", ());
+                    let _ = app.emit_to("ticker", "idle-ended", ());
                 }
                 idle::IdleAction::None => {}
             }
@@ -712,6 +713,45 @@ pub(crate) fn show_centered(app: &tauri::AppHandle, label: &str) {
 
 pub(crate) fn show_quickadd(app: &tauri::AppHandle) {
     show_centered(app, "quickadd");
+}
+
+/// 작업 전광판을 선택된 디스플레이의 작업 영역 오른쪽 아래에 표시한다.
+/// 처음 표시할 때 포커스를 받을 수 없게 해 현재 작업 흐름을 방해하지 않되,
+/// 표시 직후에는 다시 클릭 가능한 창으로 복구한다.
+pub(crate) fn show_ticker_without_focus(app: &tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("ticker") else { return };
+
+    if let Ok(available) = win.available_monitors() {
+        let positions: Vec<(i32, i32)> = available
+            .iter()
+            .map(|monitor| (monitor.position().x, monitor.position().y))
+            .collect();
+        let sorted = monitors::sorted_indices_by_position(&positions);
+        let display_index = config::load_settings(app).display_index;
+        if let Some(index) = monitors::pick_index(&sorted, display_index) {
+            let monitor = &available[index];
+            let scale = monitor.scale_factor();
+            let physical_size = tauri::LogicalSize::new(540.0, 64.0).to_physical::<u32>(scale);
+            let margin = tauri::LogicalUnit::new(16.0).to_physical::<i32>(scale).0;
+            let work_area = monitors::work_area_for_monitor(monitor);
+            let position = monitors::bottom_right_position(work_area, physical_size, margin);
+            let _ = win.set_position(position);
+        }
+    }
+
+    let _ = win.set_focusable(false);
+    let _ = win.show();
+    // Always restore focusability, including after a failed position or show.
+    let _ = win.set_focusable(true);
+}
+
+/// 작업 전광판에 닫기 애니메이션을 알리고 창을 숨긴다.
+#[allow(dead_code)] // F2 wiring is added in the following task.
+pub(crate) fn hide_ticker(app: &tauri::AppHandle) {
+    let _ = app.emit_to("ticker", "close-ticker", ());
+    if let Some(win) = app.get_webview_window("ticker") {
+        let _ = win.hide();
+    }
 }
 
 /// 미확인 할당 수를 트레이 툴팁에 반영. 0이면 기본 툴팁으로 복귀.

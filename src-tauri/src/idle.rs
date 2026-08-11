@@ -1,4 +1,4 @@
-//! PC 유휴 시 사이드바 자동 열기 판정.
+//! PC 유휴 시 작업 전광판 자동 열기 판정.
 //!
 //! OS 호출(`system_idle_ms`)과 판정 로직(`IdleOpenGate`)을 분리해 판정
 //! 로직을 단위 테스트할 수 있게 한다.
@@ -35,8 +35,8 @@ pub fn system_idle_ms() -> Option<u64> {
 pub enum IdleAction {
     /// 아무 일도 하지 않는다.
     None,
-    /// 사이드바를 자동으로 연다 (유휴 세션당 1회).
-    OpenSidebar,
+    /// 작업 전광판을 자동으로 연다 (유휴 세션당 1회).
+    OpenTicker,
     /// 입력이 재개되어 유휴 세션이 끝났다 — 자동 열림 보호를 해제한다.
     IdleEnded,
 }
@@ -73,7 +73,7 @@ impl IdleOpenGate {
             return IdleAction::None;
         }
         self.fired = true;
-        IdleAction::OpenSidebar
+        IdleAction::OpenTicker
     }
 }
 
@@ -95,13 +95,13 @@ mod tests {
     fn crossing_threshold_opens_once() {
         let mut g = IdleOpenGate::new();
         assert_eq!(g.tick(true, 10_000, THRESHOLD), None);
-        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenSidebar);
+        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenTicker);
     }
 
     #[test]
     fn staying_idle_does_not_reopen() {
         let mut g = IdleOpenGate::new();
-        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenSidebar);
+        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenTicker);
         assert_eq!(g.tick(true, THRESHOLD + 5_000, THRESHOLD), None);
         assert_eq!(g.tick(true, THRESHOLD + 300_000, THRESHOLD), None);
     }
@@ -109,12 +109,12 @@ mod tests {
     #[test]
     fn input_resume_reports_idle_ended_once_then_rearms() {
         let mut g = IdleOpenGate::new();
-        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenSidebar);
+        assert_eq!(g.tick(true, THRESHOLD, THRESHOLD), OpenTicker);
         // 입력 재개 → 유휴 세션 종료를 정확히 한 번 보고
         assert_eq!(g.tick(true, 2_000, THRESHOLD), IdleEnded);
         assert_eq!(g.tick(true, 3_000, THRESHOLD), None);
         // 다시 유휴 기준 초과 → 새 세션이므로 다시 열림
-        assert_eq!(g.tick(true, THRESHOLD + 1, THRESHOLD), OpenSidebar);
+        assert_eq!(g.tick(true, THRESHOLD + 1, THRESHOLD), OpenTicker);
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
         // (꺼져 있던 tick은 발화를 소모하지 않는다).
         let mut g = IdleOpenGate::new();
         assert_eq!(g.tick(false, THRESHOLD + 1, THRESHOLD), None);
-        assert_eq!(g.tick(true, THRESHOLD + 2, THRESHOLD), OpenSidebar);
+        assert_eq!(g.tick(true, THRESHOLD + 2, THRESHOLD), OpenTicker);
     }
 
     #[test]
