@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Project, WorkItem } from "../shared/types";
 import {
   buildTickerItems,
+  itemChangeNeedsAssignedRefresh,
   nextTickerIndex,
   previousTickerIndex,
   reconcileTickerIndex,
@@ -45,11 +46,11 @@ describe("buildTickerItems", () => {
 
   it("uses exclusive overdue, today, started, then remaining precedence", () => {
     const items = [
-      item("overdue-started", { state_group: "started", target_date: "2026-08-10" }),
-      item("today-started", { state_group: "started", target_date: "2026-08-11" }),
-      item("started-future", { state_group: "started", target_date: "2026-08-12" }),
-      item("remaining-future", { target_date: "2026-08-12" }),
       item("remaining-undated"),
+      item("started-future", { state_group: "started", target_date: "2026-08-12" }),
+      item("today-started", { state_group: "started", target_date: "2026-08-11" }),
+      item("remaining-future", { target_date: "2026-08-12" }),
+      item("overdue-started", { state_group: "started", target_date: "2026-08-10" }),
     ];
 
     expect(buildTickerItems(items, [project("p1")], "2026-08-11").map((entry) => [entry.item.id, entry.bucket, entry.meta])).toEqual([
@@ -59,6 +60,21 @@ describe("buildTickerItems", () => {
       ["remaining-future", "remaining", "2026-08-12"],
       ["remaining-undated", "remaining", "기한 없음"],
     ]);
+  });
+
+  it.each([
+    ["urgent", "긴급"],
+    ["high", "높음"],
+    ["medium", "보통"],
+    ["low", "낮음"],
+  ])("shows %s priority before a remaining item's due-date fallback", (priority, expected) => {
+    const [entry] = buildTickerItems(
+      [item(priority, { priority, target_date: "2026-08-20" })],
+      [project("p1")],
+      "2026-08-11",
+    );
+
+    expect(entry.meta).toBe(expected);
   });
 
   it("sorts by bucket and due date, preserving stable ties and falling back for missing projects", () => {
@@ -79,6 +95,29 @@ describe("buildTickerItems", () => {
       "remaining-undated",
     ]);
     expect(entries[4].projectName).toBe("알 수 없는 프로젝트");
+  });
+});
+
+describe("itemChangeNeedsAssignedRefresh", () => {
+  it("requires a server refresh for both empty and non-empty assignee patches", () => {
+    expect(itemChangeNeedsAssignedRefresh({
+      item_id: "a",
+      project_id: "p1",
+      assignee_ids: [],
+    })).toBe(true);
+    expect(itemChangeNeedsAssignedRefresh({
+      item_id: "a",
+      project_id: "p1",
+      assignee_ids: ["me"],
+    })).toBe(true);
+  });
+
+  it("does not refresh assigned membership for unrelated patches", () => {
+    expect(itemChangeNeedsAssignedRefresh({
+      item_id: "a",
+      project_id: "p1",
+      priority: "high",
+    })).toBe(false);
   });
 });
 

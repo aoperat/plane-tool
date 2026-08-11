@@ -1,4 +1,5 @@
-import type { Project, WorkItem } from "../shared/types";
+import { priorityLabel } from "../shared/planeIcons";
+import type { ItemChange, Project, WorkItem } from "../shared/types";
 
 export type TickerBucket = "overdue" | "today" | "started" | "remaining";
 
@@ -27,6 +28,22 @@ function compareDueDate(a: string | null, b: string | null): number {
   return a < b ? -1 : 1;
 }
 
+function priorityMeta(priority: string): string | null {
+  switch (priority) {
+    case "urgent":
+    case "high":
+    case "medium":
+    case "low":
+      return priorityLabel(priority);
+    default:
+      return null;
+  }
+}
+
+export function itemChangeNeedsAssignedRefresh(change: ItemChange): boolean {
+  return change.assignee_ids !== undefined;
+}
+
 export function buildTickerItems(items: WorkItem[], projects: Project[], today: string): TickerItem[] {
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const ranked: Array<{ ticker: TickerItem; dueDate: string | null; inputIndex: number }> = [];
@@ -48,7 +65,7 @@ export function buildTickerItems(items: WorkItem[], projects: Project[], today: 
       meta = "진행 중";
     } else {
       bucket = "remaining";
-      meta = dueDate ?? "기한 없음";
+      meta = priorityMeta(item.priority) ?? dueDate ?? "기한 없음";
     }
 
     ranked.push({

@@ -6,6 +6,7 @@ import type { ItemChange, SidebarData, WorkItem } from "../shared/types";
 import { createCarouselController } from "./carousel";
 import {
   buildTickerItems,
+  itemChangeNeedsAssignedRefresh,
   nextTickerIndex,
   previousTickerIndex,
   reconcileTickerIndex,
@@ -98,6 +99,7 @@ function renderState(nextState: Exclude<ViewState, "ready" | "closed">, message:
   card.dataset.state = nextState;
   card.setAttribute("aria-busy", String(nextState === "loading"));
   taskButton.hidden = true;
+  taskButton.removeAttribute("aria-label");
   statePanel.hidden = false;
   status.textContent = message;
   retryButton.hidden = nextState !== "error";
@@ -126,6 +128,7 @@ function renderCurrentTask(): void {
   taskTitle.textContent = current.item.name;
   taskTitle.title = current.item.name;
   taskButton.title = current.item.name;
+  taskButton.setAttribute("aria-label", `작업 열기: ${current.projectName} · ${current.item.name}`);
   metadata.textContent = current.meta;
   metadata.dataset.bucket = current.bucket;
   position.textContent = `${currentIndex + 1} / ${tickerItems.length}`;
@@ -136,6 +139,9 @@ function renderCurrentTask(): void {
   offlineBadge.textContent = cachedText ?? "";
   offlineBadge.hidden = cachedText === null;
   setNavigationDisabled(tickerItems.length <= 1);
+  taskButton.classList.remove("task-transition");
+  void taskButton.offsetWidth;
+  taskButton.classList.add("task-transition");
   restartProgress();
 }
 
@@ -213,6 +219,14 @@ function refresh(): Promise<void> {
   return refreshInFlight;
 }
 
+async function refreshIfVisible(): Promise<void> {
+  try {
+    if (await win.isVisible()) await refresh();
+  } catch (error) {
+    console.error("ticker visibility check failed:", error);
+  }
+}
+
 function openTicker(): void {
   sessionActive = true;
   lifecycleGeneration += 1;
@@ -258,13 +272,20 @@ function navigate(direction: "previous" | "next"): void {
 }
 
 function applyItemChange(change: TickerItemChange): void {
-  if (!lastSidebarData) return;
+  const needsAssignedRefresh = itemChangeNeedsAssignedRefresh(change);
+  if (!lastSidebarData) {
+    if (needsAssignedRefresh) void refreshIfVisible();
+    return;
+  }
   const currentId = currentItemId();
   const oldIndex = currentIndex;
   const item: WorkItem | undefined = lastSidebarData.assigned.find(
     (candidate) => candidate.id === change.item_id,
   );
-  if (!item) return;
+  if (!item) {
+    if (needsAssignedRefresh) void refreshIfVisible();
+    return;
+  }
 
   if (change.name != null) item.name = change.name;
   if (change.priority != null) item.priority = change.priority;
@@ -277,6 +298,7 @@ function applyItemChange(change: TickerItemChange): void {
   }
 
   rebuildTickerItems(currentId, oldIndex);
+  if (needsAssignedRefresh) void refreshIfVisible();
 }
 
 function removeItem(itemId: string): void {
@@ -343,13 +365,7 @@ void Promise.all([
   win.listen("open-ticker", openTicker),
   win.listen("close-ticker", requestHide),
   win.listen("idle-ended", requestHide),
-  win.listen("refresh-sidebar", () => {
-    void win.isVisible()
-      .then((visible) => {
-        if (visible) void refresh();
-      })
-      .catch((error) => console.error("ticker visibility check failed:", error));
-  }),
+  win.listen("refresh-sidebar", () => void refreshIfVisible()),
   win.listen<TickerItemChange>("item-updated", (event) => applyItemChange(event.payload)),
   win.listen<{ item_id: string }>("item-deleted", (event) => removeItem(event.payload.item_id)),
 ]).catch((error) => console.error("ticker listener registration failed:", error));

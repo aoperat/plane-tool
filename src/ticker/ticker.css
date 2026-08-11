@@ -114,6 +114,20 @@ body {
   display: none;
 }
 
+.ticker-task.task-transition {
+  animation: ticker-task-fade 160ms ease-out both;
+}
+
+@keyframes ticker-task-fade {
+  from {
+    opacity: 0.55;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 .ticker-title-row,
 .ticker-meta-row {
   display: flex;
