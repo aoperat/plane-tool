@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>작업 전광판</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+    <link rel="stylesheet" href="./ticker.css" />
+  </head>
+  <body class="transparent-body">
+    <main id="tickerCard" class="ticker-card" aria-label="작업 전광판" aria-busy="false">
+      <button id="previousTask" class="ticker-icon-button ticker-nav" type="button" aria-label="이전 작업" disabled>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="m10 3.5-4.5 4.5 4.5 4.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+
+      <div class="ticker-content">
+        <button id="taskBody" class="ticker-task" type="button" aria-label="작업 열기" hidden>
+          <span class="ticker-title-row">
+            <span id="projectName" class="ticker-project"></span>
+            <span id="taskTitle" class="ticker-title"></span>
+          </span>
+          <span class="ticker-meta-row">
+            <span id="metadata" class="ticker-metadata"></span>
+            <span id="position" class="ticker-position"></span>
+            <span id="offlineBadge" class="ticker-offline" hidden></span>
+          </span>
+        </button>
+
+        <div id="statePanel" class="ticker-state">
+          <span id="status" class="ticker-status" role="status" aria-live="polite">작업을 불러오는 중…</span>
+          <button id="retry" class="ticker-retry" type="button" aria-label="다시 시도" hidden>다시 시도</button>
+        </div>
+      </div>
+
+      <button id="nextTask" class="ticker-icon-button ticker-nav" type="button" aria-label="다음 작업" disabled>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="m6 3.5 4.5 4.5L6 12.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button id="closeTicker" class="ticker-icon-button ticker-close" type="button" aria-label="전광판 닫기">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="m4 4 8 8m0-8-8 8" stroke-linecap="round" />
+        </svg>
+      </button>
+
+      <div id="progress" class="ticker-progress" aria-hidden="true" hidden>
+        <span class="ticker-progress-fill"></span>
+      </div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

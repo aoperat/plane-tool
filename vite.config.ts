@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         quickadd: resolve(__dirname, "src/quickadd/index.html"),
         sidebar: resolve(__dirname, "src/sidebar/index.html"),
+        ticker: resolve(__dirname, "src/ticker/index.html"),
         settings: resolve(__dirname, "src/settings/index.html"),
         editmodal: resolve(__dirname, "src/editmodal/index.html"),
         briefing: resolve(__dirname, "src/briefing/index.html"),

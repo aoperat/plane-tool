@@ -1,0 +1,305 @@
+:root {
+  --ticker-panel: rgba(22, 24, 29, 0.94);
+  --ticker-border: rgba(255, 255, 255, 0.13);
+  --ticker-hover: rgba(255, 255, 255, 0.07);
+  --ticker-overdue: #ff9278;
+  --ticker-today: #f2b84b;
+  --ticker-started: #80a9ff;
+  --ticker-offline: #ffd18b;
+  --ticker-error: #ff9a9f;
+}
+
+:root[data-theme="light"] {
+  --ticker-panel: rgba(255, 255, 255, 0.95);
+  --ticker-border: rgba(28, 31, 38, 0.18);
+  --ticker-hover: rgba(28, 31, 38, 0.07);
+  --ticker-overdue: #a93625;
+  --ticker-today: #815000;
+  --ticker-started: #2859b8;
+  --ticker-offline: #704900;
+  --ticker-error: #ad2532;
+}
+
+html,
+body {
+  width: 540px;
+  height: 64px;
+}
+
+.ticker-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+  width: 540px;
+  height: 64px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--ticker-panel);
+  border: 1px solid var(--ticker-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+
+.ticker-content {
+  min-width: 0;
+  height: 62px;
+}
+
+.ticker-icon-button,
+.ticker-task,
+.ticker-retry {
+  border: 0;
+  font: inherit;
+}
+
+.ticker-icon-button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 62px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.ticker-icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ticker-icon-button:hover:not(:disabled),
+.ticker-icon-button:focus-visible {
+  color: var(--text);
+  background: var(--ticker-hover);
+}
+
+.ticker-icon-button:disabled {
+  color: var(--muted-2);
+  cursor: default;
+  opacity: 0.42;
+}
+
+.ticker-close {
+  color: var(--muted-2);
+}
+
+.ticker-task {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 62px;
+  min-width: 0;
+  padding: 7px 10px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ticker-task:hover,
+.ticker-task:focus-visible {
+  background: var(--ticker-hover);
+}
+
+.ticker-task[hidden] {
+  display: none;
+}
+
+.ticker-title-row,
+.ticker-meta-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ticker-title-row {
+  gap: 8px;
+}
+
+.ticker-project {
+  flex: 0 1 auto;
+  max-width: 116px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticker-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticker-meta-row {
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+.ticker-metadata {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ticker-metadata[data-bucket="overdue"] {
+  color: var(--ticker-overdue);
+}
+
+.ticker-metadata[data-bucket="today"] {
+  color: var(--ticker-today);
+}
+
+.ticker-metadata[data-bucket="started"] {
+  color: var(--ticker-started);
+}
+
+.ticker-position {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker-position::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--muted-2);
+}
+
+.ticker-offline {
+  max-width: 116px;
+  overflow: hidden;
+  padding: 1px 6px;
+  color: var(--ticker-offline);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--ticker-offline) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ticker-offline) 35%, transparent);
+  border-radius: 999px;
+}
+
+.ticker-offline[hidden] {
+  display: none;
+}
+
+.ticker-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 62px;
+  padding: 0 10px;
+}
+
+.ticker-state[hidden] {
+  display: none;
+}
+
+.ticker-status {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticker-card[data-state="error"] .ticker-status {
+  color: var(--ticker-error);
+}
+
+.ticker-retry {
+  flex: none;
+  min-height: 30px;
+  padding: 5px 10px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+  background: var(--ticker-hover);
+  border: 1px solid var(--ticker-border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.ticker-retry:hover,
+.ticker-retry:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ticker-retry[hidden] {
+  display: none;
+}
+
+.ticker-card :focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.ticker-progress {
+  position: absolute;
+  right: 8px;
+  bottom: 2px;
+  left: 8px;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.ticker-progress[hidden] {
+  display: none;
+}
+
+.ticker-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.ticker-progress.running .ticker-progress-fill {
+  animation: ticker-progress 7s linear forwards;
+}
+
+@keyframes ticker-progress {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-card,
+  .ticker-card *,
+  .ticker-card *::before,
+  .ticker-card *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .ticker-progress {
+    display: none !important;
+  }
+}
