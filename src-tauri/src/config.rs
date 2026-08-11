@@ -247,6 +247,7 @@ mod tests {
             deadline_notify_time: "08:00".into(),
             deadline_lead_days: 5,
             show_delegated_tab: true,
+            quickadd_layout: "expanded".into(),
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
