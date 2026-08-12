@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -146,3 +146,40 @@ export const getConflicts = () => invoke<Conflict[]>("get_conflicts");
 export const resolveConflict = (conflictId: string, action: "apply" | "discard", fields?: Partial<ConflictFields>) =>
   invoke<void>("resolve_conflict", { conflictId, action, fields });
 export const openConflictWindow = () => invoke<void>("open_conflict_window");
+
+export const openMngDaily = () => invoke<void>("open_mng_daily");
+export const listMngTargets = () => invoke<MngTargets>("list_mng_targets");
+export const submitMngDailyReport = (
+  project_id: string,
+  state: string,
+  content_html: string,
+  report_date: string,
+  spent_hours: number,
+  spent_minutes: number,
+) =>
+  invoke<void>("submit_mng_daily_report_cmd", {
+    projectId: project_id,
+    state,
+    contentHtml: content_html,
+    reportDate: report_date,
+    spentHours: spent_hours,
+    spentMinutes: spent_minutes,
+  });
+export const updateMngDailyReport = (
+  report_date: string,
+  seq: string,
+  state: string,
+  content_html: string,
+  spent_hours: number,
+  spent_minutes: number,
+) =>
+  invoke<void>("update_mng_daily_report_cmd", {
+    reportDate: report_date,
+    seq,
+    state,
+    contentHtml: content_html,
+    spentHours: spent_hours,
+    spentMinutes: spent_minutes,
+  });
+export const deleteMngDailyReport = (report_date: string, seq: string) =>
+  invoke<void>("delete_mng_daily_report_cmd", { reportDate: report_date, seq });

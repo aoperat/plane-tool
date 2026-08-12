@@ -60,6 +60,13 @@
         "width": 560, "height": 340,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": false
+      },
+      {
+        "label": "mngdaily",
+        "url": "src/mngdaily/index.html",
+        "width": 520, "height": 640,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       }
     ],
     "security": { "csp": null }

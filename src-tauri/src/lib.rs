@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod deadline_watch;
 pub mod idle;
+pub mod mng_report;
 pub mod monitors;
 pub mod offline;
 pub mod openai;
@@ -933,7 +934,12 @@ pub fn run() {
             commands::get_conflicts,
             commands::resolve_conflict,
             commands::open_conflict_window,
-            commands::open_issue_popup
+            commands::open_issue_popup,
+            commands::open_mng_daily,
+            commands::list_mng_targets,
+            commands::submit_mng_daily_report_cmd,
+            commands::update_mng_daily_report_cmd,
+            commands::delete_mng_daily_report_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

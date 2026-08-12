@@ -1,7 +1,7 @@
 import { availableMonitors, getCurrentWindow, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getVersion } from "@tauri-apps/api/app";
-import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchCycleData, fetchReleaseNotes, fetchSidebarData, getConflicts, getOfflineStatus, getPendingAssignments, getSettings, openBriefing, openConflictWindow, openEditModal, openIssuePopup, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
+import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem, fetchCycleData, fetchReleaseNotes, fetchSidebarData, getConflicts, getOfflineStatus, getPendingAssignments, getSettings, listMngTargets, openBriefing, openConflictWindow, openEditModal, openIssuePopup, openMngDaily, openSettings, saveSettings, showQuickaddForProject, updateWorkItemFields, updateWorkItemPriority, updateWorkItemState } from "../shared/ipc";
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
@@ -1262,6 +1262,20 @@ async function refreshInbox() {
   }
 }
 
+const mngDailyDotEl = document.getElementById("mngDailyDot")!;
+
+/** mng 배지는 참고용 신호일 뿐이다 — 실제 제출 여부는 창을 열 때
+ *  list_mng_targets를 다시 불러 정확히 확인한다(여기서 실패해도 사이드바 본
+ *  기능에는 영향 없이 조용히 무시한다). */
+async function refreshMngBadge() {
+  try {
+    const data = await listMngTargets();
+    mngDailyDotEl.hidden = !data.targets.some((t) => t.status !== "sent");
+  } catch (err) {
+    console.error("listMngTargets (badge) failed:", err);
+  }
+}
+
 // 새로고침 버튼과 백엔드의 refresh-sidebar 이벤트는 refreshIfStale()의
 // 쿨다운을 거치지 않고 refresh()를 직접 부른다. 연속 편집/삭제나 버튼 연타로
 // 여러 호출이 겹치면 프로젝트당 N+1 요청 묶음이 동시에 나가고, 응답 순서가
@@ -1312,6 +1326,7 @@ async function runRefresh() {
     if (groupAxis === "cycle") ensureCycleData();
     synced.textContent = offlineStatusText(data.is_cached, data.cached_at_ms, pendingCount, Date.now());
     refreshInbox();
+    refreshMngBadge();
   } catch (e) {
     const msg = typeof e === "string" ? e : ((e as any)?.message ?? JSON.stringify(e));
     synced.textContent = "동기화 실패: " + msg;
@@ -1334,6 +1349,10 @@ document.getElementById("refresh")!.onclick = () => {
 
 document.getElementById("briefingBtn")!.onclick = () => {
   openBriefing().catch((e) => console.error("openBriefing failed:", e));
+};
+
+document.getElementById("mngDailyBtn")!.onclick = () => {
+  openMngDaily().catch((e) => console.error("openMngDaily failed:", e));
 };
 
 document.getElementById("openPlane")!.onclick = () => {

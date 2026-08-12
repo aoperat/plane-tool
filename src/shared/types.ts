@@ -95,3 +95,55 @@ export interface CycleData {
    *  이 결과는 캐시에 저장하지 않고, 다음 렌더에서 더 빨리 다시 시도한다. */
   is_partial: boolean;
 }
+
+/** mng 업무일지 내용 조립에 필요한 최소 필드. Rust `mng_report::classify_groups`가
+ *  이미 상태 그룹별로 나눠 보낸 것이라 여기엔 `state_group`이 없다. */
+export interface MngReportItem {
+  id: string;
+  name: string;
+  sequence_id: number;
+  priority: string;
+  completed_at: string | null;
+  target_date: string | null;
+  start_date: string | null;
+}
+
+export interface MngDailyRow {
+  seq: string;
+  project_id: string | null;
+  mng_project_name: string;
+  state: string;
+  state_name: string;
+  client_name: string;
+  content_html: string;
+  spent_hours: string;
+  spent_minutes: string;
+  editable: boolean;
+}
+
+export type MngTargetStatus = "pending" | "sent" | "unknown";
+
+export interface MngTarget {
+  project_id: string;
+  project_name: string;
+  project_identifier: string;
+  client_name: string;
+  completed: MngReportItem[];
+  in_progress: MngReportItem[];
+  upcoming: MngReportItem[];
+  default_content: string;
+  status: MngTargetStatus;
+  existing_row: MngDailyRow | null;
+}
+
+export interface MngTargets {
+  report_date: string;
+  mng_available: boolean;
+  employee_no: string;
+  targets: MngTarget[];
+}
+
+export interface MngApiError {
+  error_code: string;
+  message: string;
+}

@@ -123,6 +123,8 @@ mod tests {
             completed_at: None, created_at: None,
             created_by: created_by.map(str::to_string),
             updated_at: None,
+            sequence_id: 0,
+            parent_id: None,
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::config;
 use tauri::{Emitter, Manager};
-use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, plain_text_to_description_html, resolve_state_id, Member, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, plain_text_to_description_html, resolve_state_id, Member, MngApiError, MngDailyReportsResponse, MngDailyRow, NewWorkItem, PlaneClient, Project, ProjectState, WorkItem};
+use crate::mng_report;
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
 use std::collections::HashSet;
@@ -1048,6 +1049,222 @@ pub fn open_briefing(app: tauri::AppHandle) {
     let _ = app.emit_to("briefing", "briefing-open", ());
 }
 
+/// mng 업무일지 창을 설정된 디스플레이 중앙에 표시하고, 창에게 로드 신호를 보낸다.
+/// `briefing`과 동일한 패턴 — 데이터는 여기서 담아 보내지 않고, 창이 뜬 뒤
+/// `list_mng_targets`를 직접 호출해 최신 상태를 받아간다.
+#[tauri::command]
+pub fn open_mng_daily(app: tauri::AppHandle) {
+    crate::show_centered(&app, "mngdaily");
+    let _ = app.emit_to("mngdaily", "mngdaily-open", ());
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MngReportItemDto {
+    pub id: String,
+    pub name: String,
+    pub sequence_id: u64,
+    pub priority: String,
+    pub completed_at: Option<String>,
+    pub target_date: Option<String>,
+    pub start_date: Option<String>,
+}
+
+fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
+    MngReportItemDto {
+        id: w.id.clone(),
+        name: w.name.clone(),
+        sequence_id: w.sequence_id,
+        priority: w.priority.clone(),
+        completed_at: w.completed_at.clone(),
+        target_date: w.target_date.clone(),
+        start_date: w.start_date.clone(),
+    }
+}
+
+/// 프로젝트 하나의 mng 제출 대상. `completed`/`in_progress`/`upcoming`은
+/// "포함 항목" 토글을 켰다 껐다 할 때 프론트가 `mng_report.rs`와 동일한 규칙의
+/// TS 포팅으로 내용을 즉시 재조립할 수 있도록 구조화된 형태로 내려준다 —
+/// `default_content`(서버 기본 옵션으로 미리 렌더한 것)는 초기값일 뿐이다.
+#[derive(Debug, Serialize, Clone)]
+pub struct MngTargetDto {
+    pub project_id: String,
+    pub project_name: String,
+    pub project_identifier: String,
+    pub client_name: String,
+    pub completed: Vec<MngReportItemDto>,
+    pub in_progress: Vec<MngReportItemDto>,
+    pub upcoming: Vec<MngReportItemDto>,
+    pub default_content: String,
+    /// "pending" | "sent" | "unknown" — `existing_row`가 있으면 "sent",
+    /// `mng_available`가 false면 실제 등록 여부를 모르므로 "unknown".
+    pub status: String,
+    pub existing_row: Option<MngDailyRow>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MngTargetsDto {
+    pub report_date: String,
+    /// false면 mng 연결 자체가 실패한 것 — 모든 대상의 `status`가 "unknown"이다
+    /// (미등록으로 오인해 중복 제출을 유도하지 않기 위해 구분해서 넘긴다).
+    pub mng_available: bool,
+    /// 비어 있으면 사번이 등록돼 있지 않다 — 프론트가 제출 버튼을 막고
+    /// 안내 배너를 보여준다(서버도 POST 시점에 EMPLOYEE_NO_MISSING으로 다시
+    /// 막지만, 창을 열자마자 미리 알려주는 편이 덜 답답하다).
+    pub employee_no: String,
+    pub targets: Vec<MngTargetDto>,
+}
+
+/// 오늘 완료 항목이 있고 mng와 연동된 프로젝트를 모아 제출 대상 목록을 만든다.
+/// mng 등록 여부는 프로젝트마다 따로 묻지 않는다 — `get_mng_daily_reports`가
+/// 사번+날짜 단위로 한 번에 전체를 돌려주기 때문이다.
+#[tauri::command]
+pub async fn list_mng_targets(app: tauri::AppHandle) -> Result<MngTargetsDto, String> {
+    let (client, _s) = client(&app)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    list_mng_targets_online(&client, &today).await
+}
+
+async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<MngTargetsDto, String> {
+    let today_date = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+        .map_err(|e| format!("invalid date {today}: {e}"))?;
+
+    let projects = client.list_projects().await?;
+    let mng_projects: Vec<Project> = projects.into_iter().filter(|p| p.mng_link.is_some()).collect();
+    if mng_projects.is_empty() {
+        return Ok(MngTargetsDto {
+            report_date: today.to_string(),
+            mng_available: true,
+            employee_no: String::new(),
+            targets: Vec::new(),
+        });
+    }
+
+    let user = client.current_user_cached().await?;
+
+    // 등록 여부 조회 실패는 화면 전체를 막지 않는다 — "확인 불가"로 표시하고
+    // 넘어간다(3번 절 GET 규칙과 동일한 이유: mng 화면에서 직접 등록·삭제한
+    // 건은 여기서 영원히 모르므로, 실패 시 "미등록"으로 오인시키지 않는다).
+    let report: MngDailyReportsResponse = client.get_mng_daily_reports(today).await.unwrap_or_else(|_| {
+        MngDailyReportsResponse {
+            report_date: today.to_string(),
+            employee_no: String::new(),
+            mng_available: false,
+            rows: Vec::new(),
+        }
+    });
+
+    let per_project: Vec<(Project, Vec<WorkItem>)> = stream::iter(mng_projects)
+        .map(move |p| async move {
+            let items = client.list_work_items(&p.id).await.unwrap_or_default();
+            (p, items)
+        })
+        .buffer_unordered(SYNC_CONCURRENCY)
+        .collect()
+        .await;
+
+    let mut targets: Vec<MngTargetDto> = Vec::new();
+    for (project, items) in per_project {
+        let mine: Vec<WorkItem> =
+            items.into_iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).collect();
+        let (completed, in_progress, upcoming) = mng_report::classify_groups(&mine, today);
+        if completed.is_empty() {
+            // mng 업무일지는 "오늘 한 일"을 등록하는 곳이다 — 오늘 완료한 게
+            // 없으면 진행중/예정 항목만으로는 제출 대상이 아니다.
+            continue;
+        }
+
+        let client_name = project
+            .mng_link
+            .as_ref()
+            .and_then(|v| v.get("client"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let default_content = mng_report::project_to_text(
+            &project.name,
+            &project.identifier,
+            Some(client_name.as_str()),
+            (&completed, &in_progress, &upcoming),
+            &mng_report::MngContentOptions::default(),
+            today_date,
+        );
+
+        let existing_row =
+            report.rows.iter().find(|r| r.project_id.as_deref() == Some(project.id.as_str())).cloned();
+        let status = if !report.mng_available {
+            "unknown"
+        } else if existing_row.is_some() {
+            "sent"
+        } else {
+            "pending"
+        };
+
+        targets.push(MngTargetDto {
+            project_id: project.id,
+            project_name: project.name,
+            project_identifier: project.identifier,
+            client_name,
+            completed: completed.iter().map(|i| to_mng_item_dto(i)).collect(),
+            in_progress: in_progress.iter().map(|i| to_mng_item_dto(i)).collect(),
+            upcoming: upcoming.iter().map(|i| to_mng_item_dto(i)).collect(),
+            default_content,
+            status: status.to_string(),
+            existing_row,
+        });
+    }
+    targets.sort_by(|a, b| a.project_name.cmp(&b.project_name));
+
+    Ok(MngTargetsDto {
+        report_date: today.to_string(),
+        mng_available: report.mng_available,
+        employee_no: report.employee_no,
+        targets,
+    })
+}
+
+#[tauri::command]
+pub async fn submit_mng_daily_report_cmd(
+    app: tauri::AppHandle,
+    project_id: String,
+    state: String,
+    content_html: String,
+    report_date: String,
+    spent_hours: u32,
+    spent_minutes: u32,
+) -> Result<(), MngApiError> {
+    let (client, _s) = client(&app).map_err(MngApiError::network)?;
+    client
+        .submit_mng_daily_report(&project_id, &state, &content_html, &report_date, spent_hours, spent_minutes)
+        .await
+}
+
+#[tauri::command]
+pub async fn update_mng_daily_report_cmd(
+    app: tauri::AppHandle,
+    report_date: String,
+    seq: String,
+    state: String,
+    content_html: String,
+    spent_hours: u32,
+    spent_minutes: u32,
+) -> Result<(), MngApiError> {
+    let (client, _s) = client(&app).map_err(MngApiError::network)?;
+    client
+        .update_mng_daily_report(&report_date, &seq, &state, &content_html, spent_hours, spent_minutes)
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_mng_daily_report_cmd(
+    app: tauri::AppHandle,
+    report_date: String,
+    seq: String,
+) -> Result<(), MngApiError> {
+    let (client, _s) = client(&app).map_err(MngApiError::network)?;
+    client.delete_mng_daily_report(&report_date, &seq).await
+}
+
 #[derive(Serialize)]
 pub struct PendingAssignmentDto {
     pub item_id: String,
@@ -1254,14 +1471,16 @@ mod tests {
             created_at: None,
             created_by: None,
             updated_at: None,
+            sequence_id: 0,
+            parent_id: None,
         }
     }
 
     #[test]
     fn assemble_filters_to_my_open_items_across_projects() {
         let projects = vec![
-            Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true },
-            Project { id: "p2".into(), name: "Mob".into(), identifier: "MOB".into(), cycle_view: true },
+            Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None },
+            Project { id: "p2".into(), name: "Mob".into(), identifier: "MOB".into(), cycle_view: true, mng_link: None },
         ];
         let items = vec![
             wi("a", "started", &["me"], "p1"),
@@ -1284,7 +1503,7 @@ mod tests {
 
     #[test]
     fn assemble_includes_items_completed_within_the_window() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
         let items = vec![
             wi("a", "started", &["me"], "p1"),
             wi_completed("b", "completed", &["me"], "p1", Some("2026-07-01T09:00:00Z")), // in window
@@ -1299,7 +1518,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_carries_updated_at_into_work_item_dto() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
         let mut item = wi("a", "started", &["me"], "p1");
         item.updated_at = Some("2026-07-01T10:00:00Z".into());
         let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
@@ -1308,7 +1527,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_carries_assignee_ids_into_work_item_dto() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
         let item = wi("a", "started", &["me", "other"], "p1");
         let data = assemble_sidebar("me", projects, vec![item], vec![], "2026-06-30", "2026-07-02");
         assert_eq!(data.assigned[0].assignee_ids, vec!["me".to_string(), "other".to_string()]);
@@ -1427,7 +1646,7 @@ mod tests {
 
     #[test]
     fn assemble_sidebar_fills_delegated_from_created_by() {
-        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true }];
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
         let mut mine_for_other = wi("a", "started", &["other"], "p1");
         mine_for_other.created_by = Some("me".into());
         let mut mine_for_me = wi("b", "started", &["me"], "p1");

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>mng 업무일지</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <div class="mng-card">
+      <div class="mng-head" data-tauri-drag-region>
+        <svg class="mng-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
+        <span class="mng-head-title">mng 업무일지 · <span id="mngDate"></span></span>
+        <button type="button" id="mngFmtBtn" class="mng-icon-btn" title="내용에 포함할 항목">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button type="button" id="mngRefresh" class="mng-icon-btn" title="새로고침">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" id="mngClose" class="mng-icon-btn" aria-label="닫기 (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="mngWarn" class="mng-warn" hidden></div>
+      <div id="mngBody" class="mng-body"></div>
+    </div>
+    <div id="mngFmtPop" class="fmt-pop" hidden>
+      <div class="fmt-pop-head">내용에 포함</div>
+      <div class="fmt-row">
+        <span class="lbl">프로젝트명</span>
+        <button type="button" class="fmt-check" data-fmt-key="includeProjectName"></button>
+      </div>
+      <div class="fmt-row">
+        <span class="lbl">작업 번호</span>
+        <button type="button" class="fmt-check" data-fmt-key="includeCode"></button>
+      </div>
+      <div class="fmt-row">
+        <span class="lbl">우선순위</span>
+        <button type="button" class="fmt-check" data-fmt-key="includePriority"></button>
+      </div>
+      <div class="fmt-row">
+        <span class="lbl">기한(마감·완료일)</span>
+        <button type="button" class="fmt-check" data-fmt-key="includeDates"></button>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

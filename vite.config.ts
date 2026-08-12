@@ -13,6 +13,7 @@ export default defineConfig({
         settings: resolve(__dirname, "src/settings/index.html"),
         editmodal: resolve(__dirname, "src/editmodal/index.html"),
         briefing: resolve(__dirname, "src/briefing/index.html"),
+        mngdaily: resolve(__dirname, "src/mngdaily/index.html"),
       },
     },
   },

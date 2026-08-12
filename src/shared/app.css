@@ -177,6 +177,9 @@ kbd {
 .seg:hover { background: var(--panel-2); color: var(--text); }
 .seg.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .seg.on:hover { background: var(--accent-soft); }
+/* mng 진행상태 선택("완료"/"지연")에서만 쓰는 색 변형 — 나머지 세그먼트 트랙은 그대로 accent. */
+.seg.on.done { background: rgba(46,204,113,0.16); color: var(--green); }
+.seg.on.delay { background: rgba(239,77,86,0.14); color: var(--red); }
 
 /* 다중 선택 = 트랙 없는 낱개 칩(단일 선택과 형태로 구분한다) */
 .qa2-people { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
@@ -463,11 +466,19 @@ kbd {
    past the window edge instead of truncating. */
 .sb-head .u { margin-left: auto; font-size: 11.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbtn {
-  width: 28px; height: 28px; border-radius: 7px; flex: none;
+  width: 28px; height: 28px; border-radius: 7px; flex: none; position: relative;
   display: grid; place-items: center; color: var(--muted); cursor: pointer;
 }
 .hbtn:hover { background: var(--panel-2); color: var(--text); }
 .hbtn.active { color: var(--accent); background: var(--accent-soft); }
+/* mng 업무일지 버튼의 미제출 배지 — 점 하나로 "제출 대기 있음"만 알린다.
+   미제출 개수까지 세는 배지가 아니다: list_mng_targets 결과는 참고용 신호일
+   뿐이라(사이드바 데이터 새로고침 시점 기준, 창을 열면 다시 정확히 조회) 숫자로
+   정밀하게 표시하면 실제와 어긋난 인상을 준다. */
+.hbtn-dot {
+  position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--amber); box-shadow: 0 0 0 2px var(--panel);
+}
 .hbtn svg { width: 15px; height: 15px; display: block; }
 /* `display: grid` above beats the UA's [hidden] { display: none } — restate it. */
 .hbtn[hidden] { display: none; }
@@ -1054,3 +1065,109 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .bf-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .bf-btn-primary:hover { color: #fff; filter: brightness(1.08); }
 .bf-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* ============ SURFACE 6: MNG DAILY WINDOW ============ */
+/* briefing과 같은 창 문법(투명 바디 + 카드, 헤더 전체가 드래그 영역). 제출/취소
+   버튼은 QuickAdd의 .qa-submit, editmodal의 .em-btn/.em-btn-ghost/.em-delete를
+   그대로 재사용한다 — 이 창만의 버튼 스타일을 새로 만들지 않는다. 상태 선택은
+   QuickAdd v2의 .seg-track/.seg를, 소요시간 스테퍼는 QuickAdd의 .date-stepper를
+   그대로 쓴다(구조가 동일해 이름만 다른 클래스를 또 만들 이유가 없다). */
+.mng-card {
+  width: 100%; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.mng-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 13px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border);
+  cursor: grab; user-select: none;
+}
+.mng-head:active { cursor: grabbing; }
+.mng-grip { width: 13px; height: 13px; color: var(--muted-2); pointer-events: none; flex: none; }
+.mng-head-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); pointer-events: none; }
+.mng-icon-btn {
+  flex: none; width: 24px; height: 24px; border-radius: 6px;
+  display: grid; place-items: center; background: transparent;
+  border: none; color: var(--muted); cursor: pointer;
+}
+.mng-icon-btn:hover, .mng-icon-btn:focus-visible { background: var(--panel); color: var(--text); outline: none; }
+.mng-icon-btn svg { width: 13px; height: 13px; }
+
+.mng-warn {
+  display: flex; align-items: center; gap: 8px; margin: 12px 14px 0;
+  padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5;
+  background: rgba(245,166,35,0.1); border: 1px solid rgba(245,166,35,0.35); color: var(--amber);
+}
+.mng-warn[hidden] { display: none; }
+.mng-warn svg { flex: none; width: 15px; height: 15px; }
+.mng-warn a { color: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+.mng-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.mng-loading, .mng-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 28px 10px; margin: 0; }
+
+.mng-proj {
+  background: var(--surface-task); border: 1px solid var(--surface-task-border);
+  border-radius: 10px; overflow: hidden;
+}
+.mng-proj-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; }
+.mng-proj-head .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.mng-proj-head .name { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mng-proj-head .ident {
+  font-size: 9.5px; font-weight: 700; color: var(--muted-2); letter-spacing: .05em;
+  padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; flex: none;
+}
+.mng-proj-head .chev { color: var(--muted); font-size: 10px; transition: transform .15s; flex: none; }
+.mng-proj.open .mng-proj-head .chev { transform: rotate(180deg); }
+
+.mng-badge {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px;
+  cursor: pointer; border: 1px solid transparent; font-family: inherit;
+}
+.mng-badge.pending { color: var(--muted); background: var(--panel-2); border-color: var(--border); }
+.mng-badge.pending:hover { color: var(--accent); border-color: var(--accent); }
+.mng-badge.sent { color: var(--green); background: rgba(46,204,113,0.12); border-color: rgba(46,204,113,0.35); }
+.mng-badge.unknown { color: var(--amber); background: rgba(245,166,35,0.12); border-color: rgba(245,166,35,0.35); }
+.mng-badge svg { width: 10px; height: 10px; }
+
+.mng-items { padding: 0 12px 10px 30px; display: flex; flex-direction: column; gap: 3px; }
+.mng-items .it { font-size: 12px; color: var(--text); line-height: 1.5; }
+
+.mng-form { padding: 10px 12px 12px 30px; display: flex; flex-direction: column; gap: 10px; border-top: 1px dashed var(--border); }
+.mng-form[hidden] { display: none; }
+.mng-row { display: flex; align-items: center; gap: 10px; }
+.mng-label { flex: none; width: 52px; font-size: 11.5px; color: var(--muted); }
+
+.mng-content {
+  width: 100%; resize: vertical; min-height: 74px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 12px; font-family: inherit; line-height: 1.55;
+  padding: 8px 10px; outline: none;
+}
+.mng-content:focus { border-color: var(--accent); }
+
+.mng-foot-row { display: flex; align-items: center; gap: 8px; }
+.mng-edit-note { font-size: 11px; color: var(--muted-2); line-height: 1.5; margin: 0; }
+.mng-nolink { padding: 10px 12px; display: flex; align-items: center; gap: 8px; color: var(--muted-2); font-size: 12px; }
+
+/* 포함 항목 설정 팝오버 — .people-pop과 같은 문법. */
+.fmt-pop {
+  position: absolute; z-index: 60; width: 260px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 10px;
+}
+.fmt-pop[hidden] { display: none; }
+.fmt-pop-head {
+  padding: 2px 4px 8px; font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted-2);
+}
+.fmt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 4px; }
+.fmt-row .lbl { font-size: 12.5px; color: var(--text); }
+.fmt-check {
+  flex: none; width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+  display: grid; place-items: center; color: transparent; padding: 0;
+}
+.fmt-check.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fmt-check svg { width: 10px; height: 10px; }

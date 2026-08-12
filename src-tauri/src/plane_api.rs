@@ -28,6 +28,9 @@ pub struct Project {
     pub identifier: String,
     /// 프로젝트에서 사이클 기능을 켰는지. 꺼져 있으면 cycles/ 조차 부르지 않는다.
     pub cycle_view: bool,
+    /// mng(외부 사내 그룹웨어) 연계 키(`{year, kind, seq, client}` 등). 없으면
+    /// mng와 연동되지 않은 프로젝트 — mng 업무일지 제출 대상에서 제외한다.
+    pub mng_link: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +57,12 @@ pub struct WorkItem {
     pub created_at: Option<String>,
     pub created_by: Option<String>,
     pub updated_at: Option<String>,
+    /// 프로젝트 안에서의 표시 번호(`{식별자}-{sequence_id}`의 뒷부분). mng 업무일지
+    /// 내용 텍스트의 코드 표시("PQD-142")에 쓴다.
+    pub sequence_id: u64,
+    /// 상위 작업 id. mng 업무일지 내용 텍스트 조립에는 쓰지 않는다(부모-자식
+    /// 클러스터링은 이번 범위 밖) — 이후 필요해지면 쓸 수 있도록 파싱만 해 둔다.
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +102,73 @@ pub struct NewWorkItem<'a> {
     pub priority: &'a str,
     pub state_id: &'a str,
     pub description_html: Option<&'a str>,
+}
+
+/// mng(외부 사내 그룹웨어)에 실제 등록된 일일 업무일지 한 행. 필드는 Plane 서버의
+/// `GET /workspaces/{slug}/mng/daily-reports/` 응답을 그대로 옮긴 것이다
+/// (`docs/plane-work-report-mng-api.md` 참고). `spent_hours`/`spent_minutes`는
+/// mng가 문자열로 주는 값을 그대로 보존한다(정수 변환은 프론트가 표시할 때 한다).
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct MngDailyRow {
+    pub seq: String,
+    pub project_id: Option<String>,
+    pub mng_project_name: String,
+    pub state: String,
+    pub state_name: String,
+    pub client_name: String,
+    pub content_html: String,
+    pub spent_hours: String,
+    pub spent_minutes: String,
+    /// `false`면 mng 화면에서 사이트를 선택해 등록한 행이라 여기서 수정할 수
+    /// 없다(삭제는 가능) — server-side `ROW_NOT_EDITABLE` 규칙과 짝을 이룬다.
+    pub editable: bool,
+}
+
+/// `GET /mng/daily-reports/` 전체 응답. `mng_available: false`는 "미등록"이
+/// 아니라 "mng에 연결하지 못해 등록 여부를 모른다"는 뜻 — 이 경우 그대로 제출을
+/// 진행하면 중복 등록될 수 있으므로 프론트가 반드시 구분해서 보여줘야 한다.
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct MngDailyReportsResponse {
+    pub report_date: String,
+    pub employee_no: String,
+    pub mng_available: bool,
+    pub rows: Vec<MngDailyRow>,
+}
+
+/// mng 제출/수정/삭제가 실패했을 때의 구조화된 에러. Plane 서버가 돌려주는
+/// `error_code`(`EMPLOYEE_NO_MISSING`, `PROJECT_NOT_LINKED`, `MNG_REJECTED`,
+/// `MNG_UNAVAILABLE`, `MNG_TIMEOUT`, `ROW_NOT_EDITABLE` 등)를 그대로 프론트에
+/// 전달한다 — 표시 문구를 어떻게 다르게 보여줄지는 TS 쪽 책임이다(예: MNG_TIMEOUT은
+/// "확인 불가"로, EMPLOYEE_NO_MISSING은 제출 버튼 자체를 막는 식으로).
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct MngApiError {
+    pub error_code: String,
+    pub message: String,
+}
+
+impl MngApiError {
+    fn from_response_body(status: reqwest::StatusCode, body: &str) -> Self {
+        #[derive(Deserialize)]
+        struct RawError {
+            #[serde(default)]
+            error: String,
+            #[serde(default)]
+            error_code: String,
+        }
+        match serde_json::from_str::<RawError>(body) {
+            Ok(raw) if !raw.error_code.is_empty() => {
+                MngApiError { error_code: raw.error_code, message: raw.error }
+            }
+            _ => MngApiError {
+                error_code: "UNKNOWN".into(),
+                message: format!("HTTP {status}: {body}"),
+            },
+        }
+    }
+
+    pub(crate) fn network(message: String) -> Self {
+        MngApiError { error_code: "NETWORK".into(), message }
+    }
 }
 
 pub fn resolve_state_id(states: &[ProjectState], group: &str) -> Option<String> {
@@ -258,7 +334,7 @@ pub fn filter_assigned_visible(
         .collect()
 }
 
-fn completed_within(item: &WorkItem, after: &str, before: &str) -> bool {
+pub(crate) fn completed_within(item: &WorkItem, after: &str, before: &str) -> bool {
     item.completed_at
         .as_deref()
         .and_then(|ts| ts.get(0..10))
@@ -293,6 +369,7 @@ struct RawProject {
     /// 응답에 없으면 켜진 것으로 본다 — 없다고 사이클을 못 보게 하면
     /// 서버 버전 차이가 조용한 기능 상실이 된다.
     #[serde(default = "default_true")] cycle_view: bool,
+    #[serde(default)] mng_link: Option<serde_json::Value>,
 }
 
 fn default_true() -> bool { true }
@@ -317,6 +394,8 @@ struct RawWorkItem {
     #[serde(default)] updated_at: Option<String>,
     #[serde(default)] description_html: Option<String>,
     #[serde(default)] created_by: Option<String>,
+    #[serde(default)] sequence_id: u64,
+    #[serde(default)] parent: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -462,9 +541,12 @@ impl PlaneClient {
     }
 
     /// Sends `req`, retrying up to 2 times on 429 (honoring `Retry-After`, else
-    /// exponential backoff). Safe for mutations too: a 429 means the server
-    /// rejected the request without processing it, so nothing ran twice.
-    async fn send_retrying(&self, req: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+    /// exponential backoff), and returns the raw response whatever its status —
+    /// callers decide how to turn a non-2xx into an error. `send_retrying` (below)
+    /// is the common case that just wants `error_with_body`'s generic string; the
+    /// mng endpoints need the response body's `error_code` instead, so they call
+    /// this directly.
+    async fn send_retrying_raw(&self, req: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
         const MAX_RETRIES: u32 = 2;
         let mut attempt = 0;
         loop {
@@ -476,8 +558,14 @@ impl PlaneClient {
                 attempt += 1;
                 continue;
             }
-            return error_with_body(resp).await;
+            return Ok(resp);
         }
+    }
+
+    /// Safe for mutations too: a 429 means the server rejected the request
+    /// without processing it, so nothing ran twice.
+    async fn send_retrying(&self, req: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+        error_with_body(self.send_retrying_raw(req).await?).await
     }
 
     async fn get_json(&self, url: &str) -> Result<reqwest::Response, String> {
@@ -524,6 +612,9 @@ impl PlaneClient {
                 name: p.name,
                 identifier: p.identifier,
                 cycle_view: p.cycle_view,
+                // mng와 연동 안 된 프로젝트는 `mng_link: {}`(빈 객체)로 오지, 필드
+                // 자체가 없는 게 아니다 — 빈 객체도 "연동 없음"으로 정규화한다.
+                mng_link: p.mng_link.filter(|v| !matches!(v, serde_json::Value::Object(m) if m.is_empty())),
             })
             .collect())
     }
@@ -707,6 +798,84 @@ impl PlaneClient {
             self.get_json(&url).await?.json().await.map_err(|e| e.to_string())?;
         Ok(page.results.into_iter().map(|a| Activity { field: a.field, actor: a.actor }).collect())
     }
+
+    /// `date`는 "YYYY-MM-DD". 200이 항상 오고(서버가 mng 장애/사번 미등록도 200 +
+    /// `mng_available: false`로 표현), 네트워크/파싱 실패만 `Err`가 된다.
+    pub async fn get_mng_daily_reports(&self, date: &str) -> Result<MngDailyReportsResponse, String> {
+        let url = format!("{}/mng/daily-reports/?date={}", self.ws_base(), date);
+        self.get_json(&url).await?.json().await.map_err(|e| e.to_string())
+    }
+
+    /// mng는 소요시간을 문자열로만 받는다(JSON 숫자로 보내면 400) — 그래서
+    /// `spent_hours`/`spent_minutes`도 문자열로 받는다.
+    pub async fn submit_mng_daily_report(
+        &self,
+        project_id: &str,
+        state: &str,
+        content_html: &str,
+        report_date: &str,
+        spent_hours: u32,
+        spent_minutes: u32,
+    ) -> Result<(), MngApiError> {
+        let url = format!("{}/mng/daily-reports/", self.ws_base());
+        let body = serde_json::json!({
+            "project_id": project_id,
+            "state": state,
+            "content_html": content_html,
+            "report_date": report_date,
+            "spent_hours": spent_hours,
+            "spent_minutes": spent_minutes,
+        });
+        let resp = self
+            .send_retrying_raw(self.http.post(&url).header("X-Api-Key", &self.api_key).json(&body))
+            .await
+            .map_err(MngApiError::network)?;
+        self.ok_or_mng_error(resp).await
+    }
+
+    pub async fn update_mng_daily_report(
+        &self,
+        report_date: &str,
+        seq: &str,
+        state: &str,
+        content_html: &str,
+        spent_hours: u32,
+        spent_minutes: u32,
+    ) -> Result<(), MngApiError> {
+        let url = format!("{}/mng/daily-reports/", self.ws_base());
+        let body = serde_json::json!({
+            "report_date": report_date,
+            "seq": seq,
+            "state": state,
+            "content_html": content_html,
+            "spent_hours": spent_hours,
+            "spent_minutes": spent_minutes,
+        });
+        let resp = self
+            .send_retrying_raw(self.http.patch(&url).header("X-Api-Key", &self.api_key).json(&body))
+            .await
+            .map_err(MngApiError::network)?;
+        self.ok_or_mng_error(resp).await
+    }
+
+    pub async fn delete_mng_daily_report(&self, report_date: &str, seq: &str) -> Result<(), MngApiError> {
+        let url = format!("{}/mng/daily-reports/", self.ws_base());
+        let body = serde_json::json!({ "report_date": report_date, "seq": seq });
+        let resp = self
+            .send_retrying_raw(self.http.delete(&url).header("X-Api-Key", &self.api_key).json(&body))
+            .await
+            .map_err(MngApiError::network)?;
+        self.ok_or_mng_error(resp).await
+    }
+
+    async fn ok_or_mng_error(&self, resp: reqwest::Response) -> Result<(), MngApiError> {
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = resp.text().await.unwrap_or_default();
+        Err(MngApiError::from_response_body(status, &body))
+    }
 }
 
 fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
@@ -723,6 +892,8 @@ fn map_work_item(w: RawWorkItem, project_id: &str) -> WorkItem {
         created_at: w.created_at,
         created_by: w.created_by,
         updated_at: w.updated_at,
+        sequence_id: w.sequence_id,
+        parent_id: w.parent,
     }
 }
 
@@ -758,6 +929,8 @@ mod tests {
             created_at: None,
             created_by: None,
             updated_at: None,
+            sequence_id: 0,
+            parent_id: None,
         }
     }
 
