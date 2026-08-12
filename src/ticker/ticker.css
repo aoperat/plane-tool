@@ -1,29 +1,3 @@
-:root {
-  --ticker-panel: rgba(22, 24, 29, 0.94);
-  --ticker-border: rgba(255, 255, 255, 0.13);
-  --ticker-hover: rgba(255, 255, 255, 0.07);
-  --ticker-muted-text: #989fab;
-  --ticker-action-text: #7a9aff;
-  --ticker-overdue: #ff9278;
-  --ticker-today: #f2b84b;
-  --ticker-started: #80a9ff;
-  --ticker-offline: #ffd18b;
-  --ticker-error: #ff9a9f;
-}
-
-:root[data-theme="light"] {
-  --ticker-panel: rgba(255, 255, 255, 0.95);
-  --ticker-border: rgba(28, 31, 38, 0.18);
-  --ticker-hover: rgba(28, 31, 38, 0.07);
-  --ticker-muted-text: #5c6571;
-  --ticker-action-text: #345bc8;
-  --ticker-overdue: #a93625;
-  --ticker-today: #815000;
-  --ticker-started: #2859b8;
-  --ticker-offline: #704900;
-  --ticker-error: #ad2532;
-}
-
 html,
 body {
   width: 540px;
@@ -38,12 +12,10 @@ body {
   height: 64px;
   overflow: hidden;
   color: var(--text);
-  background: var(--ticker-panel);
-  border: 1px solid var(--ticker-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(18px) saturate(125%);
-  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .ticker-content {
@@ -77,7 +49,7 @@ body {
 .ticker-icon-button:hover:not(:disabled),
 .ticker-icon-button:focus-visible {
   color: var(--text);
-  background: var(--ticker-hover);
+  background: var(--panel-2);
 }
 
 .ticker-icon-button:disabled {
@@ -107,7 +79,7 @@ body {
 
 .ticker-task:hover,
 .ticker-task:focus-visible {
-  background: var(--ticker-hover);
+  background: var(--panel-2);
 }
 
 .ticker-task[hidden] {
@@ -143,7 +115,7 @@ body {
   flex: 0 1 auto;
   max-width: 116px;
   overflow: hidden;
-  color: var(--ticker-muted-text);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -165,49 +137,49 @@ body {
 
 .ticker-meta-row {
   gap: 8px;
-  color: var(--ticker-muted-text);
+  color: var(--muted);
   font-size: 10.5px;
   line-height: 14px;
 }
 
 .ticker-metadata {
-  color: var(--ticker-muted-text);
+  color: var(--muted);
   font-weight: 600;
 }
 
 .ticker-metadata[data-bucket="overdue"] {
-  color: var(--ticker-overdue);
+  color: var(--red);
 }
 
 .ticker-metadata[data-bucket="today"] {
-  color: var(--ticker-today);
+  color: var(--amber);
 }
 
 .ticker-metadata[data-bucket="started"] {
-  color: var(--ticker-started);
+  color: var(--accent);
 }
 
 .ticker-position {
-  color: var(--ticker-muted-text);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .ticker-position::before {
   content: "·";
   margin-right: 8px;
-  color: var(--ticker-muted-text);
+  color: var(--muted);
 }
 
 .ticker-offline {
   max-width: 116px;
   overflow: hidden;
   padding: 1px 6px;
-  color: var(--ticker-offline);
+  color: var(--amber);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: color-mix(in srgb, var(--ticker-offline) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ticker-offline) 35%, transparent);
+  background: color-mix(in srgb, var(--amber) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
   border-radius: 999px;
 }
 
@@ -230,7 +202,7 @@ body {
 
 .ticker-status {
   overflow: hidden;
-  color: var(--ticker-muted-text);
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -238,7 +210,7 @@ body {
 }
 
 .ticker-card[data-state="error"] .ticker-status {
-  color: var(--ticker-error);
+  color: var(--red);
 }
 
 .ticker-retry {
@@ -248,16 +220,16 @@ body {
   color: var(--text);
   font-size: 11px;
   font-weight: 650;
-  background: var(--ticker-hover);
-  border: 1px solid var(--ticker-border);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   border-radius: 7px;
   cursor: pointer;
 }
 
 .ticker-retry:hover,
 .ticker-retry:focus-visible {
-  color: var(--ticker-action-text);
-  border-color: var(--ticker-action-text);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .ticker-retry[hidden] {
