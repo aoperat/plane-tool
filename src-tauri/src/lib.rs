@@ -758,6 +758,10 @@ pub(crate) fn show_ticker_without_focus(app: &tauri::AppHandle) {
             let margin = tauri::LogicalUnit::new(16.0).to_physical::<i32>(scale).0;
             let work_area = monitors::work_area_for_monitor(monitor);
             let position = monitors::bottom_right_position(work_area, physical_size, margin);
+            // 창의 실제 물리 크기는 생성 시점 모니터 배율로 고정돼 있으므로,
+            // 대상 모니터 배율이 다르면(혼합 DPI 다중 모니터) 배치 전에 다시
+            // 맞춰야 오른쪽/아래 여백이 어긋나지 않는다.
+            let _ = win.set_size(tauri::Size::Physical(physical_size));
             let _ = win.set_position(position);
         }
     }
