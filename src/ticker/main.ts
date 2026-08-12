@@ -14,8 +14,6 @@ import {
 import type { TickerItem } from "./logic";
 
 type ViewState = "closed" | "loading" | "ready" | "empty" | "error";
-type TickerItemChange = ItemChange & { name?: string | null };
-
 const CAROUSEL_INTERVAL_MS = 7_000;
 const win = getCurrentWindow();
 const card = document.getElementById("tickerCard")!;
@@ -271,7 +269,7 @@ function navigate(direction: "previous" | "next"): void {
   carousel.resetAfterManualNavigation();
 }
 
-function applyItemChange(change: TickerItemChange): void {
+function applyItemChange(change: ItemChange): void {
   const needsAssignedRefresh = itemChangeNeedsAssignedRefresh(change);
   if (!lastSidebarData) {
     if (needsAssignedRefresh) void refreshIfVisible();
@@ -366,6 +364,6 @@ void Promise.all([
   win.listen("close-ticker", requestHide),
   win.listen("idle-ended", requestHide),
   win.listen("refresh-sidebar", () => void refreshIfVisible()),
-  win.listen<TickerItemChange>("item-updated", (event) => applyItemChange(event.payload)),
+  win.listen<ItemChange>("item-updated", (event) => applyItemChange(event.payload)),
   win.listen<{ item_id: string }>("item-deleted", (event) => removeItem(event.payload.item_id)),
 ]).catch((error) => console.error("ticker listener registration failed:", error));

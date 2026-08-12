@@ -18,11 +18,12 @@ export interface WorkItemDetail {
 export interface ItemChange {
   item_id: string;
   project_id: string;
-  priority?: string;
-  state_group?: string;
-  start_date?: string | null;
-  target_date?: string | null;
-  assignee_ids?: string[];
+  name: string | null;
+  priority: string | null;
+  state_group: string | null;
+  start_date: string | null;
+  target_date: string | null;
+  assignee_ids: string[] | null;
 }
 export interface SidebarData {
   projects: Project[]; assigned: WorkItem[]; delegated: WorkItem[]; delegated_members: Member[];

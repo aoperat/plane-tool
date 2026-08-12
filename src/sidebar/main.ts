@@ -320,7 +320,7 @@ function renderFromLastData() {
 
 // 백엔드가 수정/삭제 성공 시 보내는 로컬 패치 이벤트의 payload. 전체
 // 재동기화 대신 이미 받아둔 데이터에 변경분만 반영한다 — 서버 요청이 없다.
-function applyItemChange(c: ItemChange & { name?: string | null }) {
+function applyItemChange(c: ItemChange) {
   if (!lastSidebarData) return;
   // 담당자 변경으로 항목이 내 목록에서 빠지거나 탭 간 이동해야 하는 경우는
   // 여기서 판별할 수 없다(내 user id를 모름) — 다음 전체 새로고침이 맞춘다.

@@ -41,7 +41,7 @@ function priorityMeta(priority: string): string | null {
 }
 
 export function itemChangeNeedsAssignedRefresh(change: ItemChange): boolean {
-  return change.assignee_ids !== undefined;
+  return change.assignee_ids != null;
 }
 
 export function buildTickerItems(items: WorkItem[], projects: Project[], today: string): TickerItem[] {

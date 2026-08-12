@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Project, WorkItem } from "../shared/types";
+import type { ItemChange, Project, WorkItem } from "../shared/types";
 import {
   buildTickerItems,
   itemChangeNeedsAssignedRefresh,
@@ -7,6 +7,22 @@ import {
   previousTickerIndex,
   reconcileTickerIndex,
 } from "./logic";
+
+// 백엔드는 `serde_json::json!`로 이 payload를 만들기 때문에 안 바뀐 필드도
+// 키 자체는 항상 있고 값만 null이다 — 키가 아예 빠지는 경우는 없다.
+function itemChange(overrides: Partial<ItemChange> = {}): ItemChange {
+  return {
+    item_id: "a",
+    project_id: "p1",
+    name: null,
+    priority: null,
+    state_group: null,
+    start_date: null,
+    target_date: null,
+    assignee_ids: null,
+    ...overrides,
+  };
+}
 
 function item(
   id: string,
@@ -100,24 +116,12 @@ describe("buildTickerItems", () => {
 
 describe("itemChangeNeedsAssignedRefresh", () => {
   it("requires a server refresh for both empty and non-empty assignee patches", () => {
-    expect(itemChangeNeedsAssignedRefresh({
-      item_id: "a",
-      project_id: "p1",
-      assignee_ids: [],
-    })).toBe(true);
-    expect(itemChangeNeedsAssignedRefresh({
-      item_id: "a",
-      project_id: "p1",
-      assignee_ids: ["me"],
-    })).toBe(true);
+    expect(itemChangeNeedsAssignedRefresh(itemChange({ assignee_ids: [] }))).toBe(true);
+    expect(itemChangeNeedsAssignedRefresh(itemChange({ assignee_ids: ["me"] }))).toBe(true);
   });
 
-  it("does not refresh assigned membership for unrelated patches", () => {
-    expect(itemChangeNeedsAssignedRefresh({
-      item_id: "a",
-      project_id: "p1",
-      priority: "high",
-    })).toBe(false);
+  it("does not refresh assigned membership when the wire payload sends assignee_ids as null for an unrelated patch", () => {
+    expect(itemChangeNeedsAssignedRefresh(itemChange({ priority: "high" }))).toBe(false);
   });
 });
 
