@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the quickadd, sidebar, ticker, settings, editmodal, briefing, and conflict windows",
-  "windows": ["quickadd", "sidebar", "ticker", "settings", "editmodal", "briefing", "conflict"],
+  "description": "Permissions for the quickadd, sidebar, ticker, settings, editmodal, briefing, conflict, and mngdaily windows",
+  "windows": ["quickadd", "sidebar", "ticker", "settings", "editmodal", "briefing", "conflict", "mngdaily"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
