@@ -1321,3 +1321,14 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 }
 .fmt-check.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .fmt-check svg { width: 10px; height: 10px; }
+
+/* 사이드바의 안내 말풍선. .qa-coach 문법 그대로이고 자리만 스크립트가 잡는다
+   (mng 버튼 아래, 위쪽 화살표). 패널이 position:fixed 라 여기 absolute 는
+   패널 기준이다. */
+.sb-coach { position: absolute; z-index: 40; }
+/* 안내가 가리키는 버튼에 링을 둘러 말풍선과 눈으로 잇는다 — 빠른 추가의
+   .qa-layout-toggle.spotlight 와 같은 표현. */
+.hbtn.spotlight {
+  color: var(--accent); background: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

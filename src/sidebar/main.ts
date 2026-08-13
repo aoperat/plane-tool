@@ -1168,6 +1168,8 @@ async function showWindow(takeFocus: boolean): Promise<void> {
 
 async function hideSidebar(): Promise<void> {
   if (!(await win.isVisible())) return;
+  // 안내를 읽기 전에 닫았을 수도 있으므로 남은 노출 횟수는 그대로 둔다.
+  dismissCoach(false);
   await win.hide();
 }
 
@@ -1352,6 +1354,8 @@ document.getElementById("briefingBtn")!.onclick = () => {
 };
 
 document.getElementById("mngDailyBtn")!.onclick = () => {
+  // 버튼을 직접 눌렀으면 안내는 제 역할을 다한 것이다.
+  dismissCoach(true);
   openMngDaily().catch((e) => console.error("openMngDaily failed:", e));
 };
 
@@ -1621,7 +1625,56 @@ document.addEventListener("keydown", (e) => {
     openSearch();
   }
 });
-win.listen("tauri://focus", refreshIfStale);
+/* 업데이트 후 뜨는 안내 말풍선. 빠른 추가(qa-layout-coach-shown)와 같은 규칙:
+   본 횟수는 화면 취향이라 백엔드 설정이 아니라 이 창의 localStorage에 두고,
+   최대 두 번까지만 띄운다. */
+const COACH_KEY = "mng-daily-coach-shown";
+const COACH_MAX = 2;
+// 사이드바는 창이 살아 있는 채로 열고 닫힌다 — 실행당 한 번만 세게 하는 빗장.
+let coachShownThisRun = false;
+const coachEl = document.getElementById("mngCoach")!;
+const mngDailyBtnEl = document.getElementById("mngDailyBtn")!;
+
+function coachSeenCount(): number {
+  return Number(localStorage.getItem(COACH_KEY)) || 0;
+}
+
+/** `done`이면 다시 뜨지 않게 잠근다(알겠어요·버튼을 직접 눌렀을 때). 사이드바를
+ *  닫을 때처럼 그냥 치우는 경우에는 false — 남은 횟수를 까먹지 않는다. */
+function dismissCoach(done: boolean) {
+  if (done) localStorage.setItem(COACH_KEY, String(COACH_MAX));
+  if (coachEl.hidden) return;
+  coachEl.hidden = true;
+  mngDailyBtnEl.classList.remove("spotlight");
+}
+
+/** 화살표가 mng 버튼 한가운데를 가리키게 맞춘다. 사이드바 폭은 사용자가 바꿀 수
+ *  있으므로 띄울 때마다 다시 잰다. 좌우로는 패널 안에 머물게 물린다. */
+function positionCoach() {
+  const b = mngDailyBtnEl.getBoundingClientRect();
+  const panel = document.querySelector(".sidebar")!.getBoundingClientRect();
+  const centre = b.left - panel.left + b.width / 2;
+  const left = Math.max(8, Math.min(centre - coachEl.offsetWidth / 2, panel.width - coachEl.offsetWidth - 8));
+  coachEl.style.left = `${left}px`;
+  coachEl.style.top = `${b.bottom - panel.top + 10}px`;
+  coachEl.style.setProperty("--arrow", `${centre - left - 6}px`);
+}
+
+function maybeShowCoach() {
+  if (coachShownThisRun || coachSeenCount() >= COACH_MAX) return;
+  coachShownThisRun = true;
+  localStorage.setItem(COACH_KEY, String(coachSeenCount() + 1));
+  coachEl.hidden = false;
+  mngDailyBtnEl.classList.add("spotlight");
+  positionCoach();
+}
+
+document.getElementById("mngCoachOk")!.onclick = () => dismissCoach(true);
+
+win.listen("tauri://focus", () => {
+  maybeShowCoach();
+  refreshIfStale();
+});
 win.listen("refresh-sidebar", refresh);
 win.listen("item-updated", (e) => applyItemChange(e.payload as ItemChange));
 win.listen("item-deleted", (e) => removeItemLocally((e.payload as { item_id: string }).item_id));
