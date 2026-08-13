@@ -1130,20 +1130,14 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
 
     let projects = client.list_projects().await?;
     let mng_projects: Vec<Project> = projects.into_iter().filter(|p| p.mng_link.is_some()).collect();
-    if mng_projects.is_empty() {
-        return Ok(MngTargetsDto {
-            report_date: today.to_string(),
-            mng_available: true,
-            employee_no: String::new(),
-            targets: Vec::new(),
-        });
-    }
 
-    let user = client.current_user_cached().await?;
-
-    // 등록 여부 조회 실패는 화면 전체를 막지 않는다 — "확인 불가"로 표시하고
-    // 넘어간다(3번 절 GET 규칙과 동일한 이유: mng 화면에서 직접 등록·삭제한
-    // 건은 여기서 영원히 모르므로, 실패 시 "미등록"으로 오인시키지 않는다).
+    // employee_no는 mng 연동 프로젝트 유무와 무관하게 항상 확인한다 — 예전에는
+    // mng_projects가 비면 여기까지 오지도 않고 employee_no를 빈 문자열로
+    // 돌려줘서, 실제로는 "내가 속한 mng 연동 프로젝트가 없다"뿐인데 화면에는
+    // "사번 미등록"으로 잘못 떴다(사번을 이미 등록한 사용자도 마찬가지로
+    // 잘못 표시됨). 등록 여부 조회 자체가 실패해도 화면 전체를 막지 않는다 —
+    // "확인 불가"로 표시하고 넘어간다(mng 화면에서 직접 등록·삭제한 건은
+    // 여기서 영원히 모르므로, 실패 시 "미등록"으로 오인시키지 않는다).
     let report: MngDailyReportsResponse = client.get_mng_daily_reports(today).await.unwrap_or_else(|_| {
         MngDailyReportsResponse {
             report_date: today.to_string(),
@@ -1152,6 +1146,17 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             rows: Vec::new(),
         }
     });
+
+    if mng_projects.is_empty() {
+        return Ok(MngTargetsDto {
+            report_date: today.to_string(),
+            mng_available: report.mng_available,
+            employee_no: report.employee_no,
+            targets: Vec::new(),
+        });
+    }
+
+    let user = client.current_user_cached().await?;
 
     let per_project: Vec<(Project, Vec<WorkItem>)> = stream::iter(mng_projects)
         .map(move |p| async move {
