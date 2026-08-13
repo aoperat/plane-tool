@@ -2,8 +2,11 @@
 
 ## 참고 경로
 
-- Plane 소스 코드: `C:\WorkSpaces\plane` — API로 직접 확인할 수 없는 동작(예:
-  work-report 같은 내부 엔드포인트 로직)을 구현할 때 실제 소스에서 검증한다.
+- Plane 서버 소스 코드: `D:\Server\plain\plane-selfhost` — 이 앱이 붙는 셀프호스트
+  Plane 포크(`github.com/aoperat/plane-selfhost`)다. API로 직접 확인할 수 없는
+  동작(예: work-report·mng 같은 내부 엔드포인트 로직)을 구현할 때 실제 소스에서
+  검증한다. 앱이 쓰는 토큰 인증 엔드포인트는 `apps/api/plane/api/`, 웹 화면이 쓰는
+  세션 인증 엔드포인트는 `apps/api/plane/app/views/external/` 아래에 있다.
 
 ## CHANGELOG 기록 규칙
 
