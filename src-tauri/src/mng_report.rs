@@ -32,12 +32,15 @@ pub struct MngContentOptions {
 }
 
 impl Default for MngContentOptions {
+    /// 전부 끔 — 프론트의 `DEFAULT_MNG_CONTENT_OPTIONS`와 같은 값이어야 한다.
+    /// 두 기본값이 어긋나면 창을 열자마자 보이는 내용과 서버가 만든
+    /// `default_content`가 달라진다.
     fn default() -> Self {
         Self {
-            include_project_name: true,
-            include_code: true,
-            include_priority: true,
-            include_dates: true,
+            include_project_name: false,
+            include_code: false,
+            include_priority: false,
+            include_dates: false,
         }
     }
 }
@@ -222,6 +225,43 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 8, 12).unwrap()
     }
 
+    /// 서식 규칙을 검증하는 테스트는 모두 켜 놓고 본다 — 기본값(전부 꺼짐)과
+    /// 무관하게 "켰을 때 이렇게 나온다"를 확인하는 것이 목적이다.
+    fn all_on() -> MngContentOptions {
+        MngContentOptions {
+            include_project_name: true,
+            include_code: true,
+            include_priority: true,
+            include_dates: true,
+        }
+    }
+
+    #[test]
+    fn default_options_turn_every_extra_off() {
+        // 프론트의 DEFAULT_MNG_CONTENT_OPTIONS와 같은 값이어야 한다 — 어긋나면
+        // 창을 열자마자 보이는 내용과 서버가 만든 default_content가 달라진다.
+        let d = MngContentOptions::default();
+        assert!(!d.include_project_name);
+        assert!(!d.include_code);
+        assert!(!d.include_priority);
+        assert!(!d.include_dates);
+    }
+
+    #[test]
+    fn default_options_render_bare_task_titles() {
+        let items = [item("i1", "화면 수정", 7, "high", Some("2026-08-12T09:00:00Z"))];
+        let refs: Vec<&WorkItem> = items.iter().collect();
+        let text = project_to_text(
+            "프로젝트",
+            "PRJ",
+            Some("고객사"),
+            (&refs, &[], &[]),
+            &MngContentOptions::default(),
+            today(),
+        );
+        assert_eq!(text, "✅ 완료된 일\n  • 화면 수정");
+    }
+
     // 목업(docs/mockups/mng-daily-quick-submit-mockup.html) 3번 섹션의 예시
     // 문자열과 정확히 일치해야 한다.
     #[test]
@@ -236,7 +276,7 @@ mod tests {
             "PQD",
             None,
             (&refs, &[], &[]),
-            &MngContentOptions::default(),
+            &all_on(),
             today(),
         );
         assert_eq!(
@@ -253,11 +293,7 @@ mod tests {
             item("i2", "전광판 색상 테마 통일", 139, "high", Some("2026-08-12T10:00:00Z")),
         ];
         let refs: Vec<&WorkItem> = items.iter().collect();
-        let opts = MngContentOptions {
-            include_priority: false,
-            include_dates: false,
-            ..Default::default()
-        };
+        let opts = MngContentOptions { include_priority: false, include_dates: false, ..all_on() };
         let text = project_to_text("Plane Quick Dock", "PQD", None, (&refs, &[], &[]), &opts, today());
         assert_eq!(
             text,
@@ -284,7 +320,7 @@ mod tests {
             "PRJ",
             Some("고객사 A"),
             (&refs, &[], &[]),
-            &MngContentOptions::default(),
+            &all_on(),
             today(),
         );
         assert!(text.starts_with("[프로젝트 / PRJ] (고객사 A)"));
@@ -304,7 +340,7 @@ mod tests {
             "P",
             None,
             (&c_refs, &p_refs, &[]),
-            &MngContentOptions::default(),
+            &all_on(),
             today(),
         );
         assert_eq!(

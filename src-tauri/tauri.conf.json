@@ -64,7 +64,7 @@
       {
         "label": "mngdaily",
         "url": "src/mngdaily/index.html",
-        "width": 520, "height": 640,
+        "width": 900, "height": 660,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
       }

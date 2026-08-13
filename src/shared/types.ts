@@ -103,6 +103,8 @@ export interface MngReportItem {
   name: string;
   sequence_id: number;
   priority: string;
+  /** Plane 상태 그룹. 창에서 상태를 바꿀 수 있어 현재 값을 함께 받는다. */
+  state_group: string;
   completed_at: string | null;
   target_date: string | null;
   start_date: string | null;
@@ -121,19 +123,39 @@ export interface MngDailyRow {
   editable: boolean;
 }
 
-export type MngTargetStatus = "pending" | "sent" | "unknown";
+export type MngTargetStatus = "pending" | "sent" | "unknown" | "not_linked";
 
 export interface MngTarget {
   project_id: string;
   project_name: string;
   project_identifier: string;
   client_name: string;
+  /** false면 Plane 프로젝트에 mng 연계 키가 없다 — 목록에는 남기되 제출은 막는다. */
+  mng_linked: boolean;
+  /** 상태 그룹 -> 상태 id. 작업 상태를 바꿀 때 쓴다(프로젝트마다 id가 다르다). */
+  state_ids: Record<string, string>;
   completed: MngReportItem[];
   in_progress: MngReportItem[];
   upcoming: MngReportItem[];
   default_content: string;
   status: MngTargetStatus;
   existing_row: MngDailyRow | null;
+}
+
+/** 일괄 제출 한 건. 프로젝트마다 내용·상태·소요시간이 다르므로 화면에서 조립한다. */
+export interface MngBulkEntry {
+  project_id: string;
+  state: string;
+  content_html: string;
+  spent_hours: number;
+  spent_minutes: number;
+}
+
+/** 일괄 제출 결과 한 건. 실패해도 나머지는 계속 보내므로 건별로 돌아온다. */
+export interface MngBulkResult {
+  project_id: string;
+  ok: boolean;
+  error: MngApiError | null;
 }
 
 export interface MngTargets {

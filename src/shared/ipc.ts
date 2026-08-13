@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets, MngBulkEntry, MngBulkResult } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -165,6 +165,10 @@ export const submitMngDailyReport = (
     spentHours: spent_hours,
     spentMinutes: spent_minutes,
   });
+/** 선택한 프로젝트들을 순차 제출한다. 실패해도 끝까지 시도하고 건별 결과를
+ *  돌려주며, 진행 중에는 `mngdaily-bulk-progress` 이벤트가 건마다 날아온다. */
+export const submitMngDailyReports = (report_date: string, entries: MngBulkEntry[]) =>
+  invoke<MngBulkResult[]>("submit_mng_daily_reports_cmd", { reportDate: report_date, entries });
 export const updateMngDailyReport = (
   report_date: string,
   seq: string,

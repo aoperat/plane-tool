@@ -1064,6 +1064,10 @@ pub struct MngReportItemDto {
     pub name: String,
     pub sequence_id: u64,
     pub priority: String,
+    /// Plane 상태 그룹("backlog"|"unstarted"|"started"|"completed"|"cancelled").
+    /// 창에서 상태를 바꿀 때 현재 값을 표시하고, 바꾼 뒤 어느 그룹으로 옮길지
+    /// 판단하는 데 쓴다.
+    pub state_group: String,
     pub completed_at: Option<String>,
     pub target_date: Option<String>,
     pub start_date: Option<String>,
@@ -1075,6 +1079,7 @@ fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
         name: w.name.clone(),
         sequence_id: w.sequence_id,
         priority: w.priority.clone(),
+        state_group: w.state_group.clone(),
         completed_at: w.completed_at.clone(),
         target_date: w.target_date.clone(),
         start_date: w.start_date.clone(),
@@ -1091,12 +1096,20 @@ pub struct MngTargetDto {
     pub project_name: String,
     pub project_identifier: String,
     pub client_name: String,
+    /// Plane 프로젝트에 mng 연계 키(`mng_link`)가 있는지. false면 카드는 목록에
+    /// 남기되 제출은 막는다 — 감춰버리면 "사이드바엔 있는데 여긴 왜 없지"를
+    /// 사용자가 다시 겪는다.
+    pub mng_linked: bool,
+    /// 상태 그룹 -> 그 그룹의 상태 id. 창에서 작업 상태를 바꿀 때 프로젝트마다
+    /// 다른 상태 id를 그때그때 조회하지 않아도 되도록 미리 담아 보낸다.
+    pub state_ids: std::collections::HashMap<String, String>,
     pub completed: Vec<MngReportItemDto>,
     pub in_progress: Vec<MngReportItemDto>,
     pub upcoming: Vec<MngReportItemDto>,
     pub default_content: String,
-    /// "pending" | "sent" | "unknown" — `existing_row`가 있으면 "sent",
-    /// `mng_available`가 false면 실제 등록 여부를 모르므로 "unknown".
+    /// "pending" | "sent" | "unknown" | "not_linked" — `mng_linked`가 false면
+    /// "not_linked", `mng_available`가 false면 실제 등록 여부를 모르므로
+    /// "unknown", `existing_row`가 있으면 "sent".
     pub status: String,
     pub existing_row: Option<MngDailyRow>,
 }
@@ -1114,7 +1127,31 @@ pub struct MngTargetsDto {
     pub targets: Vec<MngTargetDto>,
 }
 
-/// 오늘 완료 항목이 있고 mng와 연동된 프로젝트를 모아 제출 대상 목록을 만든다.
+/// 목록 정렬 우선순위. 오늘 손댈 것이 위로 오고, 이미 끝났거나 손댈 수 없는
+/// 것이 아래로 밀린다: 완료 있음 → 완료 없음 → 등록 완료 → 담을 작업 없음 →
+/// mng 미연동. 같은 순위 안에서는 프로젝트명 순.
+fn sort_rank(t: &MngTargetDto) -> u8 {
+    if !t.mng_linked {
+        return 4;
+    }
+    if t.status == "sent" {
+        return 2;
+    }
+    if !t.completed.is_empty() {
+        return 0;
+    }
+    if !t.in_progress.is_empty() || !t.upcoming.is_empty() {
+        return 1;
+    }
+    // 세 그룹이 모두 비었다 — 백로그만 있는 프로젝트. 새 status 값을 만들지
+    // 않고 이 사실만으로 프론트가 "담을 작업 없음"을 판단한다.
+    3
+}
+
+/// 나에게 할당된 작업이 있는 프로젝트를 전부 모아 목록을 만든다 — 사이드바에
+/// 보이는 것과 같은 범위다. 오늘 완료가 없거나 mng와 연동되지 않은 프로젝트도
+/// 빼지 않고, 제출 가능 여부는 `mng_linked`/`status`로만 구분한다(제출할 대상은
+/// 사용자가 화면에서 고른다).
 /// mng 등록 여부는 프로젝트마다 따로 묻지 않는다 — `get_mng_daily_reports`가
 /// 사번+날짜 단위로 한 번에 전체를 돌려주기 때문이다.
 #[tauri::command]
@@ -1128,8 +1165,9 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
     let today_date = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
         .map_err(|e| format!("invalid date {today}: {e}"))?;
 
+    // mng 연동 여부로 거르지 않는다 — 사이드바에 보이는 프로젝트는 여기서도
+    // 전부 보여주고, 연동 안 된 것은 `mng_linked: false`로 표시만 한다.
     let projects = client.list_projects().await?;
-    let mng_projects: Vec<Project> = projects.into_iter().filter(|p| p.mng_link.is_some()).collect();
 
     // employee_no는 mng 연동 프로젝트 유무와 무관하게 항상 확인한다 — 예전에는
     // mng_projects가 비면 여기까지 오지도 않고 employee_no를 빈 문자열로
@@ -1147,7 +1185,7 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
         }
     });
 
-    if mng_projects.is_empty() {
+    if projects.is_empty() {
         return Ok(MngTargetsDto {
             report_date: today.to_string(),
             mng_available: report.mng_available,
@@ -1158,25 +1196,30 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
 
     let user = client.current_user_cached().await?;
 
-    let per_project: Vec<(Project, Vec<WorkItem>)> = stream::iter(mng_projects)
+    // 상태 목록도 같이 가져온다 — 창에서 작업 상태를 바꿀 수 있어야 하고,
+    // 상태 id는 프로젝트마다 다르다. assemble_sidebar와 같은 join 패턴이라
+    // 왕복 횟수는 늘지 않는다(프로젝트당 두 요청이 동시에 나간다).
+    let per_project: Vec<(Project, Vec<WorkItem>, Vec<ProjectState>)> = stream::iter(projects)
         .map(move |p| async move {
-            let items = client.list_work_items(&p.id).await.unwrap_or_default();
-            (p, items)
+            let (items, states) = tokio::join!(client.list_work_items(&p.id), client.list_states(&p.id));
+            (p, items.unwrap_or_default(), states.unwrap_or_default())
         })
         .buffer_unordered(SYNC_CONCURRENCY)
         .collect()
         .await;
 
     let mut targets: Vec<MngTargetDto> = Vec::new();
-    for (project, items) in per_project {
+    for (project, items, states) in per_project {
         let mine: Vec<WorkItem> =
             items.into_iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).collect();
-        let (completed, in_progress, upcoming) = mng_report::classify_groups(&mine, today);
-        if completed.is_empty() {
-            // mng 업무일지는 "오늘 한 일"을 등록하는 곳이다 — 오늘 완료한 게
-            // 없으면 진행중/예정 항목만으로는 제출 대상이 아니다.
+        if mine.is_empty() {
+            // 사이드바 기준을 그대로 따른다 — 나에게 할당된 작업이 하나도 없는
+            // 프로젝트는 사이드바에도 안 뜨므로 여기서도 뺀다. 반대로 백로그만
+            // 있는 프로젝트는 남는다(세 그룹이 모두 비어 "담을 작업 없음"으로
+            // 표시된다) — 사이드바에는 보이기 때문이다.
             continue;
         }
+        let (completed, in_progress, upcoming) = mng_report::classify_groups(&mine, today);
 
         let client_name = project
             .mng_link
@@ -1195,9 +1238,21 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             today_date,
         );
 
+        // 그룹마다 기본 상태를 하나씩 — 같은 그룹에 상태가 여럿이면
+        // `resolve_state_id`와 같은 규칙으로 첫 번째를 쓴다.
+        let mut state_ids = std::collections::HashMap::new();
+        for group in ["backlog", "unstarted", "started", "completed", "cancelled"] {
+            if let Some(id) = plane_api::resolve_state_id(&states, group) {
+                state_ids.insert(group.to_string(), id);
+            }
+        }
+
+        let mng_linked = project.mng_link.is_some();
         let existing_row =
             report.rows.iter().find(|r| r.project_id.as_deref() == Some(project.id.as_str())).cloned();
-        let status = if !report.mng_available {
+        let status = if !mng_linked {
+            "not_linked"
+        } else if !report.mng_available {
             "unknown"
         } else if existing_row.is_some() {
             "sent"
@@ -1210,6 +1265,8 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             project_name: project.name,
             project_identifier: project.identifier,
             client_name,
+            mng_linked,
+            state_ids,
             completed: completed.iter().map(|i| to_mng_item_dto(i)).collect(),
             in_progress: in_progress.iter().map(|i| to_mng_item_dto(i)).collect(),
             upcoming: upcoming.iter().map(|i| to_mng_item_dto(i)).collect(),
@@ -1218,7 +1275,7 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             existing_row,
         });
     }
-    targets.sort_by(|a, b| a.project_name.cmp(&b.project_name));
+    targets.sort_by(|a, b| sort_rank(a).cmp(&sort_rank(b)).then_with(|| a.project_name.cmp(&b.project_name)));
 
     Ok(MngTargetsDto {
         report_date: today.to_string(),
@@ -1242,6 +1299,62 @@ pub async fn submit_mng_daily_report_cmd(
     client
         .submit_mng_daily_report(&project_id, &state, &content_html, &report_date, spent_hours, spent_minutes)
         .await
+}
+
+/// 일괄 제출 한 건. 프로젝트마다 내용·상태·소요시간이 다르므로 화면에서 조립한
+/// 것을 그대로 받는다.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MngBulkEntry {
+    pub project_id: String,
+    pub state: String,
+    pub content_html: String,
+    pub spent_hours: u32,
+    pub spent_minutes: u32,
+}
+
+/// 일괄 제출 결과 한 건. 실패해도 나머지를 계속 보내므로, 어느 프로젝트가
+/// 왜 실패했는지를 건별로 돌려준다.
+#[derive(Debug, Serialize, Clone)]
+pub struct MngBulkResult {
+    pub project_id: String,
+    pub ok: bool,
+    pub error: Option<MngApiError>,
+}
+
+/// 선택한 프로젝트들의 업무일지를 순차 제출한다.
+///
+/// 순차인 이유: mng는 사번+날짜 단위로 행을 관리해서 동시에 밀어넣으면 서버가
+/// 어느 요청을 먼저 반영할지 보장하지 않는다. 건마다 `mngdaily-bulk-progress`
+/// 이벤트를 창에 보내 진행 상황을 즉시 반영하고, 실패해도 멈추지 않고 끝까지
+/// 시도한다 — 하나가 타임아웃났다고 나머지를 안 보내면 사용자가 같은 작업을
+/// 두 번 하게 된다.
+#[tauri::command]
+pub async fn submit_mng_daily_reports_cmd(
+    app: tauri::AppHandle,
+    report_date: String,
+    entries: Vec<MngBulkEntry>,
+) -> Result<Vec<MngBulkResult>, String> {
+    let (client, _s) = client(&app)?;
+    let mut results: Vec<MngBulkResult> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let outcome = client
+            .submit_mng_daily_report(
+                &entry.project_id,
+                &entry.state,
+                &entry.content_html,
+                &report_date,
+                entry.spent_hours,
+                entry.spent_minutes,
+            )
+            .await;
+        let result = match outcome {
+            Ok(()) => MngBulkResult { project_id: entry.project_id, ok: true, error: None },
+            Err(e) => MngBulkResult { project_id: entry.project_id, ok: false, error: Some(e) },
+        };
+        let _ = app.emit_to("mngdaily", "mngdaily-bulk-progress", result.clone());
+        results.push(result);
+    }
+    Ok(results)
 }
 
 #[tauri::command]
@@ -1607,6 +1720,77 @@ mod tests {
         assert_eq!(notes[0].version, "0.1.3");
         assert_eq!(notes[0].date, "2026-07-03");
         assert_eq!(notes[0].notes, "### 수정\n- 버그 수정");
+    }
+
+    fn target(name: &str, mng_linked: bool, status: &str, done: usize, doing: usize) -> MngTargetDto {
+        let item = |n: usize| {
+            (0..n)
+                .map(|i| MngReportItemDto {
+                    id: format!("i{i}"),
+                    name: format!("작업 {i}"),
+                    sequence_id: i as u64,
+                    priority: "none".into(),
+                    state_group: "started".into(),
+                    completed_at: None,
+                    target_date: None,
+                    start_date: None,
+                })
+                .collect::<Vec<_>>()
+        };
+        MngTargetDto {
+            project_id: format!("p-{name}"),
+            project_name: name.into(),
+            project_identifier: name.into(),
+            client_name: String::new(),
+            mng_linked,
+            state_ids: std::collections::HashMap::new(),
+            completed: item(done),
+            in_progress: item(doing),
+            upcoming: Vec::new(),
+            default_content: String::new(),
+            status: status.into(),
+            existing_row: None,
+        }
+    }
+
+    #[test]
+    fn sort_rank_orders_actionable_projects_first() {
+        // 완료 있음 → 완료 없음 → 등록 완료 → 담을 작업 없음 → mng 미연동
+        assert_eq!(sort_rank(&target("a", true, "pending", 2, 1)), 0);
+        assert_eq!(sort_rank(&target("b", true, "pending", 0, 3)), 1);
+        assert_eq!(sort_rank(&target("c", true, "sent", 1, 0)), 2);
+        assert_eq!(sort_rank(&target("d", true, "pending", 0, 0)), 3);
+        assert_eq!(sort_rank(&target("e", false, "not_linked", 1, 1)), 4);
+    }
+
+    #[test]
+    fn sort_rank_keeps_unknown_projects_actionable() {
+        // mng 연결 실패("unknown")는 제출을 막지 않는다 — 완료 유무로만 나뉜다.
+        assert_eq!(sort_rank(&target("a", true, "unknown", 1, 0)), 0);
+        assert_eq!(sort_rank(&target("b", true, "unknown", 0, 1)), 1);
+    }
+
+    #[test]
+    fn sort_rank_ranks_not_linked_below_everything_even_with_completed_items() {
+        // 오늘 완료가 아무리 많아도 제출할 수 없으므로 맨 아래다.
+        assert_eq!(sort_rank(&target("a", false, "not_linked", 9, 9)), 4);
+    }
+
+    #[test]
+    fn targets_sort_by_rank_then_name() {
+        let mut targets = [
+            target("Zebra", true, "pending", 1, 0),
+            target("Never", false, "not_linked", 5, 0),
+            target("Alpha", true, "pending", 1, 0),
+            target("Empty", true, "pending", 0, 0),
+            target("Sent", true, "sent", 1, 0),
+            target("Doing", true, "pending", 0, 2),
+        ];
+
+        targets
+            .sort_by(|a, b| sort_rank(a).cmp(&sort_rank(b)).then_with(|| a.project_name.cmp(&b.project_name)));
+        let names: Vec<&str> = targets.iter().map(|t| t.project_name.as_str()).collect();
+        assert_eq!(names, vec!["Alpha", "Zebra", "Doing", "Sent", "Empty", "Never"]);
     }
 
     #[test]
