@@ -109,7 +109,7 @@ export interface IssueCardHandle {
   setValues(fields: IssueFormFields): void;
   setDescriptionVisible(visible: boolean): void;
   setDescriptionLoading(loading: boolean): void;
-  setFormVisible(visible: boolean): void;
+  setBodyVisible(visible: boolean): void;
 
   markTitleError(): void;
   clearTitleError(): void;
