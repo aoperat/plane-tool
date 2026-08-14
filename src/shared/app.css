@@ -254,6 +254,8 @@ kbd {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-top: 1px solid var(--border); background: var(--panel-2);
   border-radius: 0 0 var(--radius) var(--radius);
+  /* 수정 창의 삭제·저장 확인 팝업이 이 상자를 기준으로 떠오른다. */
+  position: relative;
 }
 .proj-select {
   display: flex; align-items: center; gap: 8px; padding: 6px 11px;
@@ -867,35 +869,42 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 }
 .settings button:hover { opacity: 0.85; }
 
-/* ============ SURFACE 4: EDIT MODAL ============ */
-/* 540px matches the QuickAdd popup so both surfaces share one chip-row layout. */
-/* Borderless like .popup: transparent 1px border (layout unchanged), no
-   box-shadow — the editmodal window also disables the OS shadow. */
-.editmodal {
+/* ============ SURFACE 4: CONFLICT WINDOW ============ */
+/* 카드 껍데기를 할 일 수정 창과 함께 쓰던 규칙들이다(옛 .editmodal). 수정 창이
+   빠른 추가와 같은 셸(.popup)로 옮겨간 뒤로는 이 창만 쓰므로 이름을 옮겼다.
+   버튼·로딩 문구는 여전히 아래 .em-* 규칙을 함께 쓴다. */
+.conflict-card {
   width: 540px; background: var(--panel);
   border: 1px solid transparent; border-radius: var(--radius);
   color: var(--text); overflow: visible;
 }
-.em-head {
+.cf-head {
   display: flex; align-items: center; gap: 10px;
   padding: 14px 18px; border-bottom: 1px solid var(--border);
 }
-.em-title { font-size: 14px; font-weight: 600; }
+.cf-title { font-size: 14px; font-weight: 600; }
+.cf-close {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 14px; cursor: pointer; padding: 4px; line-height: 1;
+}
+.cf-close:hover { color: var(--text); }
+
+/* ============ SURFACE 5: EDIT MODAL ============ */
+/* 카드·헤더·제목 줄은 빠른 추가와 같은 것을 쓴다(.popup / .qa-header / .popup-top) —
+   shared/issueForm/card.ts가 두 창을 같은 DOM으로 그린다. 여기 남은 것은 이 창에만
+   있는 조각들뿐이다: 헤더의 브라우저 열기, 로딩 문구, 푸터 버튼. */
+/* 헤더의 브라우저 열기. 닫기 버튼과 같은 24px 아이콘 버튼이다 — 컴팩트 540px
+   헤더에 글자 버튼을 두면 제목이 설 자리가 없다. 이름은 툴팁이 밝힌다. */
 .em-browser-btn {
-  margin-left: auto; background: transparent; border: 1px solid var(--border); border-radius: 7px;
-  color: var(--muted); font-size: 12px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  background: transparent; border: none; border-radius: 5px;
+  color: var(--muted-2); cursor: pointer; flex: none;
 }
-.em-browser-btn:hover { border-color: var(--accent); color: var(--text); }
-.em-close { background: transparent; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px; line-height: 1; }
-.em-close:hover { color: var(--text); }
+.em-browser-btn:hover { background: var(--panel); color: var(--text); }
+.em-browser-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.em-browser-btn svg { width: 14px; height: 14px; }
 .em-loading { padding: 30px 18px; text-align: center; color: var(--muted); font-size: 13px; margin: 0; }
-.em-form .title-input { width: 100%; font-size: 16px; }
 .form-error { color: var(--red); font-size: 12px; margin: 0; padding: 0 18px 12px; }
-.em-foot {
-  position: relative; display: flex; align-items: center;
-  padding: 12px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
-  border-radius: 0 0 var(--radius) var(--radius);
-}
 .em-delete { background: transparent; border: none; color: var(--red); font-size: 12.5px; cursor: pointer; padding: 6px 4px; font-family: inherit; }
 .em-delete:hover { text-decoration: underline; }
 .em-delete-confirm { position: absolute; bottom: 100%; left: 18px; margin-bottom: 6px; width: 170px; }
