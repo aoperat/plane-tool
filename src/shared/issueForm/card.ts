@@ -34,6 +34,9 @@ export interface IssueCardOptions {
   draggable: boolean;
   /** 담당자가 비었을 때의 뜻 — assigneeDisplay.ts 참고. */
   emptyAssignee: EmptyAssignee;
+  /** 한눈에 보기에서 설명칸을 처음부터 펼쳐 둘 것인가. 넓은 화면에서는 접어둘
+   *  이유가 없다. 컴팩트는 좁으므로 이 옵션과 무관하게 접힌 채 시작한다. */
+  expandedDescriptionOpen?: boolean;
   /** 레이아웃 토글과 닫기 버튼 사이에 꽂을 버튼들. */
   headerExtra?: HTMLElement[];
   /** 창별 푸터. 셸은 자리만 내주고 내용은 만들지 않는다. */
@@ -184,6 +187,15 @@ export function mountIssueCard(options: IssueCardOptions): IssueCardHandle {
     });
   }
 
+  /** 레이아웃마다 설명을 접은 채 시작하므로(레이아웃 전환이 그렇게 만든다), 펼쳐
+   *  두기로 한 창은 갈아끼운 뒤와 초기화 뒤에 다시 펼쳐줘야 한다. 커서는 옮기지
+   *  않는다 — 제목부터 쓰는 흐름을 방해하지 않기 위해서다. */
+  function applyDefaultDescription() {
+    if (options.expandedDescriptionOpen && layoutKind === "expanded") {
+      layout.setDescriptionVisible(true, false);
+    }
+  }
+
   /** 폼 상태는 state에 있고 제목·설명은 입력칸에 있으므로, 갈아끼워도 작성 중이던
    *  내용은 그대로 살아남는다. */
   function setLayout(kind: LayoutKind) {
@@ -195,6 +207,7 @@ export function mountIssueCard(options: IssueCardOptions): IssueCardHandle {
     layoutKind = kind;
     layout = kind === "expanded" ? mountExpanded(hosts, ctx) : mountCompact(hosts, ctx);
     layout.render();
+    applyDefaultDescription();
     renderToggle();
     emitResize();
   }
@@ -295,7 +308,10 @@ export function mountIssueCard(options: IssueCardOptions): IssueCardHandle {
 
     closeOverlays: () => layout.closeOverlays(),
     hasOpenOverlay: () => layout.hasOpenOverlay(),
-    resetView: () => layout.resetView(),
+    resetView: () => {
+      layout.resetView();
+      applyDefaultDescription();
+    },
     contentHeight,
   };
 }

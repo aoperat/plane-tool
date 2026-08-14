@@ -36,6 +36,8 @@ const card = mountIssueCard({
   titlePlaceholder: "진행 중인 작업을 입력하고 Ctrl+Enter…",
   draggable: true,
   emptyAssignee: "me",
+  // 한눈에 보기는 모든 항목을 펼쳐 보는 모양이다 — 설명만 접어둘 이유가 없다.
+  expandedDescriptionOpen: true,
   footer,
   loadMembers: async () => {
     // 어느 프로젝트에 대한 요청인지 await 전에 붙잡아 둔다. 응답이 오는 사이 사용자가
