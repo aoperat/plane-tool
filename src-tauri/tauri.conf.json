@@ -45,7 +45,7 @@
         "url": "src/editmodal/index.html",
         "width": 540, "height": 320,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
-        "skipTaskbar": true, "visible": false, "center": true, "resizable": true
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": false
       },
       {
         "label": "conflict",
