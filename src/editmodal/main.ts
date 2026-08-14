@@ -1,41 +1,37 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { deleteWorkItem, getSettings, getWorkItem, listMembers, openIssuePopup, updateWorkItemFields, type UpdateWorkItemFields } from "../shared/ipc";
-import { buildIssueUrl } from "../sidebar/logic";
-import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../shared/datePresets";
-import { attachWheelCycle } from "../shared/wheelCycle";
 import {
-  PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
-  CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON, type Priority, type StateGroup,
-} from "../shared/planeIcons";
+  deleteWorkItem, getSettings, getWorkItem, listMembers, openIssuePopup,
+  setQuickaddLayout, updateWorkItemFields, type UpdateWorkItemFields,
+} from "../shared/ipc";
+import { buildIssueUrl } from "../sidebar/logic";
 import { applyTheme } from "../shared/theme";
-import type { Member, WorkItem, WorkItemDetail } from "../shared/types";
+import { bindTip } from "../shared/tooltip";
+import type { Priority, StateGroup } from "../shared/planeIcons";
+import type { WorkItem, WorkItemDetail } from "../shared/types";
+import { resolveDateChoice } from "../shared/issueForm/state";
+import { mountIssueCard, layoutKindOf } from "../shared/issueForm/card";
 import "../shared/app.css";
 
 const win = getCurrentWindow();
-const modalEl = document.querySelector(".editmodal") as HTMLElement;
-const emBrowserBtn = document.getElementById("emBrowserBtn")!;
-const emClose = document.getElementById("emClose")!;
-const emLoading = document.getElementById("emLoading")!;
-const emForm = document.getElementById("emForm")!;
-const emTitleInput = document.getElementById("emTitleInput") as HTMLInputElement;
-const emDescription = document.getElementById("emDescription") as HTMLTextAreaElement;
-const emChipAssignee = document.getElementById("emChipAssignee")!;
-const emChipStart = document.getElementById("emChipStart")!;
-const emChipDue = document.getElementById("emChipDue")!;
-const emChipState = document.getElementById("emChipState")!;
-const emChipPriority = document.getElementById("emChipPriority")!;
-const emChipDesc = document.getElementById("emChipDesc") as HTMLButtonElement;
-const emFieldPopover = document.getElementById("emFieldPopover")!;
-const emError = document.getElementById("emError")!;
-const emDelete = document.getElementById("emDelete")!;
-const emDeleteConfirm = document.getElementById("emDeleteConfirm")!;
-const emDeleteConfirmYes = document.getElementById("emDeleteConfirmYes")!;
-const emDeleteConfirmNo = document.getElementById("emDeleteConfirmNo")!;
-const emSaveConfirm = document.getElementById("emSaveConfirm")!;
-const emSaveConfirmYes = document.getElementById("emSaveConfirmYes")!;
-const emSaveConfirmNo = document.getElementById("emSaveConfirmNo")!;
-const emCancel = document.getElementById("emCancel")!;
-const emSave = document.getElementById("emSave") as HTMLButtonElement;
+
+function cloneTemplate(id: string): HTMLElement {
+  const tpl = document.getElementById(id) as HTMLTemplateElement;
+  return tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
+}
+
+const browserBtn = cloneTemplate("emBrowser");
+const footer = cloneTemplate("emFooter");
+const loadingEl = cloneTemplate("emLoading");
+
+const emDelete = footer.querySelector<HTMLElement>("#emDelete")!;
+const emDeleteConfirm = footer.querySelector<HTMLElement>("#emDeleteConfirm")!;
+const emDeleteConfirmYes = footer.querySelector<HTMLElement>("#emDeleteConfirmYes")!;
+const emDeleteConfirmNo = footer.querySelector<HTMLElement>("#emDeleteConfirmNo")!;
+const emSaveConfirm = footer.querySelector<HTMLElement>("#emSaveConfirm")!;
+const emSaveConfirmYes = footer.querySelector<HTMLElement>("#emSaveConfirmYes")!;
+const emSaveConfirmNo = footer.querySelector<HTMLElement>("#emSaveConfirmNo")!;
+const emCancel = footer.querySelector<HTMLElement>("#emCancel")!;
+const emSave = footer.querySelector<HTMLButtonElement>("#emSave")!;
 
 let baseUrl = "";
 let workspace = "";
@@ -44,300 +40,81 @@ let itemId = "";
 let original: WorkItemDetail | null = null;
 let snapshotOriginal: WorkItem | null = null;
 let detailFetchPromise: Promise<WorkItemDetail> | null = null;
-let members: Member[] = [];
-let membersLoadedForProject: string | null = null;
 
 let loadRequestId = 0;
 
-let assigneeIds: string[] = [];
-type DateChoice = DatePresetKey | "custom";
-let startChoice: DateChoice = "custom";
-let startCustomDate = "";
-let dueChoice: DateChoice = "custom";
-let dueCustomDate = "";
-let priority: Priority = "none";
-let stateGroup: StateGroup = "unstarted";
+const card = mountIssueCard({
+  root: document.getElementById("cardHost")!,
+  title: "할 일 수정",
+  titlePlaceholder: "제목",
+  draggable: true,
+  emptyAssignee: "none",
+  headerExtra: [browserBtn],
+  footer,
+  loadMembers: async () => {
+    // 빠른 추가와 같은 계약이다 — 어느 프로젝트에 대한 요청인지 await 전에 붙잡아
+    // 두고, 돌아왔을 때 항목이 바뀌었으면 늦게 온 목록은 버린다.
+    const id = card.state.selectedId;
+    if (!id || card.state.membersLoadedForProject === id) return;
+    try {
+      const members = await listMembers(id);
+      if (card.state.selectedId !== id) return;
+      card.state.members = members;
+      card.state.membersLoadedForProject = id;
+    } catch (err) {
+      if (card.state.selectedId !== id) return;
+      card.state.members = [];
+      console.error("listMembers failed:", err);
+    }
+  },
+  onLayoutChange: (kind) => {
+    // 빠른 추가와 같은 설정값을 쓴다 — 한쪽에서 바꾸면 양쪽이 바뀐다.
+    setQuickaddLayout(kind).catch((err) => console.error("setQuickaddLayout failed:", err));
+  },
+  onResize: (width, height) => {
+    win.setSize(new LogicalSize(width, height + 4)).catch((err) => {
+      console.error("setSize failed:", err);
+    });
+  },
+  onSubmit: () => { save(); },
+  onClose: () => {
+    // Esc는 떠 있는 확인 팝업부터 걷는다 — 셸은 필드 팝오버까지만 알고, 이 둘은
+    // 이 창의 것이라 여기서 순서를 정한다.
+    if (!emDeleteConfirm.hidden) {
+      emDeleteConfirm.hidden = true;
+      resizeWindow();
+      return;
+    }
+    if (!emSaveConfirm.hidden) {
+      closeSaveConflict();
+      resizeWindow();
+      return;
+    }
+    closeModal();
+  },
+});
 
-type PopoverKind = "assignee" | "start" | "due" | "priority" | "state" | null;
-let openPopover: PopoverKind = null;
+// 로딩 문구는 카드 안, 헤더 바로 아래에 놓는다.
+card.element.insertBefore(loadingEl, card.element.children[1]);
 
-// Same "measure the real box" approach as QuickAdd's resizeToFit — see
-// src/quickadd/main.ts for why this beats guessing pixel constants.
-function resizeToFit() {
-  let height = Math.ceil(modalEl.getBoundingClientRect().height);
-  if (openPopover && !emFieldPopover.hidden) {
-    height = Math.max(height, Math.ceil(emFieldPopover.getBoundingClientRect().bottom));
-  }
-  height += 4;
-  win.setSize(new LogicalSize(540, height)).catch((err) => {
-    console.error("resizeToFit failed:", err);
+const layoutToggle = card.element.querySelector<HTMLElement>("[data-layout-toggle]")!;
+bindTip(browserBtn, "브라우저에서 열기", "below");
+bindTip(layoutToggle.querySelector('[data-layout="compact"]')!, "컴팩트 — 칩을 눌러 값 바꾸기", "below");
+bindTip(layoutToggle.querySelector('[data-layout="expanded"]')!, "한눈에 보기 — 모든 항목 펼쳐 보기", "below");
+bindTip(card.element.querySelector("[data-close]")!, "닫기 <kbd>Esc</kbd>", "below");
+bindTip(emSave, "저장 <kbd>Ctrl+↵</kbd>", "above");
+
+function resizeWindow() {
+  win.setSize(new LogicalSize(card.layoutWidth, card.contentHeight() + 4)).catch((err) => {
+    console.error("setSize failed:", err);
   });
 }
 
-// Same hide-only semantics as QuickAdd's setDescVisible — the textarea's value
-// survives toggling, so save() still sees (and diffs) the existing description.
-let descVisible = false;
-function setDescVisible(visible: boolean, focus = true) {
-  descVisible = visible;
-  emDescription.hidden = !visible;
-  emChipDesc.classList.toggle("active", visible);
-  emChipDesc.title = visible ? "설명 숨기기" : "설명 추가";
-  resizeToFit();
-  if (visible && focus) emDescription.focus();
+function setLoading(visible: boolean, message = "불러오는 중…") {
+  loadingEl.hidden = !visible;
+  loadingEl.textContent = message;
+  card.setBodyVisible(!visible);
 }
-
-function dateChoiceLabel(choice: DateChoice, custom: string): string {
-  if (choice === "custom") return custom || "날짜 선택";
-  return DATE_PRESETS.find((d) => d.key === choice)!.label;
-}
-
-function resolveDateChoice(choice: DateChoice, custom: string): string {
-  return choice === "custom" ? custom : resolveDatePreset(choice);
-}
-
-// ISO yyyy-mm-dd strings compare correctly with plain string ordering, so the
-// clamps below don't need Date parsing.
-function shiftDateField(kind: "start" | "due", delta: number) {
-  if (kind === "start") {
-    const current = resolveDateChoice(startChoice, startCustomDate);
-    const next = shiftIsoDate(current, delta);
-    startCustomDate = next;
-    startChoice = "custom";
-    const due = resolveDateChoice(dueChoice, dueCustomDate);
-    if (next > due) {
-      dueCustomDate = next;
-      dueChoice = "custom";
-    }
-  } else {
-    const current = resolveDateChoice(dueChoice, dueCustomDate);
-    const next = shiftIsoDate(current, delta);
-    dueCustomDate = next;
-    dueChoice = "custom";
-    const start = resolveDateChoice(startChoice, startCustomDate);
-    if (start > next) {
-      startCustomDate = next;
-      startChoice = "custom";
-    }
-  }
-  renderChips();
-}
-
-function renderAssigneeChip() {
-  emChipAssignee.textContent = "";
-  const avatar = document.createElement("span");
-  avatar.className = "avatar";
-  let label: string;
-  if (assigneeIds.length === 0) {
-    // Unlike QuickAdd (where an empty selection defaults to "me" at creation
-    // time), an edited item can genuinely have nobody assigned — say so.
-    avatar.textContent = "-";
-    label = "담당자 없음";
-  } else if (assigneeIds.length === 1) {
-    const m = members.find((x) => x.id === assigneeIds[0]);
-    const name = m ? m.display_name : "1명";
-    avatar.textContent = name.slice(0, 1);
-    label = name;
-  } else {
-    avatar.textContent = String(assigneeIds.length);
-    label = `${assigneeIds.length}명`;
-  }
-  emChipAssignee.appendChild(avatar);
-  emChipAssignee.appendChild(document.createTextNode(" " + label));
-}
-
-function renderChips() {
-  renderAssigneeChip();
-  emChipStart.innerHTML = `${CALENDAR_ICON} ${dateChoiceLabel(startChoice, startCustomDate)}`;
-  emChipDue.innerHTML = `${FLAG_ICON} ${dateChoiceLabel(dueChoice, dueCustomDate)}`;
-  emChipPriority.innerHTML =
-    `${priorityIcon(priority)} <span class="${priority === "none" ? "muted" : ""}">${priorityLabel(priority)}</span>`;
-  emChipState.innerHTML = `${stateIcon(stateGroup)} ${stateLabel(stateGroup)}`;
-}
-
-function closePopover() {
-  openPopover = null;
-  emFieldPopover.hidden = true;
-  emFieldPopover.innerHTML = "";
-  resizeToFit();
-}
-
-function toggleAssignee(id: string | null) {
-  if (id === null) {
-    assigneeIds = [];
-  } else if (assigneeIds.includes(id)) {
-    assigneeIds = assigneeIds.filter((x) => x !== id);
-  } else {
-    assigneeIds = [...assigneeIds, id];
-  }
-  renderChips();
-  renderAssigneePopoverItems();
-}
-
-function renderAssigneePopoverItems() {
-  emFieldPopover.innerHTML = "";
-  const noneItem = document.createElement("div");
-  noneItem.className = "dd-item" + (assigneeIds.length === 0 ? " sel" : "");
-  noneItem.textContent = "담당자 없음";
-  noneItem.onclick = () => toggleAssignee(null);
-  emFieldPopover.appendChild(noneItem);
-  for (const m of members) {
-    const item = document.createElement("div");
-    item.className = "dd-item" + (assigneeIds.includes(m.id) ? " sel" : "");
-    item.textContent = m.display_name;
-    item.onclick = () => toggleAssignee(m.id);
-    emFieldPopover.appendChild(item);
-  }
-}
-
-async function openAssigneePopover() {
-  if (!projectId) return;
-  if (membersLoadedForProject !== projectId) {
-    try {
-      members = await listMembers(projectId);
-      membersLoadedForProject = projectId;
-    } catch (err) {
-      members = [];
-      console.error("listMembers failed:", err);
-    }
-  }
-  renderAssigneePopoverItems();
-  emFieldPopover.hidden = false;
-  openPopover = "assignee";
-  resizeToFit();
-}
-
-function openDatePopover(kind: "start" | "due") {
-  emFieldPopover.innerHTML = "";
-  const current = kind === "start" ? startChoice : dueChoice;
-  for (const preset of DATE_PRESETS) {
-    const item = document.createElement("div");
-    item.className = "dd-item" + (preset.key === current ? " sel" : "");
-    item.textContent = preset.label;
-    item.onclick = () => {
-      if (kind === "start") startChoice = preset.key;
-      else dueChoice = preset.key;
-      renderChips();
-      closePopover();
-    };
-    emFieldPopover.appendChild(item);
-  }
-  const divider = document.createElement("div");
-  divider.className = "popover-divider";
-  emFieldPopover.appendChild(divider);
-  const dateInput = document.createElement("input");
-  dateInput.type = "date";
-  dateInput.className = "popover-date-input";
-  if (current === "custom") {
-    dateInput.value = kind === "start" ? startCustomDate : dueCustomDate;
-  }
-  dateInput.onchange = () => {
-    if (!dateInput.value) return;
-    if (kind === "start") {
-      startChoice = "custom";
-      startCustomDate = dateInput.value;
-    } else {
-      dueChoice = "custom";
-      dueCustomDate = dateInput.value;
-    }
-    renderChips();
-    closePopover();
-  };
-  emFieldPopover.appendChild(dateInput);
-  emFieldPopover.hidden = false;
-  openPopover = kind;
-  resizeToFit();
-}
-
-function openPriorityPopover() {
-  emFieldPopover.innerHTML = "";
-  for (const p of PRIORITY_ORDER) {
-    const item = document.createElement("div");
-    item.className = "dd-item" + (p === priority ? " sel" : "");
-    item.innerHTML = `${priorityIcon(p)} ${priorityLabel(p)}`;
-    item.onclick = () => {
-      priority = p;
-      renderChips();
-      closePopover();
-    };
-    emFieldPopover.appendChild(item);
-  }
-  emFieldPopover.hidden = false;
-  openPopover = "priority";
-  resizeToFit();
-}
-
-function openStatePopover() {
-  emFieldPopover.innerHTML = "";
-  for (const g of STATE_ORDER) {
-    const item = document.createElement("div");
-    item.className = "dd-item" + (g === stateGroup ? " sel" : "");
-    item.innerHTML = `${stateIcon(g)} ${stateLabel(g)}`;
-    item.onclick = () => {
-      stateGroup = g;
-      renderChips();
-      closePopover();
-    };
-    emFieldPopover.appendChild(item);
-  }
-  emFieldPopover.hidden = false;
-  openPopover = "state";
-  resizeToFit();
-}
-
-emChipAssignee.onclick = () => { openPopover === "assignee" ? closePopover() : openAssigneePopover(); };
-emChipStart.onclick = () => { openPopover === "start" ? closePopover() : openDatePopover("start"); };
-emChipDue.onclick = () => { openPopover === "due" ? closePopover() : openDatePopover("due"); };
-emChipPriority.onclick = () => { openPopover === "priority" ? closePopover() : openPriorityPopover(); };
-emChipState.onclick = () => { openPopover === "state" ? closePopover() : openStatePopover(); };
-
-// Clamped, not wrapped: priority/state are ordered scales (없음..긴급, 백로그..취소), not
-// cyclic lists, so wheel-up stops at the last entry instead of rolling back to the first.
-attachWheelCycle(emChipPriority, () => PRIORITY_ORDER.length, (delta) => {
-  const i = PRIORITY_ORDER.indexOf(priority);
-  priority = PRIORITY_ORDER[Math.max(0, Math.min(PRIORITY_ORDER.length - 1, i + delta))];
-  renderChips();
-  if (openPopover === "priority") openPriorityPopover();
-});
-
-attachWheelCycle(emChipState, () => STATE_ORDER.length, (delta) => {
-  const i = STATE_ORDER.indexOf(stateGroup);
-  stateGroup = STATE_ORDER[Math.max(0, Math.min(STATE_ORDER.length - 1, i + delta))];
-  renderChips();
-  if (openPopover === "state") openStatePopover();
-});
-
-attachWheelCycle(emChipStart, () => 2, (delta) => {
-  shiftDateField("start", delta);
-  if (openPopover === "start") openDatePopover("start");
-});
-attachWheelCycle(emChipDue, () => 2, (delta) => {
-  shiftDateField("due", delta);
-  if (openPopover === "due") openDatePopover("due");
-});
-
-// EditModal's assignee popover is toggle-based multi-select (every click adds/removes a
-// member — there's no "single pick" click like QuickAdd's). Wheel-cycling would silently
-// collapse a real multi-assignee issue down to one person, so it's only active while 0 or
-// 1 assignees are currently set. Cycle order is [null ("담당자 없음"), ...members], matching
-// renderAssigneePopoverItems (src/editmodal/main.ts:144-158).
-attachWheelCycle(
-  emChipAssignee,
-  () => (assigneeIds.length <= 1 ? members.length + 1 : 0),
-  (delta) => {
-    const options: (string | null)[] = [null, ...members.map((m) => m.id)];
-    const i = options.indexOf(assigneeIds[0] ?? null);
-    const nextValue = options[(i + delta + options.length) % options.length];
-    assigneeIds = nextValue === null ? [] : [nextValue];
-    renderChips();
-    if (openPopover === "assignee") openAssigneePopover();
-  },
-);
-
-emChipDesc.innerHTML = `${DESCRIPTION_ICON} 설명`;
-emChipDesc.onclick = () => {
-  if (openPopover) closePopover();
-  setDescVisible(!descVisible);
-};
 
 function snapshotToDetail(snapshot: WorkItem): WorkItemDetail {
   return {
@@ -349,23 +126,16 @@ function snapshotToDetail(snapshot: WorkItem): WorkItemDetail {
   };
 }
 
-// description을 제외한 필드만 폼에 채운다 — description은 호출부에서 별도로 다룬다.
-function applyFieldsToForm(fields: Pick<WorkItemDetail,
-  "name" | "assignee_ids" | "start_date" | "target_date" | "priority" | "state_group">) {
-  emTitleInput.value = fields.name;
-  assigneeIds = [...fields.assignee_ids];
-  startChoice = "custom";
-  startCustomDate = fields.start_date ?? "";
-  dueChoice = "custom";
-  dueCustomDate = fields.target_date ?? "";
-  priority = fields.priority as Priority;
-  stateGroup = fields.state_group as StateGroup;
-  renderChips();
-}
-
-function setDescriptionLoading(loading: boolean) {
-  emChipDesc.disabled = loading;
-  if (loading) emChipDesc.title = "설명 불러오는 중…";
+/** description을 제외한 필드만 폼에 채운다 — description은 호출부에서 별도로 다룬다. */
+function applyFields(fields: WorkItem | WorkItemDetail) {
+  card.setValues({
+    name: fields.name,
+    assigneeIds: fields.assignee_ids,
+    startDate: fields.start_date,
+    targetDate: fields.target_date,
+    priority: fields.priority as Priority,
+    stateGroup: fields.state_group as StateGroup,
+  });
 }
 
 async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
@@ -375,14 +145,14 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   win.setAlwaysOnTop(true).catch((err) => {
     console.error("setAlwaysOnTop failed:", err);
   });
-  closePopover();
+  card.closeOverlays();
   emDeleteConfirm.hidden = true;
   closeSaveConflict();
   // closeModal()은 창을 숨기기만 해서 같은 항목을 다시 열 때 원본 데이터가 메모리에
   // 그대로 남아있다 — 재요청 없이 그대로 보여준다.
   if (original && pid === projectId && iid === itemId) {
-    emTitleInput.focus();
-    resizeToFit();
+    card.titleElement.focus();
+    resizeWindow();
     return;
   }
   const requestId = ++loadRequestId;
@@ -391,26 +161,25 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   original = null;
   snapshotOriginal = snapshot ?? null;
   detailFetchPromise = null;
-  members = [];
-  membersLoadedForProject = null;
-  emError.hidden = true;
-  emTitleInput.classList.remove("error");
+  // 담당자 목록은 프로젝트에 딸린다 — 셸의 state.selectedId가 그 열쇠다.
+  card.state.selectedId = pid;
+  card.state.members = [];
+  card.state.membersLoadedForProject = null;
+  card.clearError();
+  card.clearTitleError();
 
   if (snapshot) {
     // 이미 동기화로 받아둔 값이 있다 — 전체 스피너 없이 즉시 편집 가능한 폼을 보여준다.
-    applyFieldsToForm(snapshot);
-    emDescription.value = "";
-    setDescVisible(false, false);
-    setDescriptionLoading(true);
-    emForm.hidden = false;
-    emLoading.hidden = true;
-    resizeToFit();
-    emTitleInput.focus();
+    setLoading(false);
+    applyFields(snapshot);
+    card.descriptionValue = "";
+    card.setDescriptionVisible(false, false);
+    card.setDescriptionEnabled(false);
+    resizeWindow();
+    card.titleElement.focus();
   } else {
-    emForm.hidden = true;
-    emLoading.hidden = false;
-    emLoading.textContent = "불러오는 중…";
-    resizeToFit();
+    setLoading(true);
+    resizeWindow();
   }
 
   const fetchPromise = getWorkItem(pid, iid);
@@ -423,34 +192,33 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
     if (!snapshot) {
       // 스냅샷이 있었다면 이미 채워둔 폼 값(사용자가 편집 중일 수 있음)은 덮어쓰지
       // 않는다 — description만 이 fetch로 채운다.
-      applyFieldsToForm(detail);
+      setLoading(false);
+      applyFields(detail);
     }
-    emDescription.value = detail.description;
-    setDescriptionLoading(false);
+    card.descriptionValue = detail.description;
+    card.setDescriptionEnabled(true);
     // Auto-show an existing description — hiding it would read as "deleted".
-    setDescVisible(detail.description !== "", false);
-    emLoading.hidden = true;
-    emForm.hidden = false;
-    resizeToFit();
-    if (!snapshot) emTitleInput.focus();
+    card.setDescriptionVisible(detail.description !== "", false);
+    resizeWindow();
+    if (!snapshot) card.titleElement.focus();
   } catch (err) {
     if (requestId !== loadRequestId) return;
     if (snapshot) {
       // 오프라인 등으로 최신 데이터를 못 가져왔다 — 스냅샷을 기준값으로 확정하고
       // 계속 편집 가능하게 둔다(설명은 빈 값으로 취급).
       original = snapshotToDetail(snapshot);
-      setDescriptionLoading(false);
+      card.setDescriptionEnabled(true);
       console.error("getWorkItem background refresh failed:", err);
     } else {
-      emLoading.textContent = "불러오기 실패: " + err;
+      setLoading(true, "불러오기 실패: " + err);
       console.error("getWorkItem failed:", err);
-      resizeToFit();
+      resizeWindow();
     }
   }
 }
 
 function closeModal() {
-  closePopover();
+  card.closeOverlays();
   emDeleteConfirm.hidden = true;
   closeSaveConflict();
   win.hide();
@@ -489,18 +257,18 @@ let pendingSaveConflictResolve: ((proceed: boolean) => void) | null = null;
 function confirmSaveConflict(): Promise<boolean> {
   return new Promise((resolve) => {
     emSaveConfirm.hidden = false;
-    resizeToFit();
+    resizeWindow();
     pendingSaveConflictResolve = resolve;
     emSaveConfirmYes.onclick = () => {
       pendingSaveConflictResolve = null;
       emSaveConfirm.hidden = true;
-      resizeToFit();
+      resizeWindow();
       resolve(true);
     };
     emSaveConfirmNo.onclick = () => {
       pendingSaveConflictResolve = null;
       emSaveConfirm.hidden = true;
-      resizeToFit();
+      resizeWindow();
       resolve(false);
     };
   });
@@ -536,56 +304,54 @@ async function save() {
     if (!proceed) return;
   }
 
-  const name = emTitleInput.value.trim();
+  const name = card.titleValue.trim();
   if (!name) {
-    emTitleInput.classList.add("error");
-    emTitleInput.focus();
+    card.markTitleError();
+    card.titleElement.focus();
     return;
   }
-  const description = emDescription.value;
-  const startDate = resolveDateChoice(startChoice, startCustomDate);
-  const dueDate = resolveDateChoice(dueChoice, dueCustomDate);
+  const description = card.descriptionValue;
+  const s = card.state;
+  const startDate = resolveDateChoice(s.startChoice, s.startCustomDate);
+  const dueDate = resolveDateChoice(s.dueChoice, s.dueCustomDate);
 
   const fields: UpdateWorkItemFields = {};
   if (name !== original.name) fields.name = name;
   if (description !== original.description) fields.description = description;
-  const sortedCurrent = [...assigneeIds].sort();
+  const sortedCurrent = [...s.assigneeIds].sort();
   const sortedOriginal = [...original.assignee_ids].sort();
-  if (JSON.stringify(sortedCurrent) !== JSON.stringify(sortedOriginal)) fields.assignee_ids = assigneeIds;
+  if (JSON.stringify(sortedCurrent) !== JSON.stringify(sortedOriginal)) fields.assignee_ids = s.assigneeIds;
   if (startDate && startDate !== (original.start_date ?? "")) fields.start_date = startDate;
   if (dueDate && dueDate !== (original.target_date ?? "")) fields.target_date = dueDate;
-  if (priority !== original.priority) fields.priority = priority;
-  if (stateGroup !== original.state_group) fields.state_group = stateGroup;
+  if (s.priority !== original.priority) fields.priority = s.priority;
+  if (s.stateGroup !== original.state_group) fields.state_group = s.stateGroup;
 
   if (Object.keys(fields).length === 0) {
     await win.hide();
     return;
   }
 
-  emError.hidden = true;
+  card.clearError();
   try {
     await updateWorkItemFields(projectId, itemId, fields);
     await win.hide();
   } catch (err) {
-    emError.hidden = false;
-    emError.textContent = "저장 실패: " + err;
+    card.showError("저장 실패: " + err);
     console.error("updateWorkItemFields failed:", err);
-    resizeToFit();
   }
 }
 
-emClose.onclick = closeModal;
 emCancel.onclick = closeModal;
-emSave.onclick = save;
-emBrowserBtn.onclick = openInBrowser;
+emSave.onclick = () => { save(); };
+browserBtn.onclick = openInBrowser;
 
 emDelete.onclick = () => {
   emDeleteConfirm.hidden = false;
-  resizeToFit();
+  resizeWindow();
 };
 emDeleteConfirmNo.onclick = () => {
   emDeleteConfirm.hidden = true;
-  resizeToFit();
+  resizeWindow();
 };
 emDeleteConfirmYes.onclick = async () => {
   try {
@@ -593,40 +359,20 @@ emDeleteConfirmYes.onclick = async () => {
     await win.hide();
   } catch (err) {
     emDeleteConfirm.hidden = true;
-    emError.hidden = false;
-    emError.textContent = "삭제 실패: " + err;
+    card.showError("삭제 실패: " + err);
     console.error("deleteWorkItem failed:", err);
-    resizeToFit();
   }
 };
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (openPopover) {
-      closePopover();
-      return;
-    }
-    if (!emDeleteConfirm.hidden) {
-      emDeleteConfirm.hidden = true;
-      resizeToFit();
-      return;
-    }
-    if (!emSaveConfirm.hidden) {
-      closeSaveConflict();
-      resizeToFit();
-      return;
-    }
-    closeModal();
-    return;
-  }
-  if (e.key === "Enter" && e.ctrlKey) {
-    e.preventDefault();
-    save();
-  }
-});
-
 win.listen<{ projectId: string; itemId: string; snapshot?: WorkItem }>("load-item", (event) => {
   loadItem(event.payload.projectId, event.payload.itemId, event.payload.snapshot);
+});
+
+// 설정 창이 저장하면 즉시 반영한다 — 이 창도 트레이에 살아 있어 재로드되지 않는다.
+win.listen("settings-changed", async () => {
+  const s = await getSettings();
+  applyTheme(s.theme);
+  card.setLayout(layoutKindOf(s.quickadd_layout));
 });
 
 async function loadSettings() {
@@ -634,7 +380,9 @@ async function loadSettings() {
   baseUrl = s.base_url;
   workspace = s.workspace;
   applyTheme(s.theme);
+  card.setLayout(layoutKindOf(s.quickadd_layout));
 }
 
-resizeToFit();
+setLoading(true);
+resizeWindow();
 loadSettings();

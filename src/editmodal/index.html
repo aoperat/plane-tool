@@ -6,30 +6,20 @@
     <link rel="stylesheet" href="../shared/app.css" />
   </head>
   <body class="transparent-body">
-    <div class="editmodal">
-      <div class="em-head">
-        <strong class="em-title">할 일 수정</strong>
-        <button type="button" class="em-browser-btn" id="emBrowserBtn">🌐 브라우저에서 열기</button>
-        <button type="button" class="em-close" id="emClose">✕</button>
-      </div>
-      <p class="em-loading" id="emLoading">불러오는 중…</p>
-      <div class="em-form" id="emForm" hidden>
-        <div class="popup-top">
-          <input id="emTitleInput" class="title-input" placeholder="제목" />
-        </div>
-        <textarea id="emDescription" class="description-input" placeholder="설명을 입력하세요…" rows="4" hidden></textarea>
-        <div class="chip-row">
-          <button type="button" class="chip" id="emChipAssignee"></button>
-          <button type="button" class="chip" id="emChipStart"></button>
-          <button type="button" class="chip" id="emChipDue"></button>
-          <button type="button" class="chip" id="emChipState"></button>
-          <button type="button" class="chip" id="emChipPriority"></button>
-          <button type="button" class="chip chip-desc-toggle" id="emChipDesc" title="설명 추가"></button>
-          <div id="emFieldPopover" class="field-popover" hidden></div>
-        </div>
-        <p class="em-error" id="emError" hidden></p>
-      </div>
-      <div class="em-foot">
+    <!-- 카드(헤더·제목·설명·필드·에러)는 shared/issueForm/card.ts가 그린다.
+         이 파일에는 이 창에만 있는 것 — 브라우저 열기 버튼, 로딩 문구, 푸터 — 만 둔다. -->
+    <div id="cardHost"></div>
+
+    <template id="emBrowser">
+      <button type="button" class="em-browser-btn" id="emBrowserBtn" aria-label="브라우저에서 열기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>
+        </svg>
+      </button>
+    </template>
+
+    <template id="emFooter">
+      <div class="popup-bottom">
         <button type="button" class="em-delete" id="emDelete">삭제</button>
         <div class="pop em-delete-confirm" id="emDeleteConfirm" hidden>
           <div class="pop-msg">정말 삭제하시겠습니까?</div>
@@ -48,7 +38,13 @@
           <button type="button" class="em-btn em-btn-primary" id="emSave">저장</button>
         </div>
       </div>
-    </div>
+    </template>
+
+    <template id="emLoading">
+      <p class="em-loading" id="emLoadingText">불러오는 중…</p>
+    </template>
+
+    <div id="qaTip" class="qa-tip" hidden></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
