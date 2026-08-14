@@ -3,7 +3,7 @@ import {
   createFormState, resolveDateChoice, shiftDateField,
   toggleAssignee, setSingleAssignee, resetFormFields,
 } from "./state";
-import type { Member } from "../shared/types";
+import type { Member } from "../types";
 
 const M = (id: string, is_me = false): Member => ({ id, display_name: id, is_me });
 

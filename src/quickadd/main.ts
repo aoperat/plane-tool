@@ -6,10 +6,10 @@ import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
-import { createFormState, resolveDateChoice, shiftDateField, resetFormFields } from "./state";
-import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
-import { mountCompact } from "./layoutCompact";
-import { mountExpanded } from "./layoutExpanded";
+import { createFormState, resolveDateChoice, shiftDateField, resetFormFields } from "../shared/issueForm/state";
+import type { LayoutHandle, LayoutHosts, LayoutContext } from "../shared/issueForm/layout";
+import { mountCompact } from "../shared/issueForm/layoutCompact";
+import { mountExpanded } from "../shared/issueForm/layoutExpanded";
 import "../shared/app.css";
 
 // Every window focus reloads the project list from the Plane API; a cooldown keeps rapid

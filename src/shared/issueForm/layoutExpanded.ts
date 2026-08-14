@@ -1,15 +1,15 @@
 import { splitAssigneeSlots } from "./assigneeSlots";
 import { resolveDateChoice, shiftDateField, toggleAssignee, setSingleAssignee } from "./state";
 import type { LayoutHandle, LayoutContext, LayoutHosts } from "./layout";
-import { DATE_PRESETS, type DatePresetKey } from "../shared/datePresets";
-import { attachWheelCycle } from "../shared/wheelCycle";
-import { colorForId } from "../shared/color";
-import { initKeyboardFocus, moveKeyboardFocus, selectKeyboardFocus } from "../shared/dropdownKeyboard";
+import { DATE_PRESETS, type DatePresetKey } from "../datePresets";
+import { attachWheelCycle } from "../wheelCycle";
+import { colorForId } from "../color";
+import { initKeyboardFocus, moveKeyboardFocus, selectKeyboardFocus } from "../dropdownKeyboard";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   DESCRIPTION_ICON, type Priority, type StateGroup,
-} from "../shared/planeIcons";
-import type { Member } from "../shared/types";
+} from "../planeIcons";
+import type { Member } from "../types";
 
 /** 담당자 인라인 칸 수("나" 포함). 660px 폭에 이름 칩 넷과 "+N"이 들어가는 수다. */
 const ASSIGNEE_SLOTS = 4;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { splitAssigneeSlots } from "./assigneeSlots";
-import type { Member } from "../shared/types";
+import type { Member } from "../types";
 
 const M = (id: string, is_me = false): Member => ({ id, display_name: id, is_me });
 const names = (ms: Member[]) => ms.map((m) => m.id);

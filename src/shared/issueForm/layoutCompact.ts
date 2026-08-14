@@ -1,15 +1,15 @@
-import { DATE_PRESETS } from "../shared/datePresets";
-import { attachWheelCycle } from "../shared/wheelCycle";
+import { DATE_PRESETS } from "../datePresets";
+import { attachWheelCycle } from "../wheelCycle";
 import {
   PRIORITY_ORDER, STATE_ORDER, priorityIcon, priorityLabel, stateIcon, stateLabel,
   CALENDAR_ICON, FLAG_ICON, DESCRIPTION_ICON,
-} from "../shared/planeIcons";
-import { bindTip } from "../shared/tooltip";
+} from "../planeIcons";
+import { bindTip } from "../tooltip";
 import {
   initKeyboardFocus, moveKeyboardFocus, keyboardFocusIndex, setKeyboardFocusIndex,
   handleDropdownKeydown,
-} from "../shared/dropdownKeyboard";
-import type { Member } from "../shared/types";
+} from "../dropdownKeyboard";
+import type { Member } from "../types";
 import { dateChoiceLabel, shiftDateField, toggleAssignee, setSingleAssignee } from "./state";
 import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
 

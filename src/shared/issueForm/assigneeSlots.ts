@@ -1,4 +1,4 @@
-import type { Member } from "../shared/types";
+import type { Member } from "../types";
 
 export interface AssigneeSlots {
   /** 인라인 칩으로 그릴 멤버들. */
