@@ -110,11 +110,11 @@ function draftFor(t: MngTarget): Draft {
   let d = drafts.get(t.project_id);
   if (d) return d;
   const row = t.existing_row;
-  // 오늘 완료한 게 없는 프로젝트는 꺼진 채로 시작한다 — 항목 집합이 비어 있으면
+  // 제출할 수 없는 프로젝트는 꺼진 채로 시작한다 — 항목 집합이 비어 있으면
   // 제출 대상이 아니라는 뜻이다(프로젝트 체크를 켜면 기본 선택으로 채워진다).
   const selectedItems = isSelectedByDefault(t) ? defaultSelectedItemIds(t) : new Set<string>();
-  // 서버가 만든 default_content는 항목 전부로 렌더한 것이라 기본 선택(예정 제외)과
-  // 어긋난다 — 처음부터 선택 기준으로 다시 조립해 둔다.
+  // 서버가 만든 default_content는 체크 상태와 무관하게 렌더한 것이라 이후 체크를
+  // 껐다 켤 때와 어긋난다 — 처음부터 선택 기준으로 다시 조립해 둔다.
   const auto = contentFor(t, selectedItems);
   d = row
     ? {
@@ -617,7 +617,7 @@ function projectRow(t: MngTarget): HTMLElement {
   });
   box.onclick = (e) => {
     e.stopPropagation();
-    // 켜면 기본 선택(완료·진행중)으로 채우고, 끄면 전부 비운다. 항목을 일부만
+    // 켜면 기본 선택(세 그룹 전부)으로 채우고, 끄면 전부 비운다. 항목을 일부만
     // 켠 "중간" 상태에서 누르면 켜는 쪽으로 맞춘다.
     d.selectedItems = boxState === "on" ? new Set<string>() : defaultSelectedItemIds(t);
     regenerateDraftContent(t, d);

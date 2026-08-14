@@ -304,17 +304,18 @@ export function isSelectable(t: MngTargetLike): boolean {
   return t.mng_linked && t.status !== "sent" && hasReportableItems(t);
 }
 
-/** 창을 열었을 때 이 프로젝트가 체크돼 있어야 하는지. 오늘 완료한 항목이 있는
- *  프로젝트만 켠다 — 지금까지의 동작(완료가 있는 것만 목록에 올림)을 그대로
- *  기본값으로 보존해서, 늘 하던 사람은 열고 바로 제출하면 되게 한다. */
+/** 창을 열었을 때 이 프로젝트가 체크돼 있어야 하는지. 제출할 수 있으면 켠다 —
+ *  담을 항목이 할일·진행중뿐이어도 오늘 일지에 쓸 내용이므로, 완료가 있는지는
+ *  따지지 않는다. 빼고 싶은 프로젝트만 체크를 끄면 된다. */
 export function isSelectedByDefault(t: MngTargetLike): boolean {
-  return isSelectable(t) && t.completed.length > 0;
+  return isSelectable(t);
 }
 
-/** 창을 열었을 때 켜져 있어야 할 항목 id 집합. 완료·진행중은 켜고 예정은 끈다 —
- *  예정은 "오늘 한 일"이 아니라서 일지에 늘 들어갈 성격이 아니다. */
+/** 창을 열었을 때 켜져 있어야 할 항목 id 집합. 서버가 담아 준 세 그룹(완료·
+ *  진행중·할일)을 모두 켠다 — 백로그·취소는 애초에 오지 않으므로, 여기 있는
+ *  항목은 전부 오늘 일지에 쓸 만한 것들이다. 빼고 싶으면 체크를 끄면 된다. */
 export function defaultSelectedItemIds(t: MngTargetLike): Set<string> {
-  return new Set([...t.completed, ...t.in_progress].map((i) => i.id));
+  return new Set(MNG_GROUPS.flatMap((g) => t[g]).map((i) => i.id));
 }
 
 /** 선택된 항목만 남긴 그룹. `projectToText`에 그대로 넘겨 내용을 재조립한다. */

@@ -253,18 +253,22 @@ describe("제출 대상 선택 규칙", () => {
     expect(isSelectable(target({ status: "unknown", completed: [item()] }))).toBe(true);
   });
 
-  it("checks only projects that completed something today", () => {
+  it("checks every submittable project, not just the ones with completed work", () => {
     expect(isSelectedByDefault(target({ completed: [item()] }))).toBe(true);
-    expect(isSelectedByDefault(target({ in_progress: [item()] }))).toBe(false);
+    expect(isSelectedByDefault(target({ in_progress: [item()] }))).toBe(true);
+    expect(isSelectedByDefault(target({ upcoming: [item()] }))).toBe(true);
+    // 담을 항목이 없거나 이미 제출된 프로젝트는 여전히 꺼진 채로 시작한다.
+    expect(isSelectedByDefault(target({}))).toBe(false);
+    expect(isSelectedByDefault(target({ status: "sent", completed: [item()] }))).toBe(false);
   });
 
-  it("selects completed and in-progress items but not upcoming ones", () => {
+  it("selects every reportable item, upcoming included", () => {
     const t = target({
       completed: [item({ id: "c1" })],
       in_progress: [item({ id: "p1" })],
       upcoming: [item({ id: "u1" })],
     });
-    expect([...defaultSelectedItemIds(t)].sort()).toEqual(["c1", "p1"]);
+    expect([...defaultSelectedItemIds(t)].sort()).toEqual(["c1", "p1", "u1"]);
   });
 
   it("narrows the groups handed to projectToText to the checked items", () => {
