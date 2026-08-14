@@ -669,6 +669,13 @@ function renderDetail() {
   head.appendChild(statBadge(t));
   detailEl.appendChild(head);
 
+  // 연결된 카드: 무엇에 연결됐는지 + 변경·해제. 미연동 카드는 아래 안내문
+  // 자리에서 연결하므로 여기서는 그리지 않는다.
+  if (t.mng_linked) {
+    detailEl.appendChild(linkedRow(t));
+    if (linkStateFor(t.project_id).changing) detailEl.appendChild(linkPanel(t));
+  }
+
   for (const g of MNG_GROUPS) {
     const sec = groupSection(t, d, g, locked);
     if (sec) detailEl.appendChild(sec);
@@ -699,15 +706,33 @@ interface LinkState {
   rows: MngProjectRow[];
   loading: boolean;
   error: string | null;
-  /** 연결 요청 중인 행의 seq. 두 번 눌러 두 번 보내는 것을 막는다. */
+  /** 연결 요청 중인 행의 seq. 두 번 눌러 두 번 보내는 것을 막는다.
+   *  해제는 `"__unlink__"`로 표시한다. */
   linking: string | null;
+  /** 이미 연결된 카드에서 검색창을 펼쳤는지. 연결된 상태에서는 평소엔 접어
+   *  두고 [변경]을 눌렀을 때만 연다 — 잘 돌아가는 카드에 검색창이 늘 떠 있으면
+   *  제출 양식이 밀려난다. */
+  changing: boolean;
+  /** 해제 버튼을 한 번 눌러 확인을 기다리는 중. */
+  confirmingUnlink: boolean;
 }
+const UNLINKING = "__unlink__";
 const linkStates = new Map<string, LinkState>();
 
 function linkStateFor(projectId: string): LinkState {
   let s = linkStates.get(projectId);
   if (!s) {
-    s = { q: "", page: 1, total: 0, rows: [], loading: false, error: null, linking: null };
+    s = {
+      q: "",
+      page: 1,
+      total: 0,
+      rows: [],
+      loading: false,
+      error: null,
+      linking: null,
+      changing: false,
+      confirmingUnlink: false,
+    };
     linkStates.set(projectId, s);
   }
   return s;
@@ -735,10 +760,11 @@ async function runLinkSearch(t: MngTarget, page: number) {
   }
 }
 
-async function doLink(t: MngTarget, row: MngProjectRow) {
+/** `row`가 null이면 연결 해제. */
+async function doLink(t: MngTarget, row: MngProjectRow | null) {
   const s = linkStateFor(t.project_id);
   if (s.linking) return;
-  s.linking = row.seq;
+  s.linking = row ? row.seq : UNLINKING;
   s.error = null;
   renderDetail();
   try {
@@ -754,7 +780,58 @@ async function doLink(t: MngTarget, row: MngProjectRow) {
   }
 }
 
-/** 미연동 카드 아래에 붙는 검색·연결 패널. */
+/** 이미 연결된 카드의 머리에 붙는 한 줄 — 무엇에 연결됐는지와 변경·해제.
+ *  잘못 연결했을 때 여기서 바로 고칠 수 있어야 한다. */
+function linkedRow(t: MngTarget): HTMLElement {
+  const s = linkStateFor(t.project_id);
+  const box = el("div", "mng-linked");
+  box.appendChild(el("span", "lb", "mng"));
+  // 이름이 비는 경우: 예전에 웹에서 연결해 이름을 안 남겼거나, 연계 키만 있는
+  // 경우다. 빈칸을 두면 무엇을 지우는지 모르므로 그렇게 말해 준다.
+  box.appendChild(el("span", "nm", t.mng_link_name || "(이름 없음 — 연계 키만 저장됨)"));
+
+  if (s.confirmingUnlink) {
+    box.appendChild(el("span", "ask", "연결을 해제할까요?"));
+    const yes = el("button", "mng-link-btn danger", "해제") as HTMLButtonElement;
+    yes.type = "button";
+    yes.disabled = s.linking !== null;
+    yes.onclick = () => void doLink(t, null);
+    const no = el("button", "mng-link-btn", "취소") as HTMLButtonElement;
+    no.type = "button";
+    no.onclick = () => {
+      s.confirmingUnlink = false;
+      renderDetail();
+    };
+    box.appendChild(yes);
+    box.appendChild(no);
+    return box;
+  }
+
+  const change = el("button", "mng-link-btn", s.changing ? "변경 취소" : "변경") as HTMLButtonElement;
+  change.type = "button";
+  change.onclick = () => {
+    s.changing = !s.changing;
+    renderDetail();
+  };
+  const unlink = el(
+    "button",
+    "mng-link-btn",
+    s.linking === UNLINKING ? "해제 중…" : "해제",
+  ) as HTMLButtonElement;
+  unlink.type = "button";
+  unlink.disabled = s.linking !== null;
+  unlink.onclick = () => {
+    s.confirmingUnlink = true;
+    renderDetail();
+  };
+  box.appendChild(change);
+  box.appendChild(unlink);
+  if (s.error) box.appendChild(el("span", "err", s.error));
+  return box;
+}
+
+/** 검색·연결 패널. 미연동 카드에서는 늘 열려 있고, 연결된 카드에서는
+ *  [변경]을 눌렀을 때만 열린다. */
 function linkPanel(t: MngTarget): HTMLElement {
   const s = linkStateFor(t.project_id);
   const box = el("div", "mng-link");

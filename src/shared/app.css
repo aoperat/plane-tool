@@ -1373,3 +1373,22 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 }
 .mng-link-pager { display: flex; align-items: center; gap: 8px; justify-content: center; }
 .mng-link-pager .pg { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 연결된 mng 프로젝트 표시 줄 — 무엇에 연결됐는지와 변경·해제. */
+.mng-linked {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 10px 0 2px; padding: 7px 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+}
+.mng-linked .lb {
+  flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .06em;
+  color: var(--muted-2); text-transform: uppercase;
+}
+.mng-linked .nm {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mng-linked .ask { flex: none; font-size: 11.5px; color: var(--amber); }
+.mng-linked .err { flex-basis: 100%; font-size: 11px; color: var(--red); }
+.mng-link-btn.danger { color: var(--red); border-color: rgba(239,77,86,.45); }
+.mng-link-btn.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }

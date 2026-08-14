@@ -132,6 +132,8 @@ export interface MngTarget {
   client_name: string;
   /** false면 Plane 프로젝트에 mng 연계 키가 없다 — 목록에는 남기되 제출은 막는다. */
   mng_linked: boolean;
+  /** 연결된 mng 프로젝트명. 연결이 없으면 빈 문자열. */
+  mng_link_name: string;
   /** 상태 그룹 -> 상태 id. 작업 상태를 바꿀 때 쓴다(프로젝트마다 id가 다르다). */
   state_ids: Record<string, string>;
   completed: MngReportItem[];

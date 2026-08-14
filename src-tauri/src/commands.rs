@@ -1104,6 +1104,10 @@ pub struct MngTargetDto {
     /// 남기되 제출은 막는다 — 감춰버리면 "사이드바엔 있는데 여긴 왜 없지"를
     /// 사용자가 다시 겪는다.
     pub mng_linked: bool,
+    /// 연결된 mng 프로젝트명. 연결을 바꾸거나 풀려면 "지금 무엇에 연결돼
+    /// 있는지"부터 보여야 한다 — 이름 없이 [해제] 버튼만 두면 사용자가 무엇을
+    /// 지우는지 모른 채 누르게 된다. 연결이 없으면 빈 문자열.
+    pub mng_link_name: String,
     /// 상태 그룹 -> 그 그룹의 상태 id. 창에서 작업 상태를 바꿀 때 프로젝트마다
     /// 다른 상태 id를 그때그때 조회하지 않아도 되도록 미리 담아 보낸다.
     pub state_ids: std::collections::HashMap<String, String>,
@@ -1225,13 +1229,17 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
         }
         let (completed, in_progress, upcoming) = mng_report::classify_groups(&mine, today);
 
-        let client_name = project
-            .mng_link
-            .as_ref()
-            .and_then(|v| v.get("client"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let mng_link_str = |key: &str| {
+            project
+                .mng_link
+                .as_ref()
+                .and_then(|v| v.get(key))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        let client_name = mng_link_str("client");
+        let mng_link_name = mng_link_str("name");
 
         let default_content = mng_report::project_to_text(
             &project.name,
@@ -1270,6 +1278,7 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             project_identifier: project.identifier,
             client_name,
             mng_linked,
+            mng_link_name,
             state_ids,
             completed: completed.iter().map(|i| to_mng_item_dto(i)).collect(),
             in_progress: in_progress.iter().map(|i| to_mng_item_dto(i)).collect(),
@@ -1773,6 +1782,7 @@ mod tests {
             project_identifier: name.into(),
             client_name: String::new(),
             mng_linked,
+            mng_link_name: String::new(),
             state_ids: std::collections::HashMap::new(),
             completed: item(done),
             in_progress: item(doing),
