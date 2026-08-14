@@ -937,6 +937,8 @@ pub fn run() {
             commands::open_issue_popup,
             commands::open_mng_daily,
             commands::list_mng_targets,
+            commands::search_mng_projects_cmd,
+            commands::link_mng_project_cmd,
             commands::submit_mng_daily_report_cmd,
             commands::submit_mng_daily_reports_cmd,
             commands::update_mng_daily_report_cmd,

@@ -3,18 +3,24 @@ import { listen } from "@tauri-apps/api/event";
 import {
   getSettings,
   listMngTargets,
+  linkMngProject,
+  searchMngProjects,
   updateWorkItemState,
   submitMngDailyReport,
   submitMngDailyReports,
   updateMngDailyReport,
   deleteMngDailyReport,
 } from "../shared/ipc";
+
+/** `MNG_SEARCH_PER_PAGE`(commands.rs)와 같은 값이어야 페이지 수 계산이 맞다. */
+const MNG_LINK_PER_PAGE = 20;
 import { applyTheme } from "../shared/theme";
 import { colorForId } from "../shared/color";
 import { stateIcon, type StateGroup } from "../shared/planeIcons";
 import type {
   MngApiError,
   MngBulkResult,
+  MngProjectRow,
   MngReportItem,
   MngTarget,
   MngTargets,
@@ -671,6 +677,9 @@ function renderDetail() {
   if (reason) {
     const note = el("div", "mng-form");
     note.appendChild(el("p", "mng-edit-note", reason));
+    // 미연동은 여기서 바로 풀 수 있는 문제다 — 안내만 하고 끝내면 사용자는
+    // 어디로 가야 할지 모른 채 창을 닫게 된다.
+    if (!t.mng_linked) note.appendChild(linkPanel(t));
     detailEl.appendChild(note);
     return;
   }
@@ -678,6 +687,158 @@ function renderDetail() {
   const form = el("div", "mng-form");
   detailEl.appendChild(form);
   renderForm(t, form, d);
+}
+
+/* ---- mng 연동 패널 ----------------------------------------------------- */
+/* 프로젝트별 검색 상태. 카드를 옮겨 다녀도 방금 친 검색어가 남아 있도록 창이
+   살아 있는 동안 유지한다. */
+interface LinkState {
+  q: string;
+  page: number;
+  total: number;
+  rows: MngProjectRow[];
+  loading: boolean;
+  error: string | null;
+  /** 연결 요청 중인 행의 seq. 두 번 눌러 두 번 보내는 것을 막는다. */
+  linking: string | null;
+}
+const linkStates = new Map<string, LinkState>();
+
+function linkStateFor(projectId: string): LinkState {
+  let s = linkStates.get(projectId);
+  if (!s) {
+    s = { q: "", page: 1, total: 0, rows: [], loading: false, error: null, linking: null };
+    linkStates.set(projectId, s);
+  }
+  return s;
+}
+
+async function runLinkSearch(t: MngTarget, page: number) {
+  const s = linkStateFor(t.project_id);
+  s.loading = true;
+  s.error = null;
+  s.page = page;
+  renderDetail();
+  try {
+    const res = await searchMngProjects(s.q, page);
+    s.rows = res.results;
+    s.total = res.total;
+  } catch (e) {
+    s.rows = [];
+    s.total = 0;
+    // 검색 커맨드는 구조화된 mng 에러가 아니라 문자열을 올린다(서버가 503을
+    // 주면 그 본문이 그대로 실린다) — 코드 기반 안내문을 쓸 수 없다.
+    s.error = `검색에 실패했습니다: ${typeof e === "string" ? e : String((e as Error)?.message ?? e)}`;
+  } finally {
+    s.loading = false;
+    renderDetail();
+  }
+}
+
+async function doLink(t: MngTarget, row: MngProjectRow) {
+  const s = linkStateFor(t.project_id);
+  if (s.linking) return;
+  s.linking = row.seq;
+  s.error = null;
+  renderDetail();
+  try {
+    await linkMngProject(t.project_id, row);
+    // 연결되면 제출 가능 여부가 바뀌므로 목록 전체를 다시 읽는다. 여기서
+    // t.mng_linked만 손으로 켜면 서버가 실제로 무엇을 저장했는지와 어긋난다.
+    linkStates.delete(t.project_id);
+    await refresh();
+  } catch (e) {
+    s.linking = null;
+    s.error = mngErrorMessage(e as MngApiError);
+    renderDetail();
+  }
+}
+
+/** 미연동 카드 아래에 붙는 검색·연결 패널. */
+function linkPanel(t: MngTarget): HTMLElement {
+  const s = linkStateFor(t.project_id);
+  const box = el("div", "mng-link");
+
+  const searchRow = el("div", "mng-link-search");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "mng-link-input";
+  input.placeholder = "mng 프로젝트명으로 검색";
+  input.value = s.q;
+  const submit = () => {
+    s.q = input.value.trim();
+    void runLinkSearch(t, 1);
+  };
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    }
+    // 창 전역 Esc(닫기)로 번지지 않게 막는다 — 여기서는 입력만 비운다.
+    if (e.key === "Escape" && input.value) {
+      e.stopPropagation();
+      input.value = "";
+    }
+  };
+  searchRow.appendChild(input);
+  const btn = el("button", "mng-link-btn", "검색") as HTMLButtonElement;
+  btn.type = "button";
+  btn.onclick = submit;
+  searchRow.appendChild(btn);
+  box.appendChild(searchRow);
+
+  if (s.loading) {
+    box.appendChild(el("p", "mng-link-msg", "검색 중…"));
+    return box;
+  }
+  if (s.error) {
+    box.appendChild(el("p", "mng-link-msg err", s.error));
+  }
+  if (s.rows.length === 0) {
+    box.appendChild(
+      el("p", "mng-link-msg", s.q ? "검색 결과가 없습니다." : "프로젝트명을 넣고 검색하세요."),
+    );
+    return box;
+  }
+
+  const list = el("div", "mng-link-list");
+  for (const row of s.rows) {
+    const r = el("div", "mng-link-row");
+    const main = el("div", "mn");
+    main.appendChild(el("span", "nm", row.name));
+    const meta = [row.client, row.state_name, row.period].filter(Boolean).join(" · ");
+    if (meta) main.appendChild(el("span", "mt", meta));
+    r.appendChild(main);
+    const pick = el(
+      "button",
+      "mng-link-btn",
+      s.linking === row.seq ? "연결 중…" : "연결",
+    ) as HTMLButtonElement;
+    pick.type = "button";
+    pick.disabled = s.linking !== null;
+    pick.onclick = () => void doLink(t, row);
+    r.appendChild(pick);
+    list.appendChild(r);
+  }
+  box.appendChild(list);
+
+  const lastPage = Math.max(1, Math.ceil(s.total / MNG_LINK_PER_PAGE));
+  if (lastPage > 1) {
+    const pager = el("div", "mng-link-pager");
+    const prev = el("button", "mng-link-btn", "‹") as HTMLButtonElement;
+    prev.type = "button";
+    prev.disabled = s.page <= 1;
+    prev.onclick = () => void runLinkSearch(t, s.page - 1);
+    const next = el("button", "mng-link-btn", "›") as HTMLButtonElement;
+    next.type = "button";
+    next.disabled = s.page >= lastPage;
+    next.onclick = () => void runLinkSearch(t, s.page + 1);
+    pager.appendChild(prev);
+    pager.appendChild(el("span", "pg", `${s.page} / ${lastPage}`));
+    pager.appendChild(next);
+    box.appendChild(pager);
+  }
+  return box;
 }
 
 /** 일괄 제출 대상. 체크됐고, 담을 항목이 실제로 하나 이상 켜져 있는 것만. */

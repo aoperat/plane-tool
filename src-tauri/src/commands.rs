@@ -11,6 +11,10 @@ use futures::stream::{self, StreamExt};
 /// 서버의 rate limit(429)에 걸리기 쉬워지므로 적당한 값으로 고정한다.
 const SYNC_CONCURRENCY: usize = 6;
 
+/// mng 프로젝트 검색 한 페이지 크기. 창의 목록이 한 화면에 담기는 정도로 잡는다 —
+/// 크게 잡으면 mng 응답이 느려지고, 작게 잡으면 페이지를 계속 넘겨야 한다.
+const MNG_SEARCH_PER_PAGE: u32 = 20;
+
 #[derive(Serialize)]
 pub struct SettingsDto {
     pub base_url: String,
@@ -1283,6 +1287,32 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
         employee_no: report.employee_no,
         targets,
     })
+}
+
+/// mng 프로젝트 검색. 창이 입력할 때마다 부르므로 서버의 60초 캐시에 기댄다.
+#[tauri::command]
+pub async fn search_mng_projects_cmd(
+    app: tauri::AppHandle,
+    q: String,
+    page: u32,
+) -> Result<plane_api::MngProjectSearchResponse, String> {
+    let (client, _) = client(&app)?;
+    client.search_mng_projects(&q, page.max(1), MNG_SEARCH_PER_PAGE).await
+}
+
+/// Plane 프로젝트에 mng 프로젝트를 연결한다. `row`가 없으면 연결 해제.
+/// 성공하면 사이드바·mng 창이 새 상태를 읽도록 새로고침 신호를 보낸다 —
+/// 연결 여부는 제출 가능 여부를 좌우하므로 화면이 낡은 채로 남으면 안 된다.
+#[tauri::command]
+pub async fn link_mng_project_cmd(
+    app: tauri::AppHandle,
+    project_id: String,
+    row: Option<plane_api::MngProjectRow>,
+) -> Result<(), MngApiError> {
+    let (client, _) = client(&app).map_err(MngApiError::network)?;
+    client.link_mng_project(&project_id, row.as_ref()).await?;
+    crate::emit_shared_item_event(&app, "refresh-sidebar", ());
+    Ok(())
 }
 
 #[tauri::command]

@@ -220,6 +220,11 @@ export function mngErrorMessage(err: MngApiError): string {
       return "mng에 연결할 수 없습니다. 다시 시도해 볼 수 있습니다.";
     case "MNG_TIMEOUT":
       return "mng가 시간 내에 응답하지 않아 처리 여부를 알 수 없습니다. 재시도하기 전에 mng에서 직접 확인하세요 — 그냥 다시 보내면 중복 등록될 수 있습니다.";
+    case "NOT_PROJECT_ADMIN":
+      return "이 프로젝트의 관리자만 mng 연결을 바꿀 수 있습니다.";
+    case "INVALID_MNG_LINK":
+    case "MNG_LINK_REQUIRED":
+      return "연결 정보가 올바르지 않습니다. 검색 결과에서 다시 골라 주세요.";
     case "NETWORK":
       return "네트워크 연결을 확인하세요.";
     default:
@@ -339,7 +344,7 @@ export function projectCheckState(
 /** 카드가 왜 잠겼는지. 잠기지 않았으면 null. */
 export function lockedReason(t: MngTargetLike): string | null {
   if (!t.mng_linked) {
-    return "이 프로젝트는 mng와 연결돼 있지 않아 업무일지를 제출할 수 없습니다. Plane 프로젝트 설정에서 mng 프로젝트를 연결하면 다음 새로고침부터 제출할 수 있습니다.";
+    return "이 프로젝트는 mng와 연결돼 있지 않아 업무일지를 제출할 수 없습니다. 아래에서 mng 프로젝트를 찾아 연결하세요.";
   }
   if (t.status === "sent") return null; // 잠기지만 수정·삭제가 가능해 별도 안내를 쓴다.
   if (!hasReportableItems(t)) {

@@ -169,3 +169,26 @@ export interface MngApiError {
   error_code: string;
   message: string;
 }
+
+/** mng 프로젝트 검색 결과 한 줄. 재조회용 실질 키는 year+kind+seq다
+ *  (mng 응답의 "프로젝트ID"는 항상 null이라 쓸 수 없다). */
+export interface MngProjectRow {
+  year: string;
+  kind: string;
+  seq: string;
+  name: string;
+  client: string;
+  kind_name: string;
+  work_name: string;
+  state: string;
+  state_name: string;
+  dept_name: string;
+  period: string;
+}
+
+export interface MngProjectSearch {
+  results: MngProjectRow[];
+  total: number;
+  page: number;
+  per_page: number;
+}

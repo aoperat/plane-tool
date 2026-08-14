@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets, MngBulkEntry, MngBulkResult } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets, MngBulkEntry, MngBulkResult, MngProjectRow, MngProjectSearch } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -187,3 +187,9 @@ export const updateMngDailyReport = (
   });
 export const deleteMngDailyReport = (report_date: string, seq: string) =>
   invoke<void>("delete_mng_daily_report_cmd", { reportDate: report_date, seq });
+
+export const searchMngProjects = (q: string, page: number) =>
+  invoke<MngProjectSearch>("search_mng_projects_cmd", { q, page });
+/** `row`가 null이면 연결 해제. */
+export const linkMngProject = (project_id: string, row: MngProjectRow | null) =>
+  invoke<void>("link_mng_project_cmd", { projectId: project_id, row });

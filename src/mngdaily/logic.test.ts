@@ -287,7 +287,17 @@ describe("제출 대상 선택 규칙", () => {
   });
 
   it("explains why a card is locked, and stays silent for submitted ones", () => {
-    expect(lockedReason(target({ mng_linked: false, status: "not_linked" }))).toContain("연결돼 있지 않아");
+    // 연동 실패는 "왜 안 되는지"가 사유마다 달라서, 하나로 뭉치면 사용자가
+    // 다음에 뭘 해야 할지 알 수 없다.
+    expect(mngErrorMessage({ error_code: "NOT_PROJECT_ADMIN", message: "" })).toContain("관리자");
+    expect(mngErrorMessage({ error_code: "INVALID_MNG_LINK", message: "" })).toContain("연결 정보");
+    expect(mngErrorMessage({ error_code: "MNG_LINK_REQUIRED", message: "" })).toContain("연결 정보");
+
+    // 미연동은 이제 이 창에서 바로 연결할 수 있으므로, 다른 곳에서 하라고
+    // 미루지 않는다.
+    const notLinked = lockedReason(target({ mng_linked: false, status: "not_linked" }));
+    expect(notLinked).toContain("연결돼 있지 않아");
+    expect(notLinked).not.toContain("Plane 프로젝트 설정");
     expect(lockedReason(target())).toContain("담을 작업이 없습니다");
     // 등록 완료는 잠기지만 수정·삭제가 가능해 별도 안내를 쓴다.
     expect(lockedReason(target({ status: "sent", completed: [item()] }))).toBeNull();

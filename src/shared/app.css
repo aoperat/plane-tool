@@ -1332,3 +1332,44 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
   color: var(--accent); background: var(--accent-soft);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+/* ---- mng 연동 패널 (미연동 카드 아래) ---- */
+.mng-link { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.mng-link-search { display: flex; gap: 6px; }
+.mng-link-input {
+  flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 7px; color: var(--text); font-size: 12.5px; padding: 6px 9px;
+  font-family: inherit; outline: none;
+}
+.mng-link-input:focus { border-color: var(--accent); }
+.mng-link-input::placeholder { color: var(--muted-2); }
+.mng-link-btn {
+  flex: none; background: transparent; border: 1px solid var(--border); border-radius: 7px;
+  color: var(--muted); font-size: 12px; padding: 5px 11px; cursor: pointer; font-family: inherit;
+}
+.mng-link-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.mng-link-btn:disabled { opacity: .5; cursor: default; }
+.mng-link-msg { margin: 0; font-size: 11.5px; color: var(--muted-2); }
+.mng-link-msg.err { color: var(--red); }
+/* 목록은 스스로 스크롤한다 — 검색 결과가 길어도 검색창과 페이저는 제자리에 남는다. */
+.mng-link-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 240px; overflow-y: auto;
+}
+.mng-link-list::-webkit-scrollbar { width: 9px; }
+.mng-link-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+.mng-link-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  background: var(--surface-task); border: 1px solid var(--surface-task-border);
+  border-radius: 7px;
+}
+.mng-link-row .mn { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mng-link-row .nm {
+  font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mng-link-row .mt {
+  font-size: 10.5px; color: var(--muted-2);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mng-link-pager { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.mng-link-pager .pg { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }

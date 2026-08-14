@@ -135,6 +135,35 @@ pub struct MngDailyReportsResponse {
     pub rows: Vec<MngDailyRow>,
 }
 
+/// mng 프로젝트 검색 결과 한 줄. Plane 서버가 mng의 한글 키 응답을 정규화해
+/// 돌려주는 스키마 그대로다(`plane/utils/mng.py::normalize_mng_row`).
+/// **재조회용 실질 키는 `year`+`kind`+`seq`** — mng 응답의 "프로젝트ID"는 항상
+/// null이라 쓸 수 없다.
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct MngProjectRow {
+    pub year: String,
+    pub kind: String,
+    pub seq: String,
+    pub name: String,
+    pub client: String,
+    pub kind_name: String,
+    pub work_name: String,
+    pub state: String,
+    pub state_name: String,
+    pub dept_name: String,
+    pub period: String,
+}
+
+/// `GET /mng/projects/` 응답. `total`은 mng가 각 행에 중복으로 실어 보내는
+/// 총건수를 서버가 뽑아낸 것이다.
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct MngProjectSearchResponse {
+    pub results: Vec<MngProjectRow>,
+    pub total: u32,
+    pub page: u32,
+    pub per_page: u32,
+}
+
 /// mng 제출/수정/삭제가 실패했을 때의 구조화된 에러. Plane 서버가 돌려주는
 /// `error_code`(`EMPLOYEE_NO_MISSING`, `PROJECT_NOT_LINKED`, `MNG_REJECTED`,
 /// `MNG_UNAVAILABLE`, `MNG_TIMEOUT`, `ROW_NOT_EDITABLE` 등)를 그대로 프론트에
@@ -799,6 +828,50 @@ impl PlaneClient {
         Ok(page.results.into_iter().map(|a| Activity { field: a.field, actor: a.actor }).collect())
     }
 
+    /// mng 프로젝트를 검색한다. 서버가 60초 캐시를 걸어 두므로 같은 질의를
+    /// 반복해도 mng에 부담이 가지 않는다.
+    pub async fn search_mng_projects(
+        &self,
+        q: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<MngProjectSearchResponse, String> {
+        // 검색어에는 한글·공백은 물론 `&`·`#`도 들어올 수 있다. 쿼리 문자열을
+        // 손으로 포맷하면 그런 문자에서 깨지므로 reqwest의 인코딩에 맡긴다.
+        let url = format!("{}/mng/projects/", self.ws_base());
+        let req = self
+            .http
+            .get(&url)
+            .header("X-Api-Key", &self.api_key)
+            .query(&[
+                ("q", q.to_string()),
+                ("page", page.to_string()),
+                ("per_page", per_page.to_string()),
+            ]);
+        self.send_retrying(req).await?.json().await.map_err(|e| e.to_string())
+    }
+
+    /// Plane 프로젝트에 mng 프로젝트를 연결한다. `row`가 `None`이면 연결 해제.
+    ///
+    /// 검색 결과 행을 그대로 보낸다 — `linked_at`/`linked_by`는 서버가 채우므로
+    /// 클라이언트가 넣으면 안 되고, 서버가 모르는 키를 400으로 거절한다.
+    pub async fn link_mng_project(
+        &self,
+        project_id: &str,
+        row: Option<&MngProjectRow>,
+    ) -> Result<(), MngApiError> {
+        let url = format!("{}/mng/projects/", self.ws_base());
+        let body = serde_json::json!({
+            "project_id": project_id,
+            "mng_link": row,
+        });
+        let resp = self
+            .send_retrying_raw(self.http.post(&url).header("X-Api-Key", &self.api_key).json(&body))
+            .await
+            .map_err(MngApiError::network)?;
+        self.ok_or_mng_error(resp).await
+    }
+
     /// `date`는 "YYYY-MM-DD". 200이 항상 오고(서버가 mng 장애/사번 미등록도 200 +
     /// `mng_available: false`로 표현), 네트워크/파싱 실패만 `Err`가 된다.
     pub async fn get_mng_daily_reports(&self, date: &str) -> Result<MngDailyReportsResponse, String> {
@@ -992,7 +1065,7 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
     }
 
-    use wiremock::matchers::{header, method, path};
+    use wiremock::matchers::{body_partial_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     async fn client_for(server: &MockServer) -> PlaneClient {
@@ -1607,6 +1680,94 @@ mod tests {
 
         let items = client_for(&server).await.list_work_items("p1").await.unwrap();
         assert_eq!(items[0].created_by.as_deref(), Some("pm-id"));
+    }
+
+    #[tokio::test]
+    async fn search_mng_projects_passes_query_and_parses_rows() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/workspaces/acme/mng/projects/"))
+            .and(query_param("q", "울산"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [{
+                    "year": "2026", "kind": "1", "seq": "10",
+                    "name": "울산 통합 시스템", "client": "울산대",
+                    "kind_name": "SI", "work_name": "개발",
+                    "state": "1", "state_name": "진행", "dept_name": "1팀",
+                    "period": "2026-01-01~2026-12-31"
+                }],
+                "total": 37, "page": 2, "per_page": 20
+            })))
+            .mount(&server)
+            .await;
+
+        let res = client_for(&server).await.search_mng_projects("울산", 2, 20).await.unwrap();
+        assert_eq!(res.total, 37);
+        assert_eq!(res.page, 2);
+        assert_eq!(res.results.len(), 1);
+        assert_eq!(res.results[0].name, "울산 통합 시스템");
+        assert_eq!(res.results[0].seq, "10");
+    }
+
+    #[tokio::test]
+    async fn link_mng_project_sends_only_the_search_row_fields() {
+        // 서버가 linked_at/linked_by 를 채우므로 클라이언트는 보내지 않는다.
+        // 모르는 키를 얹으면 서버가 400(Unknown mng_link keys)으로 거절한다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/mng/projects/"))
+            .and(body_partial_json(serde_json::json!({
+                "project_id": "p1",
+                "mng_link": { "year": "2026", "kind": "1", "seq": "10", "name": "울산 통합 시스템" }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "project_id": "p1", "mng_link": { "year": "2026" }
+            })))
+            .mount(&server)
+            .await;
+
+        let row = MngProjectRow {
+            year: "2026".into(), kind: "1".into(), seq: "10".into(),
+            name: "울산 통합 시스템".into(), client: "울산대".into(),
+            kind_name: "SI".into(), work_name: "개발".into(),
+            state: "1".into(), state_name: "진행".into(),
+            dept_name: "1팀".into(), period: "2026".into(),
+        };
+        client_for(&server).await.link_mng_project("p1", Some(&row)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unlink_mng_project_sends_a_null_link() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/mng/projects/"))
+            .and(body_partial_json(serde_json::json!({ "project_id": "p1", "mng_link": null })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "project_id": "p1", "mng_link": null
+            })))
+            .mount(&server)
+            .await;
+
+        client_for(&server).await.link_mng_project("p1", None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn link_mng_project_surfaces_the_server_error_code() {
+        // 프로젝트 관리자가 아니면 403 + NOT_PROJECT_ADMIN. 화면이 사유를
+        // 구분해 안내할 수 있어야 하므로 error_code 를 그대로 올린다.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/mng/projects/"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "error": "Only a project admin can change the mng link.",
+                "error_code": "NOT_PROJECT_ADMIN"
+            })))
+            .mount(&server)
+            .await;
+
+        let err = client_for(&server).await.link_mng_project("p1", None).await.unwrap_err();
+        assert_eq!(err.error_code, "NOT_PROJECT_ADMIN");
     }
 
     #[test]
