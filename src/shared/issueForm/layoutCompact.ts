@@ -145,6 +145,9 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
   async function openAssigneePopover() {
     if (!state.selectedId) return;
     await ctx.loadMembers();
+    // 목록을 이제 막 받아왔을 수 있다 — 칩이 이름을 몰라 "1명"으로 적어둔 상태라면
+    // 여기서 다시 그려야 실제 이름이 나온다.
+    renderChips();
     renderAssigneePopoverItems();
     fieldPopover.hidden = false;
     openPopover = "assignee";

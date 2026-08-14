@@ -43,6 +43,23 @@ let detailFetchPromise: Promise<WorkItemDetail> | null = null;
 
 let loadRequestId = 0;
 
+/** 빠른 추가와 같은 계약이다 — 어느 프로젝트에 대한 요청인지 await 전에 붙잡아
+ *  두고, 돌아왔을 때 항목이 바뀌었으면 늦게 온 목록은 버린다. */
+async function loadMembers() {
+  const id = card.state.selectedId;
+  if (!id || card.state.membersLoadedForProject === id) return;
+  try {
+    const members = await listMembers(id);
+    if (card.state.selectedId !== id) return;
+    card.state.members = members;
+    card.state.membersLoadedForProject = id;
+  } catch (err) {
+    if (card.state.selectedId !== id) return;
+    card.state.members = [];
+    console.error("listMembers failed:", err);
+  }
+}
+
 const card = mountIssueCard({
   root: document.getElementById("cardHost")!,
   title: "할 일 수정",
@@ -51,22 +68,7 @@ const card = mountIssueCard({
   emptyAssignee: "none",
   headerExtra: [browserBtn],
   footer,
-  loadMembers: async () => {
-    // 빠른 추가와 같은 계약이다 — 어느 프로젝트에 대한 요청인지 await 전에 붙잡아
-    // 두고, 돌아왔을 때 항목이 바뀌었으면 늦게 온 목록은 버린다.
-    const id = card.state.selectedId;
-    if (!id || card.state.membersLoadedForProject === id) return;
-    try {
-      const members = await listMembers(id);
-      if (card.state.selectedId !== id) return;
-      card.state.members = members;
-      card.state.membersLoadedForProject = id;
-    } catch (err) {
-      if (card.state.selectedId !== id) return;
-      card.state.members = [];
-      console.error("listMembers failed:", err);
-    }
-  },
+  loadMembers,
   onLayoutChange: (kind) => {
     // 빠른 추가와 같은 설정값을 쓴다 — 한쪽에서 바꾸면 양쪽이 바뀐다.
     setQuickaddLayout(kind).catch((err) => console.error("setQuickaddLayout failed:", err));
@@ -167,6 +169,12 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   card.state.membersLoadedForProject = null;
   card.clearError();
   card.clearTitleError();
+  // 담당자 칩에 이름을 띄우려면 목록이 있어야 한다. 한눈에 보기는 담당자 행이 늘
+  // 보여 스스로 받아오지만 컴팩트는 팝오버를 열 때까지 기다린다 — 고칠 때는 담당자가
+  // 이미 정해져 있으므로 여기서 미리 받아 "1명" 대신 이름이 보이게 한다.
+  loadMembers().then(() => {
+    if (requestId === loadRequestId) card.render();
+  });
 
   if (snapshot) {
     // 이미 동기화로 받아둔 값이 있다 — 전체 스피너 없이 즉시 편집 가능한 폼을 보여준다.
