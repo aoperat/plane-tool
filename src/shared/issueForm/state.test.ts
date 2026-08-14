@@ -52,14 +52,27 @@ describe("담당자", () => {
   it("setSingleAssignee는 선택을 통째로 바꾼다", () => {
     const s = createFormState();
     s.assigneeIds = ["a", "b"];
-    setSingleAssignee(s, M("c"));
+    setSingleAssignee(s, M("c"), "me");
     expect(s.assigneeIds).toEqual(["c"]);
   });
-  it('"나"를 고르면 빈 배열로 되돌린다 — 서버가 호출자에게 할당한다', () => {
+  it('"me" 모드에서 "나"를 고르면 빈 배열로 되돌린다 — 서버가 호출자에게 할당한다', () => {
     const s = createFormState();
     s.assigneeIds = ["a"];
-    setSingleAssignee(s, M("me", true));
+    setSingleAssignee(s, M("me", true), "me");
     expect(s.assigneeIds).toEqual([]);
+  });
+  it('"none" 모드에서는 본인을 골라도 명시적 id로 넣는다 — 고칠 때 "나"는 비우기가 아니다', () => {
+    const s = createFormState();
+    setSingleAssignee(s, M("me", true), "none");
+    expect(s.assigneeIds).toEqual(["me"]);
+  });
+  it("본인이 아니면 두 모드 모두 그 한 사람으로 바꾼다", () => {
+    const s = createFormState();
+    s.assigneeIds = ["x", "y"];
+    setSingleAssignee(s, M("alice"), "me");
+    expect(s.assigneeIds).toEqual(["alice"]);
+    setSingleAssignee(s, M("bob"), "none");
+    expect(s.assigneeIds).toEqual(["bob"]);
   });
 });
 

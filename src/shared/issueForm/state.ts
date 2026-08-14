@@ -1,6 +1,7 @@
 import { DATE_PRESETS, resolveDatePreset, shiftIsoDate, type DatePresetKey } from "../datePresets";
 import type { Priority, StateGroup } from "../planeIcons";
 import type { Member } from "../types";
+import type { EmptyAssignee } from "./assigneeDisplay";
 
 export type DateChoice = DatePresetKey | "custom";
 
@@ -74,10 +75,12 @@ export function toggleAssignee(s: FormState, id: string): void {
     : [...s.assigneeIds, id];
 }
 
-/** 선택을 이 한 사람으로 바꾼다. "나"를 고르면 빈 배열로 되돌린다 — 명시적 id를
- *  박아두는 것보다, 멤버 목록을 다시 받아도 "고르지 않음"으로 읽히는 게 낫다. */
-export function setSingleAssignee(s: FormState, member: Member): void {
-  s.assigneeIds = member.is_me ? [] : [member.id];
+/** 선택을 이 한 사람으로 바꾼다. "me" 모드에서 본인을 고르면 빈 배열로 되돌린다 —
+ *  명시적 id를 박아두는 것보다, 멤버 목록을 다시 받아도 "고르지 않음"으로 읽히는 게
+ *  낫다. "none" 모드(할 일 수정)에서는 그 되돌림이 "담당자 지우기"로 읽히므로 하지
+ *  않는다 — 거기서 "나"를 고르는 것은 나를 지정하겠다는 뜻이다. */
+export function setSingleAssignee(s: FormState, member: Member, mode: EmptyAssignee): void {
+  s.assigneeIds = mode === "me" && member.is_me ? [] : [member.id];
 }
 
 /** 등록 성공 후 폼을 비운다. 고른 프로젝트와 멤버 목록은 남긴다 — 같은 프로젝트에
