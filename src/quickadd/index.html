@@ -6,32 +6,11 @@
     <link rel="stylesheet" href="../shared/app.css" />
   </head>
   <body class="transparent-body">
-    <div class="popup" style="position:relative;top:auto;left:auto;width:100%;transform:none;">
-      <div class="qa-header" data-tauri-drag-region>
-        <svg class="qa-grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>
-        <span class="qa-header-title">빠른 추가</span>
-        <!-- 레이아웃 토글. 헤더 전체가 드래그 영역이지만 이 버튼들은 pointer-events를
-             살려두므로 클릭이 창을 끌지 않는다 (닫기 버튼과 같은 처리). -->
-        <div class="qa-layout-toggle" id="qaLayoutToggle" role="group" aria-label="빠른 추가 화면 모양">
-          <button type="button" data-layout="compact" aria-label="컴팩트">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="1.5" y="9.5" width="8" height="5" rx="2"/><rect x="11" y="9.5" width="6" height="5" rx="2"/><rect x="18.5" y="9.5" width="4" height="5" rx="2"/></svg>
-          </button>
-          <button type="button" data-layout="expanded" aria-label="한눈에 보기">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="4" width="5" height="3.4" rx="1.2"/><rect x="9" y="4" width="13" height="3.4" rx="1.2"/><rect x="2" y="10.3" width="5" height="3.4" rx="1.2"/><rect x="9" y="10.3" width="13" height="3.4" rx="1.2"/><rect x="2" y="16.6" width="5" height="3.4" rx="1.2"/><rect x="9" y="16.6" width="13" height="3.4" rx="1.2"/></svg>
-          </button>
-        </div>
-        <button type="button" id="qaClose" class="qa-close" aria-label="닫기 (Esc)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="popup-top" data-tauri-drag-region>
-        <div class="accent-bar" data-tauri-drag-region></div>
-        <input id="title" class="title-input" placeholder="진행 중인 작업을 입력하고 Ctrl+Enter…" autofocus />
-        <span id="titleTrailing"></span>
-      </div>
-      <textarea id="description" class="description-input" placeholder="설명을 입력하세요…" rows="1" hidden></textarea>
-      <div id="fieldsHost"></div>
-      <p class="em-error" id="qaError" hidden></p>
+    <!-- 카드(헤더·제목·설명·필드·에러)는 shared/issueForm/card.ts가 그린다.
+         이 파일에는 이 창에만 있는 것 — 푸터와 안내 말풍선 — 만 둔다. -->
+    <div id="cardHost"></div>
+
+    <template id="qaFooter">
       <div class="popup-bottom">
         <button id="projBtn" class="proj-select" type="button">
           <span id="projDot" class="dot"></span>
@@ -40,16 +19,20 @@
         </button>
         <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
       </div>
-      <!-- 업데이트 후 첫 안내. 제목 입력을 막지 않도록 팝업 위에 겹쳐 뜨기만 하고
-           포커스는 가져가지 않는다 (main.ts의 코치마크 로직 참고). -->
-      <div class="qa-coach" id="qaCoach" hidden>
+    </template>
+
+    <!-- 업데이트 후 첫 안내. 제목 입력을 막지 않도록 카드 위에 겹쳐 뜨기만 하고
+         포커스는 가져가지 않는다 (main.ts의 코치마크 로직 참고). -->
+    <template id="qaCoach">
+      <div class="qa-coach" hidden>
         <div class="qa-coach-head">✨ 새로워졌어요</div>
         <p>담당자·상태·우선순위·날짜를 <b>접지 않고 한 화면에</b> 펼쳐 보는 모양이 생겼습니다. 여기서 바로 바꿀 수 있어요.</p>
         <div class="qa-coach-foot">
           <button type="button" id="qaCoachOk" class="qa-coach-ok">알겠어요</button>
         </div>
       </div>
-    </div>
+    </template>
+
     <div id="qaTip" class="qa-tip" hidden></div>
     <script type="module" src="./main.ts"></script>
   </body>

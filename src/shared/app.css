@@ -81,15 +81,14 @@ kbd {
    this box, and the border never stretches around expanded content. No
    box-shadow: the QuickAdd window turns off the OS shadow (tauri.conf.json). */
 .popup {
-  position: fixed; top: 230px; left: 50%; transform: translateX(-50%);
-  width: 540px; background: var(--panel);
+  position: relative; width: 100%; background: var(--panel);
   border: 1px solid var(--border); border-radius: var(--radius);
   z-index: 30; overflow: visible;
 }
 .popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
 /* 제목 줄 오른쪽 자리는 레이아웃이 채운다 — 비어 있으면 flex gap까지 사라지게
    숨긴다. 안 그러면 아무것도 없는데 제목 입력이 12px 좁아진다. */
-#titleTrailing:empty { display: none; }
+[data-title-trailing]:empty { display: none; }
 .accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--accent); }
 .title-input {
   flex: 1; background: transparent; border: none; outline: none;
@@ -891,7 +890,7 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .em-close:hover { color: var(--text); }
 .em-loading { padding: 30px 18px; text-align: center; color: var(--muted); font-size: 13px; margin: 0; }
 .em-form .title-input { width: 100%; font-size: 16px; }
-.em-error { color: var(--red); font-size: 12px; margin: 0; padding: 0 18px 12px; }
+.form-error { color: var(--red); font-size: 12px; margin: 0; padding: 0 18px 12px; }
 .em-foot {
   position: relative; display: flex; align-items: center;
   padding: 12px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
