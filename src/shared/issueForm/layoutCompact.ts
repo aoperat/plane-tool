@@ -11,6 +11,7 @@ import {
 } from "../dropdownKeyboard";
 import type { Member } from "../types";
 import { dateChoiceLabel, shiftDateField, toggleAssignee, setSingleAssignee } from "./state";
+import { assigneeChip, isAssigned, memberRowLabel } from "./assigneeDisplay";
 import type { LayoutHandle, LayoutHosts, LayoutContext } from "./layout";
 
 const CHIP_ROW_HTML = `
@@ -38,28 +39,17 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
   const chipDue = hosts.fields.querySelector("#chipDue") as HTMLElement;
   const chipPriority = hosts.fields.querySelector("#chipPriority") as HTMLElement;
   const chipState = hosts.fields.querySelector("#chipState") as HTMLElement;
-  const chipDesc = hosts.fields.querySelector("#chipDesc") as HTMLElement;
+  const chipDesc = hosts.fields.querySelector("#chipDesc") as HTMLButtonElement;
   const fieldPopover = hosts.fields.querySelector("#fieldPopover") as HTMLElement;
 
   let openPopover: PopoverKind = null;
 
   function renderAssigneeChip() {
+    const { avatar: avatarText, label } = assigneeChip(ctx.emptyAssignee, state.assigneeIds, state.members);
     chipAssignee.textContent = "";
     const avatar = document.createElement("span");
     avatar.className = "avatar";
-    let label: string;
-    if (state.assigneeIds.length === 0) {
-      avatar.textContent = "나";
-      label = "나";
-    } else if (state.assigneeIds.length === 1) {
-      const m = state.members.find((x) => x.id === state.assigneeIds[0]);
-      const name = m ? m.display_name : "1명";
-      avatar.textContent = name.slice(0, 1);
-      label = name;
-    } else {
-      avatar.textContent = String(state.assigneeIds.length);
-      label = `${state.assigneeIds.length}명`;
-    }
+    avatar.textContent = avatarText;
     chipAssignee.appendChild(avatar);
     chipAssignee.appendChild(document.createTextNode(" " + label));
   }
@@ -86,13 +76,13 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
   // Hiding only hides — typed text stays in the textarea and is still submitted,
   // so toggling off and back on never loses a draft.
   let descVisible = false;
-  function setDescVisible(visible: boolean) {
+  function setDescVisible(visible: boolean, focus = true) {
     descVisible = visible;
     descriptionEl.hidden = !visible;
     chipDesc.classList.toggle("active", visible);
     chipDesc.title = visible ? "설명 숨기기" : "설명 추가";
     autoResizeDescription();
-    if (visible) descriptionEl.focus();
+    if (visible && focus) descriptionEl.focus();
   }
 
   function closePopover() {
@@ -114,24 +104,38 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
       renderAssigneePopoverItems();
       return;
     }
-    setSingleAssignee(state, m);
+    setSingleAssignee(state, m, ctx.emptyAssignee);
     renderChips();
     closePopover();
     ctx.focusTitle();
   }
 
   // The project member list already includes the current user, so there's no separate
-  // "나 (기본값)" placeholder row — the matching member is labeled "(나)" and shows as
-  // selected whenever assigneeIds is empty (the default-to-self state).
+  // "나 (기본값)" placeholder row — in "me" mode the matching member is labeled "(나)" and
+  // shows as selected whenever assigneeIds is empty (the default-to-self state). In "none"
+  // mode (할 일 수정) an empty selection means nobody is assigned, so a "담당자 없음" row
+  // goes on top instead — that state is real there and has to be reachable.
   function renderAssigneePopoverItems() {
     fieldPopover.innerHTML = "";
+    if (ctx.emptyAssignee === "none") {
+      const noneItem = document.createElement("div");
+      noneItem.className = "dd-item" + (state.assigneeIds.length === 0 ? " sel" : "");
+      noneItem.textContent = "담당자 없음";
+      noneItem.dataset.none = "1";
+      noneItem.onclick = () => {
+        state.assigneeIds = [];
+        renderChips();
+        closePopover();
+        ctx.focusTitle();
+      };
+      fieldPopover.appendChild(noneItem);
+    }
     for (const m of state.members) {
       const item = document.createElement("div");
-      const selected = state.assigneeIds.includes(m.id) || (m.is_me && state.assigneeIds.length === 0);
-      item.className = "dd-item" + (selected ? " sel" : "");
-      item.textContent = m.is_me ? `${m.display_name} (나)` : m.display_name;
+      item.className = "dd-item" + (isAssigned(ctx.emptyAssignee, m, state.assigneeIds) ? " sel" : "");
+      item.textContent = memberRowLabel(ctx.emptyAssignee, m);
       item.dataset.id = m.id;
-      if (m.is_me) item.dataset.self = "1";
+      if (ctx.emptyAssignee === "me" && m.is_me) item.dataset.self = "1";
       item.onclick = (e) => handleAssigneeItemClick(e, m);
       fieldPopover.appendChild(item);
     }
@@ -261,6 +265,13 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
       e.preventDefault();
       const index = keyboardFocusIndex(fieldPopover);
       const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
+      if (focused?.dataset.none) {
+        state.assigneeIds = [];
+        renderChips();
+        renderAssigneePopoverItems();
+        setKeyboardFocusIndex(fieldPopover, index);
+        return;
+      }
       if (!focused?.dataset.id) return;
       toggleAssignee(state, focused.dataset.id);
       renderChips();
@@ -271,7 +282,10 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
       // 잡아야 하므로, 일반 Enter만 받는다.
       e.preventDefault();
       const focused = fieldPopover.querySelector<HTMLElement>(".dd-item.kbd-focus");
-      if (focused?.dataset.id) {
+      if (focused?.dataset.none) {
+        state.assigneeIds = [];
+        renderChips();
+      } else if (focused?.dataset.id) {
         state.assigneeIds = focused.dataset.self ? [] : [focused.dataset.id];
         renderChips();
       }
@@ -315,17 +329,30 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
     if (openPopover === "due") openDatePopover("due");
   });
 
-  // Single-select cycle — matches a plain (non-Ctrl) click. Empty assigneeIds means
-  // "defaults to me", so start the cycle from the "me" row when nothing is picked yet.
-  attachWheelCycle(chipAssignee, () => state.members.length, (delta) => {
-    const meIndex = state.members.findIndex((m) => m.is_me);
-    const currentId = state.assigneeIds[0] ?? state.members[meIndex]?.id;
-    const i = state.members.findIndex((m) => m.id === currentId);
-    const next = state.members[((i === -1 ? meIndex : i) + delta + state.members.length) % state.members.length];
-    setSingleAssignee(state, next);
-    renderChips();
-    if (openPopover === "assignee") openAssigneePopover();
-  });
+  // Single-select cycle — matches a plain (non-Ctrl) click. In "me" mode empty assigneeIds
+  // means "defaults to me", so the cycle starts from the "me" row when nothing is picked
+  // yet. In "none" mode "담당자 없음" (null) is a real stop in the cycle instead.
+  attachWheelCycle(
+    chipAssignee,
+    () => (ctx.emptyAssignee === "none" ? state.members.length + 1 : state.members.length),
+    (delta) => {
+      if (ctx.emptyAssignee === "none") {
+        const options: (Member | null)[] = [null, ...state.members];
+        const currentId = state.assigneeIds[0] ?? null;
+        const i = options.findIndex((m) => (m?.id ?? null) === currentId);
+        const next = options[((i === -1 ? 0 : i) + delta + options.length) % options.length];
+        state.assigneeIds = next ? [next.id] : [];
+      } else {
+        const meIndex = state.members.findIndex((m) => m.is_me);
+        const currentId = state.assigneeIds[0] ?? state.members[meIndex]?.id;
+        const i = state.members.findIndex((m) => m.id === currentId);
+        const next = state.members[((i === -1 ? meIndex : i) + delta + state.members.length) % state.members.length];
+        setSingleAssignee(state, next, ctx.emptyAssignee);
+      }
+      renderChips();
+      if (openPopover === "assignee") openAssigneePopover();
+    },
+  );
 
   // DOM order of the field chips, used for ArrowLeft/ArrowRight navigation between them.
   const chips = [chipAssignee, chipStart, chipDue, chipState, chipPriority, chipDesc];
@@ -351,6 +378,11 @@ export function mountCompact(hosts: LayoutHosts, ctx: LayoutContext): LayoutHand
     render: renderChips,
     closeOverlays: () => { closePopover(); },
     resetView: () => { closePopover(); setDescVisible(false); },
+    setDescriptionVisible: (visible: boolean, focus = true) => setDescVisible(visible, focus),
+    setDescriptionEnabled: (enabled: boolean) => {
+      chipDesc.disabled = !enabled;
+      chipDesc.title = enabled ? (descVisible ? "설명 숨기기" : "설명 추가") : "설명 불러오는 중…";
+    },
     hasOpenOverlay: () => openPopover !== null,
     width: 540,
     overlayBottom: () => (openPopover && !fieldPopover.hidden

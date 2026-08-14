@@ -62,6 +62,7 @@ const hosts: LayoutHosts = {
 
 const ctx: LayoutContext = {
   state,
+  emptyAssignee: "me",
   onResize: () => resizeToFit(),
   loadMembers: async () => {
     // 어느 프로젝트에 대한 요청인지 await 전에 붙잡아 둔다. 응답이 오는 사이 사용자가
