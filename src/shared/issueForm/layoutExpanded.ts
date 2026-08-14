@@ -1,5 +1,6 @@
 import { splitAssigneeSlots } from "./assigneeSlots";
 import { resolveDateChoice, shiftDateField, toggleAssignee, setSingleAssignee } from "./state";
+import { isAssigned as isAssignedIn, personChipLabel } from "./assigneeDisplay";
 import type { LayoutHandle, LayoutContext, LayoutHosts } from "./layout";
 import { DATE_PRESETS, type DatePresetKey } from "../datePresets";
 import { attachWheelCycle } from "../wheelCycle";
@@ -121,16 +122,17 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
   const priorityTrack = hosts.fields.querySelector<HTMLElement>("[data-priority]")!;
   const peoplePop = hosts.fields.querySelector<HTMLElement>("[data-people-pop]")!;
   const peopleRow = peopleEl.closest<HTMLElement>(".qa2-row")!;
-  const descToggle = hosts.titleTrailing.querySelector<HTMLElement>("[data-desc-toggle]")!;
+  const descToggle = hosts.titleTrailing.querySelector<HTMLButtonElement>("[data-desc-toggle]")!;
   // 팝오버는 카드(.popup) 기준으로 절대 배치한다 — 담당자 행이 아니라 카드가
   // 위치 기준 조상이라, 목업의 place()와 같은 좌표 계산을 그대로 쓴다.
   const cardEl = hosts.fields.closest<HTMLElement>(".popup")!;
 
   // ===== 담당자 =====
 
-  /** 비어 있는 assigneeIds는 "나"를 뜻한다(서버가 호출자에게 할당) — v1과 같은 판정이다. */
-  function isAssigned(m: Member): boolean {
-    return state.assigneeIds.includes(m.id) || (m.is_me && state.assigneeIds.length === 0);
+  /** "me" 모드에서 비어 있는 assigneeIds는 "나"를 뜻한다(서버가 호출자에게 할당).
+   *  "none" 모드에서는 아무도 지정되지 않은 것이라 본인도 꺼진다 — assigneeDisplay.ts. */
+  function isAssignedHere(m: Member): boolean {
+    return isAssignedIn(ctx.emptyAssignee, m, state.assigneeIds);
   }
 
   function avatarOf(m: Member): HTMLElement {
@@ -149,7 +151,7 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
       render();
       return;
     }
-    setSingleAssignee(state, m);
+    setSingleAssignee(state, m, ctx.emptyAssignee);
     closePeoplePop();
     render();
     ctx.focusTitle();
@@ -213,16 +215,40 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
 
   function renderPeople() {
     requestMembers();
-    const { inline, overflow } = splitAssigneeSlots(state.members, state.assigneeIds, ASSIGNEE_SLOTS);
+    // "없음" 칩이 한 칸을 먹으므로 인라인 칸을 하나 줄인다 — 그러지 않으면 660px에
+    // 칩 다섯이 들어가 "+N"이 밀린다.
+    const slots = ASSIGNEE_SLOTS - (ctx.emptyAssignee === "none" ? 1 : 0);
+    const { inline, overflow } = splitAssigneeSlots(state.members, state.assigneeIds, slots);
     peopleEl.innerHTML = "";
+
+    // 고칠 때는 "아무도 지정 안 됨"이 실제 상태다 — 팝오버를 열지 않고 이 칸 하나로
+    // 되돌릴 수 있어야 한다. 만들 때(빠른 추가)는 비우면 나에게 가므로 이 칩이 없다.
+    if (ctx.emptyAssignee === "none") {
+      const noneChip = document.createElement("button");
+      noneChip.type = "button";
+      noneChip.className = "person" + (state.assigneeIds.length === 0 ? " on" : "");
+      const avatar = document.createElement("span");
+      avatar.className = "avatar";
+      avatar.textContent = "-";
+      noneChip.appendChild(avatar);
+      noneChip.appendChild(document.createTextNode(" 없음"));
+      noneChip.addEventListener("click", () => {
+        state.assigneeIds = [];
+        render();
+        ctx.focusTitle();
+      });
+      peopleEl.appendChild(noneChip);
+    }
+
     for (const m of inline) {
       const chip = document.createElement("button");
       chip.type = "button";
-      chip.className = "person" + (isAssigned(m) ? " on" : "");
+      chip.className = "person" + (isAssignedHere(m) ? " on" : "");
       chip.dataset.memberId = m.id;
       chip.appendChild(avatarOf(m));
       // 목업대로 본인은 "나"로 줄여 적는다 — 기본 담당자라 이름을 다 쓸 이유가 없다.
-      chip.appendChild(document.createTextNode(" " + (m.is_me ? "나" : m.display_name)));
+      // "none" 모드에서는 기본 담당자가 아니므로 이름을 그대로 쓴다.
+      chip.appendChild(document.createTextNode(" " + personChipLabel(ctx.emptyAssignee, m)));
       chip.addEventListener("click", (e) => handlePersonClick(e, m));
       peopleEl.appendChild(chip);
     }
@@ -411,12 +437,12 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
 
   // 숨기기는 숨기기일 뿐이다 — 입력한 글은 textarea에 남아 그대로 등록된다.
   let descVisible = false;
-  function setDescVisible(visible: boolean) {
+  function setDescVisible(visible: boolean, focus = true) {
     descVisible = visible;
     descriptionEl.hidden = !visible;
     descToggle.classList.toggle("on", visible);
     autoResizeDescription();
-    if (visible) descriptionEl.focus();
+    if (visible && focus) descriptionEl.focus();
   }
   descToggle.addEventListener("click", () => setDescVisible(!descVisible));
 
@@ -436,6 +462,11 @@ export function mountExpanded(hosts: LayoutHosts, ctx: LayoutContext): LayoutHan
     render,
     closeOverlays: () => { closePeoplePop(); },
     resetView: () => { closePeoplePop(); setDescVisible(false); },
+    setDescriptionVisible: (visible: boolean, focus = true) => setDescVisible(visible, focus),
+    setDescriptionEnabled: (enabled: boolean) => {
+      descToggle.disabled = !enabled;
+      descToggle.title = enabled ? "" : "설명 불러오는 중…";
+    },
     hasOpenOverlay: () => !peoplePop.hidden,
     width: 660,
     overlayBottom: () => (peoplePop.hidden ? 0 : Math.ceil(peoplePop.getBoundingClientRect().bottom)),
