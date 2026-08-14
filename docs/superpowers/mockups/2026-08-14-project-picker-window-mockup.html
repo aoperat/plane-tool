@@ -1,0 +1,670 @@
+<title>프로젝트 검색 잘림</title>
+<style>
+/* ── 페이지 크롬: 차가운 슬레이트 + 딥 틸 강조. 앱 목업이 쓰는 파랑과
+      겹치지 않게 골랐다 — 목업 안의 accent가 페이지 UI로 오독되면 안 된다. */
+:root {
+  --ink: #14171c;
+  --ink-2: #3d444f;
+  --ink-3: #6b7280;
+  --ground: #eceef2;
+  --ground-2: #e2e5eb;
+  --card: #f7f8fa;
+  --rule: #cfd4dd;
+  --rule-hard: #a8b0bd;
+  --teal: #0f6f6c;
+  --teal-soft: rgba(15,111,108,0.10);
+  --alarm: #c8372d;
+  --alarm-soft: rgba(200,55,45,0.10);
+  --desk: #d7dbe2;
+
+  /* 앱 목업 팔레트 — src/shared/app.css 라이트 모드 값 그대로 */
+  --a-bg: #f4f5f7;
+  --a-panel: #ffffff;
+  --a-panel-2: #eef0f3;
+  --a-border: #dfe2e7;
+  --a-text: #1c1f26;
+  --a-muted: #6b7280;
+  --a-muted-2: #9aa1ac;
+  --a-accent: #3f68e0;
+  --a-accent-soft: rgba(63,104,224,0.12);
+  --a-green: #1f9d55;
+  --a-red: #d6414d;
+  --a-shadow: 0 12px 40px rgba(15,23,42,0.12), 0 2px 8px rgba(15,23,42,0.08);
+
+  --sans: -apple-system, "Segoe UI", Roboto, "Pretendard", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e8ebf0;
+    --ink-2: #aeb6c2;
+    --ink-3: #79818e;
+    --ground: #0f1116;
+    --ground-2: #161920;
+    --card: #171a21;
+    --rule: #2b303a;
+    --rule-hard: #3d444f;
+    --teal: #4fd1c5;
+    --teal-soft: rgba(79,209,197,0.12);
+    --alarm: #f2705f;
+    --alarm-soft: rgba(242,112,95,0.12);
+    --desk: #1b1f27;
+
+    --a-bg: #0d0e12;
+    --a-panel: #16181d;
+    --a-panel-2: #1c1f26;
+    --a-border: #2a2e37;
+    --a-text: #e6e8ec;
+    --a-muted: #8a909c;
+    --a-muted-2: #5c626d;
+    --a-accent: #4f7cff;
+    --a-accent-soft: rgba(79,124,255,0.14);
+    --a-green: #2ecc71;
+    --a-red: #ef4d56;
+    --a-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #e8ebf0;
+  --ink-2: #aeb6c2;
+  --ink-3: #79818e;
+  --ground: #0f1116;
+  --ground-2: #161920;
+  --card: #171a21;
+  --rule: #2b303a;
+  --rule-hard: #3d444f;
+  --teal: #4fd1c5;
+  --teal-soft: rgba(79,209,197,0.12);
+  --alarm: #f2705f;
+  --alarm-soft: rgba(242,112,95,0.12);
+  --desk: #1b1f27;
+
+  --a-bg: #0d0e12;
+  --a-panel: #16181d;
+  --a-panel-2: #1c1f26;
+  --a-border: #2a2e37;
+  --a-text: #e6e8ec;
+  --a-muted: #8a909c;
+  --a-muted-2: #5c626d;
+  --a-accent: #4f7cff;
+  --a-accent-soft: rgba(79,124,255,0.14);
+  --a-green: #2ecc71;
+  --a-red: #ef4d56;
+  --a-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+
+/* ── 헤더 ── */
+header { border-bottom: 2px solid var(--ink); padding-bottom: 22px; margin-bottom: 8px; }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--teal); margin: 0 0 10px;
+}
+h1 {
+  font-size: clamp(30px, 5vw, 46px); line-height: 1.08; margin: 0 0 12px;
+  font-weight: 800; letter-spacing: -0.035em; text-wrap: balance;
+}
+.lede { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: 16.5px; }
+.lede code { font-family: var(--mono); font-size: .88em; color: var(--ink); }
+
+section { margin-top: 56px; }
+h2 {
+  font-size: 13px; font-family: var(--mono); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+  margin: 0 0 6px; display: flex; align-items: baseline; gap: 10px;
+}
+h2::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+h3 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+p { margin: 0 0 12px; }
+.muted { color: var(--ink-2); }
+
+/* ── 안(案) 카드 ── */
+.opt {
+  display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+  gap: 32px; align-items: start;
+  background: var(--card); border: 1px solid var(--rule);
+  border-radius: 4px; padding: 24px; margin-top: 20px;
+}
+.opt.pick { border-color: var(--teal); box-shadow: inset 3px 0 0 var(--teal); }
+.opt.bad { border-color: var(--rule); }
+@media (max-width: 860px) { .opt { grid-template-columns: 1fr; } }
+
+.tag {
+  display: inline-block; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px;
+  border-radius: 3px; margin-bottom: 10px;
+}
+.tag.rec { background: var(--teal-soft); color: var(--teal); }
+.tag.now { background: var(--alarm-soft); color: var(--alarm); }
+.tag.alt { background: var(--ground-2); color: var(--ink-3); }
+
+ul.tl { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 7px; }
+ul.tl li { display: grid; grid-template-columns: 16px 1fr; gap: 9px; font-size: 14.5px; align-items: start; }
+ul.tl li .m { font-family: var(--mono); font-weight: 700; line-height: 1.5; }
+li.up .m { color: var(--teal); }
+li.dn .m { color: var(--alarm); }
+
+/* ── 가상 화면 프레임 ── */
+.stage { display: grid; gap: 10px; }
+.screen {
+  position: relative; height: 420px; overflow: hidden;
+  background: var(--desk); border: 1px solid var(--rule-hard);
+  border-radius: 3px;
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.screen::after {
+  content: "화면 아래 끝"; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 18px; background: var(--ink); color: var(--ground);
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+  display: flex; align-items: center; padding-left: 8px; z-index: 5;
+}
+/* 잘리는 구간을 해칭으로 — 창이 이 띠 아래로 내려가면 눈에 안 보인다는 뜻 */
+.screen.clipped::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 18px; height: 84px;
+  z-index: 4; pointer-events: none;
+  background: repeating-linear-gradient(-45deg,
+    var(--alarm-soft) 0 6px, transparent 6px 12px);
+  border-top: 1px dashed var(--alarm);
+}
+.screen.clipped .clip-note {
+  position: absolute; right: 8px; bottom: 26px; z-index: 6;
+  font-family: var(--mono); font-size: 10px; color: var(--alarm);
+  background: var(--card); padding: 2px 6px; border-radius: 2px;
+  border: 1px solid var(--alarm);
+}
+.clip-note { display: none; }
+
+.ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ctl button {
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  padding: 7px 14px; border-radius: 3px; cursor: pointer;
+  background: var(--ink); color: var(--ground); border: 1px solid var(--ink);
+}
+.ctl button:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.ctl button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.ctl .dim { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-left: auto; }
+
+/* ── 앱 창 목업 (실제 540px 폭을 축소해 얹는다) ── */
+.winwrap {
+  position: absolute; left: 50%; top: 0;
+  width: 540px; transform-origin: top left;
+  transition: transform .28s cubic-bezier(.2,.7,.3,1);
+}
+.win {
+  background: var(--a-panel); border: 1px solid var(--a-border);
+  border-radius: 12px; color: var(--a-text);
+  font-size: 15px; line-height: 1.5; overflow: hidden;
+}
+.win.grow { border-radius: 12px; }
+.qa-header {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  background: var(--a-panel-2); border-bottom: 1px solid var(--a-border);
+  font-size: 12.5px; color: var(--a-muted);
+}
+.qa-header .grip { letter-spacing: -2px; color: var(--a-muted-2); }
+.qa-header .sp { flex: 1; }
+.qa-header .seg2 {
+  display: inline-flex; gap: 2px; padding: 2px; background: var(--a-bg);
+  border: 1px solid var(--a-border); border-radius: 8px;
+}
+.qa-header .seg2 span {
+  width: 26px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 10px; color: var(--a-muted-2);
+}
+.qa-header .seg2 span.on { background: var(--a-accent-soft); color: var(--a-accent); }
+.popup-top { display: flex; align-items: center; gap: 12px; padding: 16px 18px 12px; }
+.accent-bar { width: 3px; height: 26px; border-radius: 3px; background: var(--a-accent); }
+.ti { flex: 1; color: var(--a-muted-2); font-size: 17px; font-weight: 500; }
+.desc-toggle {
+  flex: none; height: 26px; padding: 0 9px; border-radius: 7px; display: inline-flex;
+  align-items: center; gap: 5px; border: 1px solid var(--a-border);
+  color: var(--a-muted); font-size: 11.5px;
+}
+.qa2-fields { display: flex; flex-direction: column; padding: 2px 18px 12px; }
+.qa2-row { display: flex; align-items: center; gap: 12px; min-height: 36px; }
+.qa2-row + .qa2-row { border-top: 1px solid color-mix(in srgb, var(--a-border) 45%, transparent); }
+.qa2-label { flex: none; width: 56px; font-size: 11.5px; color: var(--a-muted); }
+.seg-track {
+  display: inline-flex; gap: 2px; padding: 2px; background: var(--a-bg);
+  border: 1px solid var(--a-border); border-radius: 8px;
+}
+.seg {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px;
+  border-radius: 6px; color: var(--a-muted); font-size: 11.5px; white-space: nowrap;
+}
+.seg.on { background: var(--a-accent-soft); color: var(--a-accent); font-weight: 600; }
+.person {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px;
+  padding: 0 10px 0 4px; border-radius: 999px; border: 1px solid var(--a-border);
+  color: var(--a-muted); font-size: 11.5px; white-space: nowrap;
+}
+.person.on { background: var(--a-accent-soft); border-color: var(--a-accent); color: var(--a-accent); font-weight: 600; }
+.person .av {
+  width: 20px; height: 20px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700;
+  color: #fff; background: var(--a-muted-2);
+}
+.date-stepper {
+  display: inline-flex; align-items: center; gap: 1px; padding: 1px;
+  border: 1px solid var(--a-border); border-radius: 8px; background: var(--a-bg);
+}
+.date-stepper .st { width: 20px; height: 24px; display: grid; place-items: center; color: var(--a-muted-2); font-size: 12px; }
+.date-stepper .val { min-width: 92px; text-align: center; font-size: 11.5px; font-variant-numeric: tabular-nums; padding: 0 4px; }
+.qa2-hint { margin-left: auto; font-size: 10.5px; color: var(--a-muted-2); white-space: nowrap; }
+.popup-bottom {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-top: 1px solid var(--a-border); background: var(--a-panel-2);
+}
+.proj-select {
+  display: flex; align-items: center; gap: 8px; padding: 6px 11px; background: var(--a-bg);
+  border: 1px solid var(--a-border); border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+.proj-select:hover { border-color: var(--a-accent); }
+.qa-submit {
+  background: var(--a-accent); color: #fff; border: none; border-radius: 8px;
+  padding: 7px 12px; font-size: 13px; font-weight: 600; display: inline-flex; gap: 7px; align-items: center;
+}
+.qa-submit .bk { background: rgba(255,255,255,.22); border-radius: 5px; padding: 1px 5px; font-size: 10.5px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* 검색 패널 (드롭다운 / 레이어 / 전용 창이 공유하는 알맹이) */
+.sbox { background: var(--a-panel); padding: 6px; }
+.dd-search {
+  display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 5px;
+  background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 7px;
+}
+.dd-search .ph { flex: 1; color: var(--a-muted-2); font-size: 12.5px; }
+.dd-search .cnt { font-size: 10.5px; color: var(--a-muted-2); font-variant-numeric: tabular-nums; }
+.dd-list { overflow-y: auto; }
+.dd-item {
+  display: flex; align-items: center; gap: 9px; padding: 8px 9px;
+  border-radius: 7px; font-size: 13px;
+}
+.dd-item.sel { background: var(--a-accent-soft); }
+.dd-item.sel::after { content: "✓"; margin-left: auto; color: var(--a-accent); font-size: 12px; }
+.dd-item.kbd { outline: 1px solid var(--a-accent); outline-offset: -1px; }
+.dd-foot {
+  display: flex; gap: 12px; margin-top: 5px; padding: 6px 9px 2px;
+  border-top: 1px solid var(--a-border); font-size: 10.5px; color: var(--a-muted-2);
+}
+.dd-foot k {
+  background: var(--a-panel-2); border: 1px solid var(--a-border); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 4px; font-size: 9.5px; color: var(--a-text); font-family: inherit;
+}
+.sicon { width: 13px; height: 13px; flex: none; color: var(--a-muted); }
+
+/* 현재 방식: 카드 아래로 떨어지는 드롭다운 */
+.dropdown {
+  width: 272px; margin: 6px 0 0 14px;
+  border: 1px solid var(--a-border); border-radius: 10px;
+  box-shadow: var(--a-shadow);
+}
+.dropdown .dd-list { max-height: 208px; }
+
+/* A안: 카드를 덮는 레이어 */
+.overlay-host { position: relative; }
+.layerpanel {
+  position: absolute; inset: 0; z-index: 10; background: var(--a-panel);
+  display: flex; flex-direction: column; padding: 10px;
+  animation: fade .18s ease;
+}
+.layerpanel .dd-list { flex: 1; }
+@keyframes fade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .layerpanel { animation: none; }
+  .winwrap, .pickwin { transition: none; }
+}
+
+/* B안: 별도 창 */
+.pickwin {
+  position: absolute; left: 50%; width: 420px; transform-origin: top left;
+  background: var(--a-panel); border: 1px solid var(--a-border); border-radius: 12px;
+  box-shadow: var(--a-shadow); padding: 8px; z-index: 12;
+  transition: opacity .2s ease;
+}
+.pickwin .dd-list { max-height: 300px; }
+.dim-behind { opacity: .5; filter: saturate(.7); }
+
+/* ── 비교표 ── */
+.tblwrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; margin-top: 18px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); }
+thead th {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; background: var(--ground-2);
+}
+tbody tr:last-child td { border-bottom: none; }
+td.y { color: var(--teal); font-weight: 600; }
+td.n { color: var(--alarm); font-weight: 600; }
+th:first-child, td:first-child { font-weight: 600; }
+
+.note {
+  margin-top: 46px; padding: 18px 20px; border-left: 3px solid var(--teal);
+  background: var(--teal-soft); border-radius: 0 4px 4px 0;
+}
+.note h3 { margin-bottom: 8px; }
+.note p:last-child { margin-bottom: 0; }
+.f { font-family: var(--mono); font-size: .85em; }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">빠른 추가 · 프로젝트 선택</p>
+  <h1>검색창이 화면 밖으로 밀려나는 이유</h1>
+  <p class="lede">
+    드롭다운을 열면 <code>resizeToFit()</code>이 창 <em>높이만</em> 늘립니다. 창의 위쪽 좌표는
+    열 때 정해진 그대로라 아래로만 자라고, 화면 끝을 넘어간 부분은 그대로 잘립니다.
+    아래 세 가지가 이 구조를 어떻게 바꾸는지 직접 눌러 보세요.
+  </p>
+</header>
+
+<section>
+  <h2>지금</h2>
+  <div class="opt bad">
+    <div class="stage">
+      <div class="screen" id="s0"><span class="clip-note">여기부터 안 보임</span></div>
+      <div class="ctl">
+        <button type="button" data-demo="0">프로젝트 버튼 누르기</button>
+        <span class="dim" id="d0">창 높이 370px</span>
+      </div>
+    </div>
+    <div>
+      <span class="tag now">현재 동작</span>
+      <h3>콘텐츠가 창을 밀어낸다</h3>
+      <p class="muted">
+        한눈에 보기 레이아웃은 카드만 370px입니다. 여기에 드롭다운 290px(검색줄 34 +
+        목록 208 + 푸터 28)이 더해져 창이 660px로 자랍니다. 창은 열릴 때 중앙에 놓인 뒤
+        위쪽이 고정이므로, 늘어난 만큼 전부 아래로 나갑니다.
+      </p>
+      <ul class="tl">
+        <li class="dn"><span class="m">↓</span><span>화면이 낮거나 창이 아래쪽에 있으면 목록 하단부터 사라진다</span></li>
+        <li class="dn"><span class="m">↓</span><span>창을 위로 옮겨 피하면 이번엔 제목·담당자 줄이 위로 잘린다</span></li>
+        <li class="dn"><span class="m">↓</span><span>프로젝트가 늘어날수록 넘치는 양이 커진다</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>A안 · 카드를 덮는 검색 레이어</h2>
+  <div class="opt pick">
+    <div class="stage">
+      <div class="screen" id="s1"></div>
+      <div class="ctl">
+        <button type="button" data-demo="1">프로젝트 버튼 누르기</button>
+        <span class="dim" id="d1">창 높이 370px</span>
+      </div>
+    </div>
+    <div>
+      <span class="tag rec">추천</span>
+      <h3>창 크기를 고정하고 안쪽을 바꾼다</h3>
+      <p class="muted">
+        드롭다운을 없애고, 프로젝트 버튼을 누르면 카드 위를 검색 화면이 덮습니다. 창은
+        440px 고정으로 한 번 바뀌고 그 높이에 맞춰 화면 안으로 재배치되므로, 목록이
+        아무리 길어도 창 밖으로 나갈 수 없습니다. 목록은 남는 공간을 전부 씁니다.
+      </p>
+      <ul class="tl">
+        <li class="up"><span class="m">＋</span><span>잘림이 구조적으로 불가능해진다 — 창 크기가 목록 길이와 무관</span></li>
+        <li class="up"><span class="m">＋</span><span>목록이 지금보다 넓고 길어져 12개가 한눈에 들어온다</span></li>
+        <li class="up"><span class="m">＋</span><span>새 창·IPC 없이 <span class="f">projectPicker.ts</span> 안에서 끝난다</span></li>
+        <li class="dn"><span class="m">－</span><span>검색 중에는 입력하던 폼이 잠깐 가려진다 (Esc로 즉시 복귀)</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>B안 · 전용 창으로 분리</h2>
+  <div class="opt">
+    <div class="stage">
+      <div class="screen" id="s2"></div>
+      <div class="ctl">
+        <button type="button" data-demo="2">프로젝트 버튼 누르기</button>
+        <span class="dim" id="d2">창 2개</span>
+      </div>
+    </div>
+    <div>
+      <span class="tag alt">대안</span>
+      <h3>독립 윈도우를 띄운다</h3>
+      <p class="muted">
+        <span class="f">projectpicker</span> 창을 새로 만들어 화면 중앙에 스포트라이트처럼
+        띄웁니다. 빠른 추가 창은 그대로 있고, 고른 결과만 넘겨받습니다. 크기가 완전히
+        자유롭고 mng 업무일지·사이드바에서도 같은 창을 재사용할 수 있습니다.
+      </p>
+      <ul class="tl">
+        <li class="up"><span class="m">＋</span><span>폼이 가려지지 않고, 다른 화면에서도 재사용 가능</span></li>
+        <li class="dn"><span class="m">－</span><span>창 등록·IPC·포커스 반환 처리가 새로 붙는다</span></li>
+        <li class="dn"><span class="m">－</span><span>빠른 추가 창이 포커스를 잃는 순간의 동작을 다시 정해야 한다</span></li>
+        <li class="dn"><span class="m">－</span><span>Esc 한 번에 어느 창이 닫히는지 규칙이 하나 늘어난다</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>C안 · 지금 구조 + 경계 보정</h2>
+  <div class="opt">
+    <div class="stage">
+      <div class="screen" id="s3"></div>
+      <div class="ctl">
+        <button type="button" data-demo="3">프로젝트 버튼 누르기</button>
+        <span class="dim" id="d3">창 높이 370px</span>
+      </div>
+    </div>
+    <div>
+      <span class="tag alt">최소 변경</span>
+      <h3>넘칠 것 같으면 창을 올리고 목록을 줄인다</h3>
+      <p class="muted">
+        드롭다운은 그대로 두고, 열 때 모니터 작업 영역을 재서 아래 공간이 모자라면 창을
+        위로 옮깁니다. 그래도 모자라면 목록 높이를 남은 공간에 맞춰 깎습니다.
+        고칠 코드가 가장 적습니다.
+      </p>
+      <ul class="tl">
+        <li class="up"><span class="m">＋</span><span>변경 범위가 작고 지금의 조작 감각이 그대로다</span></li>
+        <li class="dn"><span class="m">－</span><span>열 때마다 창이 위로 움찔 움직인다</span></li>
+        <li class="dn"><span class="m">－</span><span>세로가 좁은 화면에서는 목록이 서너 줄로 쪼그라든다</span></li>
+        <li class="dn"><span class="m">－</span><span>원인이 아니라 증상을 막는 쪽이라 비슷한 문제가 또 생길 수 있다</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>한눈에</h2>
+  <div class="tblwrap">
+    <table>
+      <thead>
+        <tr><th>항목</th><th>A · 덮는 레이어</th><th>B · 전용 창</th><th>C · 경계 보정</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>잘림 재발</td><td class="y">구조적으로 불가</td><td class="y">불가</td><td class="n">좁은 화면에서 여지</td></tr>
+        <tr><td>목록에 보이는 줄 수</td><td class="y">9~10줄</td><td class="y">12줄+</td><td class="n">3~7줄 (가변)</td></tr>
+        <tr><td>고치는 범위</td><td>projectPicker.ts + app.css</td><td class="n">새 창 + Rust + IPC</td><td class="y">main.ts + Rust 한 함수</td></tr>
+        <tr><td>다른 화면 재사용</td><td>안 됨</td><td class="y">됨</td><td>안 됨</td></tr>
+        <tr><td>창이 움직이나</td><td>한 번, 예측 가능</td><td class="y">안 움직임</td><td class="n">열 때마다</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="note">
+  <h3>A안을 권합니다</h3>
+  <p>
+    잘림의 원인은 "보여줄 게 늘면 창이 커진다"는 전제 자체입니다. C안은 그 전제를 두고
+    화면 밖으로 나갈 때마다 피해 다니는 방식이라 화면이 더 낮아지면 다시 나타납니다.
+    B안은 원인을 없애지만 창 하나와 그에 딸린 포커스 규칙을 새로 떠안습니다.
+  </p>
+  <p>
+    A안은 창 크기를 목록 길이에서 떼어내 원인을 지우면서, 고치는 곳은
+    <span class="f">projectPicker.ts</span> 한 파일과 스타일 몇 줄에 머뭅니다.
+    나중에 mng·사이드바에서도 프로젝트 검색이 필요해지면 그때 이 레이어를 B안의
+    전용 창으로 승격시킬 수 있습니다.
+  </p>
+</div>
+</div>
+
+<script>
+const PROJECTS = [
+  { name: "Plain", c: "#7bc043" },
+  { name: "창신대학교", c: "#3aa7dc" },
+  { name: "부산외국어대학교", c: "#7a5cd8" },
+  { name: "홍익대학교", c: "#e0b83f" },
+  { name: "울산대학교", c: "#8b5cf6", sel: true },
+  { name: "교육수요자만족도조사", c: "#2ecc71" },
+];
+
+const SICON = '<svg class="sicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+
+const items = () => PROJECTS.map((p, i) =>
+  `<div class="dd-item${p.sel ? " sel" : ""}${i === 0 ? " kbd" : ""}">` +
+  `<span class="dot" style="background:${p.c}"></span><span>${p.name}</span></div>`
+).join("");
+
+const searchBody = (foot) =>
+  `<div class="dd-search">${SICON}<span class="ph">프로젝트 검색…</span>` +
+  `<span class="cnt">${PROJECTS.length}개</span></div>` +
+  `<div class="dd-list">${items()}</div>` +
+  `<div class="dd-foot"><span><k>↑</k><k>↓</k> 이동</span><span><k>↵</k> 선택</span>` +
+  `<span><k>Esc</k> ${foot}</span></div>`;
+
+// 빠른 추가 카드(한눈에 보기) — 실제 화면의 행 구성 그대로
+const card = () => `
+  <div class="qa-header"><span class="grip">⋮⋮</span><span>빠른 추가</span><span class="sp"></span>
+    <span class="seg2"><span>▭▭</span><span class="on">☰</span></span><span>✕</span></div>
+  <div class="popup-top"><div class="accent-bar"></div>
+    <div class="ti">진행 중인 작업을 입력하고 Ctrl+Enter…</div>
+    <div class="desc-toggle">☰ 설명</div></div>
+  <div class="qa2-fields">
+    <div class="qa2-row"><span class="qa2-label">담당자</span>
+      <span class="person on"><span class="av" style="background:#3aa7dc">이</span>나</span>
+      <span class="person"><span class="av" style="background:#7a5cd8">j</span>jyj7970</span>
+      <span class="qa2-hint">Ctrl+클릭 다중</span></div>
+    <div class="qa2-row"><span class="qa2-label">상태</span>
+      <span class="seg-track"><span class="seg">◌ Backlog</span><span class="seg on">◍ Todo</span>
+      <span class="seg">◐ In Progress</span><span class="seg">✓ Done</span><span class="seg">⊗ Cancelled</span></span></div>
+    <div class="qa2-row"><span class="qa2-label">우선순위</span>
+      <span class="seg-track"><span class="seg">⊘ 없음</span><span class="seg">▁ 낮음</span>
+      <span class="seg on">▄ 보통</span><span class="seg">█ 높음</span><span class="seg">! 긴급</span></span></div>
+    <div class="qa2-row"><span class="qa2-label">시작일</span>
+      <span class="seg-track"><span class="seg on">오늘</span><span class="seg">내일</span><span class="seg">다음 주</span></span>
+      <span class="date-stepper"><span class="st">‹</span><span class="val">2026-08-14 (금)</span><span class="st">›</span></span>
+      <span class="qa2-hint">PgUp/Dn</span></div>
+    <div class="qa2-row"><span class="qa2-label">마감일</span>
+      <span class="seg-track"><span class="seg on">오늘</span><span class="seg">내일</span><span class="seg">다음 주</span></span>
+      <span class="date-stepper"><span class="st">‹</span><span class="val">2026-08-14 (금)</span><span class="st">›</span></span>
+      <span class="qa2-hint">Ctrl+PgUp/Dn</span></div>
+  </div>
+  <div class="popup-bottom">
+    <span class="proj-select"><span class="dot" style="background:#8b5cf6"></span>울산대학교 <span style="color:var(--a-muted)">▾</span></span>
+    <span class="qa-submit">추가 <span class="bk">Ctrl+↵</span></span>
+  </div>`;
+
+const SCALE = 0.62;      // 540px 창을 335px로 축소해 얹는다
+const SCREEN_H = 420;    // 가상 화면 높이
+const CARD_H = 370;      // 한눈에 보기 카드 실제 높이
+const px = (real) => real * SCALE;
+
+const open = [false, false, false, false];
+
+/** 창 하나를 화면 안에 그린다. top은 실제 px, 내부에서 스케일 환산. */
+function place(screen, inner, topReal, extraClass = "") {
+  const w = document.createElement("div");
+  w.className = "winwrap " + extraClass;
+  w.style.transform = `scale(${SCALE})`;
+  w.style.marginLeft = `${-px(540) / 2}px`;
+  w.style.top = `${px(topReal)}px`;
+  w.innerHTML = inner;
+  screen.appendChild(w);
+  return w;
+}
+
+const centeredTop = (hReal) => (SCREEN_H / SCALE - hReal) / 2;
+
+function render(i) {
+  const screen = document.getElementById("s" + i);
+  const dim = document.getElementById("d" + i);
+  const isOpen = open[i];
+  screen.querySelectorAll(".winwrap, .pickwin").forEach((el) => el.remove());
+  screen.classList.remove("clipped");
+
+  // 창은 "열릴 때 높이"로 중앙에 놓인 뒤 위쪽 좌표가 고정된다 — 현재 동작 그대로
+  const restTop = centeredTop(CARD_H);
+
+  if (i === 0) {
+    const dd = isOpen
+      ? `<div class="dropdown sbox">${searchBody("닫기")}</div>` : "";
+    place(screen, `<div class="win">${card()}</div>${dd}`, restTop);
+    if (isOpen) screen.classList.add("clipped");
+    dim.textContent = isOpen ? "창 높이 660px — 화면 밖 넘침" : "창 높이 370px";
+  }
+
+  if (i === 1) {
+    const H = 440; // 검색 모드 고정 높이
+    if (isOpen) {
+      place(screen,
+        `<div class="win overlay-host" style="height:${H}px">${card()}` +
+        `<div class="layerpanel">${searchBody("돌아가기")}</div></div>`,
+        centeredTop(H));
+    } else {
+      place(screen, `<div class="win">${card()}</div>`, restTop);
+    }
+    dim.textContent = isOpen ? "창 높이 440px 고정 — 화면 안 재배치" : "창 높이 370px";
+  }
+
+  if (i === 2) {
+    place(screen, `<div class="win">${card()}</div>`, restTop, isOpen ? "dim-behind" : "");
+    if (isOpen) {
+      const pw = document.createElement("div");
+      pw.className = "pickwin sbox";
+      pw.style.transform = `scale(${SCALE})`;
+      pw.style.marginLeft = `${-px(420) / 2}px`;
+      pw.style.top = `${px(centeredTop(400))}px`;
+      pw.innerHTML = searchBody("닫기");
+      screen.appendChild(pw);
+    }
+    dim.textContent = isOpen ? "전용 창 420×400 — 항상 화면 중앙" : "창 1개";
+  }
+
+  if (i === 3) {
+    if (isOpen) {
+      // 아래 공간이 모자라 창을 위로 올리고, 남는 만큼만 목록에 준다
+      const avail = SCREEN_H / SCALE;
+      const ddChrome = 34 + 28 + 24;               // 검색줄 + 푸터 + 여백
+      const listH = Math.max(96, avail - CARD_H - ddChrome - 16);
+      const total = CARD_H + ddChrome + listH;
+      const html = `<div class="win">${card()}</div>` +
+        `<div class="dropdown sbox"><div class="dd-search">${SICON}` +
+        `<span class="ph">프로젝트 검색…</span><span class="cnt">${PROJECTS.length}개</span></div>` +
+        `<div class="dd-list" style="max-height:${listH}px">${items()}</div>` +
+        `<div class="dd-foot"><span><k>↑</k><k>↓</k> 이동</span><span><k>↵</k> 선택</span>` +
+        `<span><k>Esc</k> 닫기</span></div></div>`;
+      place(screen, html, Math.max(4, (avail - total) / 2));
+      dim.textContent = `창 위로 이동 · 목록 ${Math.round(listH)}px로 축소`;
+    } else {
+      place(screen, `<div class="win">${card()}</div>`, restTop);
+      dim.textContent = "창 높이 370px";
+    }
+  }
+}
+
+document.querySelectorAll("button[data-demo]").forEach((btn) => {
+  const i = Number(btn.dataset.demo);
+  btn.addEventListener("click", () => {
+    open[i] = !open[i];
+    btn.textContent = open[i] ? "닫기 (Esc)" : "프로젝트 버튼 누르기";
+    render(i);
+  });
+});
+
+[0, 1, 2, 3].forEach(render);
+</script>

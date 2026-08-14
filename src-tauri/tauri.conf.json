@@ -67,6 +67,13 @@
         "width": 900, "height": 660,
         "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
         "skipTaskbar": true, "visible": false, "center": true, "resizable": true
+      },
+      {
+        "label": "projectpicker",
+        "url": "src/projectpicker/index.html",
+        "width": 420, "height": 440,
+        "decorations": false, "transparent": true, "alwaysOnTop": true, "shadow": false,
+        "skipTaskbar": true, "visible": false, "center": true, "resizable": false
       }
     ],
     "security": { "csp": null }

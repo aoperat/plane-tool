@@ -372,14 +372,6 @@ kbd {
 .qa-tip[hidden] { display: none; }
 .qa-tip kbd { font-size: 10px; padding: 0 5px; border-bottom-width: 1px; border-radius: 5px; }
 
-/* Project dropdown opens downward below the popup (the window grows to fit it,
-   see resizeToFit) — opening upward ran past the window's top edge with many
-   projects, leaving the overflow unclickable. Long lists scroll instead. */
-.dropdown {
-  position: absolute; top: calc(100% + 6px); left: 14px; width: 272px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: var(--shadow); padding: 6px; z-index: 40;
-}
 .dd-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 7px; font-size: 13px; cursor: pointer; }
 .dd-item:hover, .dd-item.sel { background: var(--accent-soft); }
 .dd-item.sel::after { content: "✓"; margin-left: auto; color: var(--accent); font-size: 12px; }
@@ -387,7 +379,20 @@ kbd {
 .dd-item.kbd-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .dd-item .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 검색창은 목록 위에 붙어 있고 드롭다운을 열면 커서가 여기 놓인다. 그냥 눌러
+/* ============ SURFACE 8: PROJECT PICKER WINDOW ============ */
+/* 프로젝트 검색은 자체 창이다(label: projectpicker). 빠른 추가 카드 아래로 열리던
+   드롭다운은 창 높이를 목록만큼 늘렸고, 그 높이가 화면 아래 끝을 넘으면 목록이
+   잘렸다 — 창을 따로 두면 크기가 목록 길이와 무관해져 잘릴 수가 없다.
+   `.dd-*`는 그때의 클래스를 그대로 물려받은 것이고, `.dd-item`은 사이드바의
+   담당자 팝오버도 함께 쓴다. */
+.pp {
+  height: 100%; display: flex; flex-direction: column; padding: 8px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.pp .dd-search { cursor: default; } /* 검색줄이 창 드래그 영역이다 */
+.pp .dd-search input { cursor: text; }
+
+/* 검색창은 목록 위에 붙어 있고 창이 열리면 커서가 여기 놓인다. 그냥 눌러
    고르던 흐름은 그대로고, 검색은 원할 때만 쓰는 추가 경로다. */
 .dd-search {
   display: flex; align-items: center; gap: 7px; padding: 6px 9px; margin-bottom: 5px;
@@ -404,8 +409,9 @@ kbd {
   flex: none; font-size: 10.5px; color: var(--muted-2);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-/* 7줄까지 보이고 그 아래는 스크롤 — 프로젝트가 늘어도 창이 계속 자라지 않는다. */
-.dd-list { max-height: 208px; overflow-y: auto; }
+/* 창 높이에서 검색줄과 푸터를 뺀 나머지를 전부 쓰고, 넘치면 스크롤한다 —
+   프로젝트가 늘어도 창은 그대로다. */
+.dd-list { flex: 1; min-height: 0; overflow-y: auto; }
 .dd-list::-webkit-scrollbar { width: 8px; }
 .dd-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 .dd-empty { padding: 16px 9px; font-size: 12px; color: var(--muted-2); text-align: center; }

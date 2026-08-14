@@ -1,5 +1,5 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { createIssue, listProjects, listMembers, getSettings, setLastProject, setQuickaddLayout } from "../shared/ipc";
+import { createIssue, listProjects, listMembers, getSettings, setQuickaddLayout } from "../shared/ipc";
 import type { Project } from "../shared/types";
 import { resolveDateShortcut } from "../shared/dateShortcut";
 import { applyTheme } from "../shared/theme";
@@ -35,35 +35,23 @@ const state = createFormState();
 const popupEl = document.querySelector(".popup") as HTMLElement;
 
 // Measures actual rendered content instead of guessing pixel constants —
-// the popup's own box for the idle height, plus the open popover's or project
-// dropdown's real bottom edge (which varies with content and can't be hardcoded).
+// the popup's own box for the idle height, plus the open popover's real bottom
+// edge (which varies with content and can't be hardcoded). The project list is
+// no longer part of this — it lives in its own window (see projectPicker.ts).
 function resizeToFit() {
   let height = Math.ceil(popupEl.getBoundingClientRect().height);
-  height = Math.max(height, layout.overlayBottom(), projectPicker.bottom(), coachBottom());
+  height = Math.max(height, layout.overlayBottom(), coachBottom());
   height += 4; // small buffer so a border/shadow pixel never gets clipped
   win.setSize(new LogicalSize(layout.width, height)).catch((err) => {
     console.error("resizeToFit failed:", err);
   });
 }
 
+// 누르면 프로젝트 검색 창이 열린다. 고른 결과는 아래 `select-project` 리스너로 온다.
 const projectPicker = createProjectPicker({
   button: projBtn,
-  host: popupEl,
   getProjects: () => projects,
   getSelectedId: () => state.selectedId,
-  onPick: (p) => {
-    state.selectedId = p.id;
-    state.members = [];
-    state.membersLoadedForProject = null;
-    state.assigneeIds = [];
-    layout.render();
-    titleEl.focus();
-    // 즉시 저장 — 안 그러면 포커스로 다시 도는 load()가 last_project_id를
-    // 이 창에서 바꾸기 전 값으로 되돌린다.
-    setLastProject(p.id).catch((err) => console.error("setLastProject failed:", err));
-  },
-  onResize: () => resizeToFit(),
-  onDismiss: () => titleEl.focus(),
 });
 
 const hosts: LayoutHosts = {
@@ -253,7 +241,6 @@ async function submitIssue() {
 function resetFields() {
   resetFormFields(state);
   hosts.description.value = "";
-  projectPicker.close(); // a submit can land while the project dropdown is open
   dismissCoach(false); // 등록하고 창이 숨으므로 안내도 함께 치운다
   layout.resetView();
   layout.render();
@@ -290,7 +277,6 @@ titleEl.addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") clearError();
   if (e.key === "Escape") {
     if (layout.hasOpenOverlay()) { layout.closeOverlays(); return; }
-    if (projectPicker.isOpen()) { projectPicker.close(); return; }
     dismissCoach(false);
     await win.hide();
     return;
@@ -304,17 +290,17 @@ titleEl.addEventListener("keydown", async (e) => {
 // The submit key is Ctrl+Enter everywhere — regardless of focus or open popovers — so
 // adding an issue never depends on where the cursor is. Plain Enter keeps each control's
 // native role (popover select, button press, textarea newline). The date shortcuts pause
-// while a popover or the project dropdown is open to stay out of their keyboard contracts.
+// while a popover is open to stay out of its keyboard contract. The project picker needs
+// no guard here: it is a separate window, so this one never sees its keystrokes.
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.ctrlKey) {
     e.preventDefault();
     if (layout.hasOpenOverlay()) layout.closeOverlays();
-    projectPicker.close();
     submitIssue();
     return;
   }
   const shortcut = resolveDateShortcut(e.key, e.ctrlKey);
-  if (shortcut && !layout.hasOpenOverlay() && !projectPicker.isOpen()) {
+  if (shortcut && !layout.hasOpenOverlay()) {
     e.preventDefault();
     shiftDateField(state, shortcut.kind, shortcut.delta);
     layout.render();
@@ -324,7 +310,6 @@ document.addEventListener("keydown", (e) => {
 qaSubmit.addEventListener("click", () => { submitIssue(); });
 qaClose.addEventListener("click", () => {
   if (layout.hasOpenOverlay()) layout.closeOverlays();
-  projectPicker.close();
   dismissCoach(false);
   win.hide();
 });
@@ -343,10 +328,11 @@ win.listen("tauri://focus", () => {
   maybeShowCoach();
 });
 
-// Sidebar's per-project "+" button: pre-select that project. Any in-progress
-// draft text survives the switch; only the project-scoped selections (assignees)
-// reset. load() (if the focus event triggers it) re-reads last_project_id which
-// the command already persisted to the same value.
+// 프로젝트가 이 창 밖에서 정해지는 두 경로가 같은 이벤트로 들어온다 — 사이드바의
+// 프로젝트별 "+" 버튼(show_quickadd_for_project)과 프로젝트 검색 창(pick_project).
+// 작성 중이던 초안은 그대로 살아남고, 프로젝트에 딸린 선택(담당자)만 리셋한다.
+// 포커스 이벤트가 load()를 돌리더라도 last_project_id를 다시 읽을 뿐이다 — 두 명령
+// 모두 이벤트를 보내기 전에 같은 값으로 저장해 둔다.
 win.listen<string>("select-project", (e) => {
   state.selectedId = e.payload;
   state.members = [];

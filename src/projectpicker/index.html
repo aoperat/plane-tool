@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>프로젝트 검색</title>
+    <link rel="stylesheet" href="../shared/app.css" />
+  </head>
+  <body class="transparent-body">
+    <!-- 창 크기가 고정이라 목록이 남는 세로를 전부 쓴다 — 빠른 추가 창처럼
+         내용에 맞춰 창을 늘리지 않으므로 화면 밖으로 잘릴 일이 없다. -->
+    <div class="pp">
+      <div class="dd-search" data-tauri-drag-region>
+        <span class="sicon" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </span>
+        <input id="ppInput" placeholder="프로젝트 검색…" autofocus />
+        <span class="cnt" id="ppCount"></span>
+      </div>
+      <div class="dd-list" id="ppList"></div>
+      <div class="dd-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 이동</span>
+        <span><kbd>↵</kbd> 선택</span>
+        <span><kbd>Esc</kbd> 닫기</span>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

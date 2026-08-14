@@ -14,6 +14,7 @@ export default defineConfig({
         editmodal: resolve(__dirname, "src/editmodal/index.html"),
         briefing: resolve(__dirname, "src/briefing/index.html"),
         mngdaily: resolve(__dirname, "src/mngdaily/index.html"),
+        projectpicker: resolve(__dirname, "src/projectpicker/index.html"),
       },
     },
   },

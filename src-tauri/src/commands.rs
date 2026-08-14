@@ -905,6 +905,60 @@ pub fn set_last_project(app: tauri::AppHandle, project_id: String) -> Result<(),
     config::set_last_project(&app, &project_id)
 }
 
+/// 프로젝트 검색 창을 연다. 빠른 추가 창 안에서 드롭다운으로 열던 것을 자체 크기를
+/// 갖는 창으로 뺐다 — 창 높이를 목록 길이에 맞춰 늘리던 방식은 화면 아래 끝을 넘어가
+/// 잘렸다(설계: docs/superpowers/specs/2026-08-14-project-picker-window-design.md).
+///
+/// `requester`는 고른 결과를 돌려받을 창의 label이다. 지금은 "quickadd"만 넘어오지만,
+/// mng 업무일지·사이드바가 같은 창을 쓰게 될 때 이 인자만으로 붙는다.
+#[tauri::command]
+pub fn open_project_picker(app: tauri::AppHandle, requester: String, selected_id: Option<String>) {
+    // 창을 먼저 띄우고 이벤트를 보낸다 — 반대 순서면 아직 숨어 있는 창의 리스너가
+    // 못 받는 경우가 생긴다(editmodal의 open_edit_modal과 같은 순서).
+    crate::show_centered(&app, "projectpicker");
+    let _ = app.emit_to(
+        "projectpicker",
+        "picker-open",
+        serde_json::json!({ "requester": requester, "selectedId": selected_id }),
+    );
+}
+
+/// 프로젝트 검색 창에서 하나를 골랐다. 요청한 창에 결과를 넘기고 피커는 물러난다.
+#[tauri::command]
+pub fn pick_project(
+    app: tauri::AppHandle,
+    requester: String,
+    project_id: String,
+) -> Result<(), String> {
+    // 저장이 emit보다 먼저다. 피커가 닫히면 요청자 창이 포커스를 되찾고, QuickAdd는
+    // 그때 도는 load()에서 last_project_id로 선택을 덮어쓴다 — 나중에 저장하면 방금
+    // 고른 프로젝트가 이전 값으로 되돌아간다(show_quickadd_for_project와 같은 이유).
+    config::set_last_project(&app, &project_id)?;
+    let _ = app.emit_to(&requester, "select-project", project_id);
+
+    if let Some(win) = app.get_webview_window("projectpicker") {
+        let _ = win.hide();
+    }
+    if let Some(win) = app.get_webview_window(&requester) {
+        let _ = win.set_focus();
+    }
+    Ok(())
+}
+
+/// 피커를 고르지 않고 닫는다(Esc·포커스 잃음). 요청자 창에 포커스를 돌려준다 —
+/// QuickAdd는 포커스를 받으면 제목 칸으로 커서를 되돌리므로 곧바로 타이핑을 잇는다.
+#[tauri::command]
+pub fn close_project_picker(app: tauri::AppHandle, requester: String, refocus: bool) {
+    if let Some(win) = app.get_webview_window("projectpicker") {
+        let _ = win.hide();
+    }
+    if refocus {
+        if let Some(win) = app.get_webview_window(&requester) {
+            let _ = win.set_focus();
+        }
+    }
+}
+
 /// 빠른 추가 헤더의 레이아웃 토글. 설정 화면의 "빠른 추가 화면" 항목과 **같은 값**을
 /// 쓴다 — 진실을 둘로 만들지 않는다.
 ///

@@ -124,6 +124,20 @@ export const showQuickaddForProject = (project_id: string) =>
 export const setLastProject = (project_id: string) =>
   invoke<void>("set_last_project", { projectId: project_id });
 
+/* ---- 프로젝트 검색 창 ----
+   `requester`는 고른 결과를 `select-project` 이벤트로 돌려받을 창의 label이다.
+   빠른 추가 창은 그 이벤트를 이미 듣고 있다(사이드바 "+" 버튼과 같은 경로). */
+export const openProjectPicker = (requester: string, selected_id: string | null) =>
+  invoke<void>("open_project_picker", { requester, selectedId: selected_id });
+
+export const pickProject = (requester: string, project_id: string) =>
+  invoke<void>("pick_project", { requester, projectId: project_id });
+
+/** `refocus`는 Esc로 닫을 때만 true다 — 포커스를 잃어 닫히는 경우엔 사용자가 이미
+ *  다른 창을 보고 있으므로 뺏어오면 안 된다. */
+export const closeProjectPicker = (requester: string, refocus: boolean) =>
+  invoke<void>("close_project_picker", { requester, refocus });
+
 /** Resolves to a display message when already up to date; null when an
  *  update dialog was opened instead. */
 export const checkUpdatesManual = () => invoke<string | null>("check_updates_manual");
