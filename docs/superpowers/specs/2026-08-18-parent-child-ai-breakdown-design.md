@@ -44,8 +44,10 @@ Plane 서버는 이미 지원한다. `IssueSerializer`가 `exclude` 방식이라
 
 ### 읽기
 
-`RawWorkItem`에 `parent` 파싱을 추가하고 `WorkItem` → `WorkItemDto`로
-`parent_id: Option<String>`를 실어 보낸다.
+**절반은 이미 되어 있다.** `RawWorkItem.parent`와 `WorkItem.parent_id`는 mng
+업무일지 작업 때 "이후 필요해지면 쓸 수 있도록 파싱만 해 둔다"며 들어가 있다
+(`plane_api.rs:63-65`, `:428`). 남은 일은 그 값을 `WorkItemDto`에 실어 프론트로
+흘려보내는 것뿐이다.
 
 사이드바는 이미 프로젝트 전체 항목을 받아 클라이언트에서 필터링하므로
 (`commands.rs:137`, `plane_api.rs:352`) **트리 조립에 추가 API 호출이 없다.**
