@@ -7,7 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
-import { buildTreeRows, type TreeRow } from "./tree";
+import { buildTreeRows, shouldCompleteParent, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -795,12 +795,29 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
       const prev = it.state_group;
       it.state_group = group;
       renderTasks(allItems, projects);
-      updateWorkItemState(it.project_id, it.id, stateId).catch((err) => {
-        it.state_group = prev;
-        renderTasks(allItems, projects);
-        synced.textContent = "상태 변경 실패: " + err;
-        console.error("updateWorkItemState failed:", err);
-      });
+      updateWorkItemState(it.project_id, it.id, stateId)
+        .then(() => {
+          const parent = it.parent_id ? allItems.find((x) => x.id === it.parent_id) : undefined;
+          if (!parent || !shouldCompleteParent(parent, group)) return;
+          const parentStateId = resolveStateId(states, parent.project_id, "completed");
+          if (!parentStateId) return;
+          const parentPrev = parent.state_group;
+          parent.state_group = "completed";
+          renderTasks(allItems, projects);
+          return updateWorkItemState(parent.project_id, parent.id, parentStateId).catch((err) => {
+            // 자식 변경은 이미 서버에 반영됐다 — 부모만 되돌린다.
+            parent.state_group = parentPrev;
+            renderTasks(allItems, projects);
+            synced.textContent = "상위 작업 완료 처리 실패: " + err;
+            console.error("updateWorkItemState(parent) failed:", err);
+          });
+        })
+        .catch((err) => {
+          it.state_group = prev;
+          renderTasks(allItems, projects);
+          synced.textContent = "상태 변경 실패: " + err;
+          console.error("updateWorkItemState failed:", err);
+        });
     });
   };
   top.appendChild(stateBtn);

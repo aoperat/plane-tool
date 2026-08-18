@@ -41,3 +41,14 @@ export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Se
   }
   return rows;
 }
+
+/** 자식 하나를 `nextGroup`으로 바꿀 때, 그 부모도 완료 처리해야 하는가.
+ *
+ *  `sub_done`은 이 변경이 반영되기 전 값이므로 "남은 미완료 자식이 하나뿐"이
+ *  곧 "이번 것이 마지막"이라는 뜻이다. */
+export function shouldCompleteParent(parent: WorkItem, nextGroup: string): boolean {
+  if (nextGroup !== "completed") return false;
+  if (parent.sub_total === 0) return false;
+  if (parent.state_group === "completed") return false;
+  return parent.sub_done === parent.sub_total - 1;
+}

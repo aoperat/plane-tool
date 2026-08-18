@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTreeRows } from "./tree";
+import { buildTreeRows, shouldCompleteParent } from "./tree";
 import type { WorkItem } from "../shared/types";
 
 function item(id: string, parent: string | null = null, subTotal = 0, subDone = 0): WorkItem {
@@ -44,5 +44,32 @@ describe("buildTreeRows", () => {
     const rows = buildTreeRows([item("p", null, 2, 1), item("c1", "p")]);
     expect(rows[0].isParent).toBe(true);
     expect(rows[1].isParent).toBe(false);
+  });
+});
+
+describe("shouldCompleteParent", () => {
+  const parent = () => ({ ...item("p", null, 3, 2), state_group: "started" });
+
+  it("마지막 남은 자식이 완료되면 부모를 완료한다", () => {
+    expect(shouldCompleteParent(parent(), "completed")).toBe(true);
+  });
+
+  it("아직 남은 자식이 있으면 부모를 건드리지 않는다", () => {
+    const p = { ...parent(), sub_done: 1 };
+    expect(shouldCompleteParent(p, "completed")).toBe(false);
+  });
+
+  it("자식을 완료가 아닌 상태로 바꿀 때는 건드리지 않는다", () => {
+    expect(shouldCompleteParent(parent(), "started")).toBe(false);
+  });
+
+  it("이미 완료된 부모는 건드리지 않는다", () => {
+    const p = { ...parent(), state_group: "completed" };
+    expect(shouldCompleteParent(p, "completed")).toBe(false);
+  });
+
+  it("자식이 없는 항목은 부모가 아니다", () => {
+    const p = { ...item("x"), state_group: "started" };
+    expect(shouldCompleteParent(p, "completed")).toBe(false);
   });
 });
