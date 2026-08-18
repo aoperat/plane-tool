@@ -4,7 +4,7 @@ use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, 
 use crate::mng_report;
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use futures::stream::{self, StreamExt};
 
 /// 사이드바 동기화 시 프로젝트별로 동시에 날릴 요청 개수. 너무 높이면 Plane
@@ -59,6 +59,15 @@ pub struct WorkItemDto {
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    /// 상위 작업 id. 사이드바가 이 값으로 트리를 조립한다.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// 이 항목의 자식 총수 / 완료된 자식 수. **필터링 전 전체 목록** 기준이라
+    /// 오래된 완료 자식이 목록에서 빠져도 숫자가 맞는다. 0이면 부모가 아니다.
+    #[serde(default)]
+    pub sub_total: usize,
+    #[serde(default)]
+    pub sub_done: usize,
 }
 
 #[derive(Serialize)]
@@ -130,13 +139,16 @@ pub fn assemble_sidebar(
     completed_after: &str,
     completed_before: &str,
 ) -> SidebarData {
+    // 필터 전 전체 목록으로 센다 — 필터 후에 세면 오래된 완료 자식이 빠져
+    // 진행률이 틀린다 (plane_api::count_sub_issues 주석 참고).
+    let sub_counts = plane_api::count_sub_issues(&items);
     let delegated = filter_delegated_visible(items.clone(), user_id)
         .into_iter()
-        .map(work_item_to_dto)
+        .map(|w| work_item_to_dto(w, &sub_counts))
         .collect();
     let assigned = filter_assigned_visible(items, user_id, completed_after, completed_before)
         .into_iter()
-        .map(work_item_to_dto)
+        .map(|w| work_item_to_dto(w, &sub_counts))
         .collect();
     let projects = projects
         .into_iter()
@@ -153,7 +165,8 @@ pub fn assemble_sidebar(
     }
 }
 
-fn work_item_to_dto(w: WorkItem) -> WorkItemDto {
+fn work_item_to_dto(w: WorkItem, sub_counts: &HashMap<String, (usize, usize)>) -> WorkItemDto {
+    let (sub_total, sub_done) = sub_counts.get(&w.id).copied().unwrap_or((0, 0));
     WorkItemDto {
         id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
         start_date: w.start_date,
@@ -161,6 +174,8 @@ fn work_item_to_dto(w: WorkItem) -> WorkItemDto {
         assignee_ids: w.assignee_ids,
         completed_at: w.completed_at,
         created_at: w.created_at, updated_at: w.updated_at,
+        parent_id: w.parent_id,
+        sub_total, sub_done,
     }
 }
 
@@ -418,6 +433,9 @@ pub async fn create_issue(
                 completed_at: None,
                 created_at: None,
                 updated_at: None,
+                parent_id: None,
+                sub_total: 0,
+                sub_done: 0,
             };
             crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
@@ -1685,6 +1703,51 @@ mod tests {
             sequence_id: 0,
             parent_id: None,
         }
+    }
+
+    fn item_with_parent(id: &str, group: &str, parent: Option<&str>) -> WorkItem {
+        WorkItem {
+            id: id.into(), name: format!("item {id}"), priority: "none".into(),
+            target_date: None, start_date: None, state_group: group.into(),
+            project_id: "p1".into(), assignee_ids: vec!["me".into()],
+            completed_at: Some("2026-08-18T09:00:00Z".into()).filter(|_| group == "completed"),
+            created_at: None, created_by: None, updated_at: None, sequence_id: 1,
+            parent_id: parent.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn assemble_sidebar_carries_parent_id_and_sub_counts() {
+        let items = vec![
+            item_with_parent("p1", "started", None),
+            item_with_parent("c1", "completed", Some("p1")),
+            item_with_parent("c2", "started", Some("p1")),
+        ];
+        let data = assemble_sidebar("me", Vec::new(), items, Vec::new(), "2026-08-18", "2026-08-18");
+        let parent = data.assigned.iter().find(|i| i.id == "p1").unwrap();
+        assert_eq!(parent.sub_total, 2);
+        assert_eq!(parent.sub_done, 1);
+        assert_eq!(parent.parent_id, None);
+        let child = data.assigned.iter().find(|i| i.id == "c2").unwrap();
+        assert_eq!(child.parent_id.as_deref(), Some("p1"));
+        assert_eq!(child.sub_total, 0);
+    }
+
+    /// 회귀 방지: 완료 자식이 표시 창(completed_after/before) 밖이라 목록에서
+    /// 빠져도 부모의 진행률은 2개 중 1개로 남아야 한다.
+    #[test]
+    fn assemble_sidebar_counts_children_hidden_by_completed_window() {
+        let mut old_done = item_with_parent("c1", "completed", Some("p1"));
+        old_done.completed_at = Some("2026-07-01T09:00:00Z".into());
+        let items = vec![
+            item_with_parent("p1", "started", None),
+            old_done,
+            item_with_parent("c2", "started", Some("p1")),
+        ];
+        let data = assemble_sidebar("me", Vec::new(), items, Vec::new(), "2026-08-18", "2026-08-18");
+        assert!(data.assigned.iter().all(|i| i.id != "c1"), "오래된 완료 항목은 목록에서 빠진다");
+        let parent = data.assigned.iter().find(|i| i.id == "p1").unwrap();
+        assert_eq!((parent.sub_total, parent.sub_done), (2, 1));
     }
 
     #[test]

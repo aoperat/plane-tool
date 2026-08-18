@@ -409,6 +409,7 @@ mod tests {
             id: id.into(), name: "n".into(), priority: "none".into(),
             target_date: None, start_date: None, state_group: "backlog".into(),
             project_id: "p1".into(), assignee_ids: vec![], completed_at: None, created_at: None, updated_at: None,
+            parent_id: None, sub_total: 0, sub_done: 0,
         }
     }
 
