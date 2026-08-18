@@ -150,6 +150,23 @@ pub fn patch_cached_item_in_either(
     }
 }
 
+/// 오프라인 생성 placeholder를 캐시에 넣는다 — 부모가 캐시에 있으면(assigned든
+/// delegated든) 그 부모의 `sub_total`도 하나 늘린다.
+///
+/// 안 늘리면 부모 행이 `0/0` 진행 바를 그리고, `sub_total == 0`이라 "하위 없는
+/// 할 일"로 세어져 탭 카운트까지 어긋난다. 새로 만든 하위는 완료 상태가 아니므로
+/// `sub_done`은 건드리지 않는다.
+pub fn insert_placeholder_into_cache(
+    assigned: &mut Vec<WorkItemDto>,
+    delegated: &mut [WorkItemDto],
+    placeholder: WorkItemDto,
+) {
+    if let Some(parent_id) = placeholder.parent_id.clone() {
+        patch_cached_item_in_either(assigned, delegated, &parent_id, |p| p.sub_total += 1);
+    }
+    assigned.push(placeholder);
+}
+
 pub fn remove_cached_item(items: &mut Vec<WorkItemDto>, target_id: &str) {
     items.retain(|d| d.id != target_id);
 }
@@ -294,7 +311,7 @@ pub async fn queue_create_and_insert(
     save_queue(app, &queue)?;
     if let Some(mut snapshot) = load_cache(app) {
         placeholder.id = local_id.clone();
-        snapshot.data.assigned.push(placeholder);
+        insert_placeholder_into_cache(&mut snapshot.data.assigned, &mut snapshot.data.delegated, placeholder);
         save_cache_snapshot(app, &snapshot)?;
     }
     emit_queue_changed(app, pending);
@@ -504,6 +521,58 @@ mod tests {
         patch_cached_item_in_either(&mut assigned, &mut delegated, "missing", |d| d.priority = "urgent".into());
         assert_eq!(assigned[0].priority, "none");
         assert_eq!(delegated[0].priority, "none");
+    }
+
+    #[test]
+    fn insert_placeholder_bumps_the_parent_sub_total() {
+        let mut assigned = vec![dto("parent")];
+        let mut delegated: Vec<WorkItemDto> = vec![];
+        let mut child = dto("local-1");
+        child.parent_id = Some("parent".into());
+
+        insert_placeholder_into_cache(&mut assigned, &mut delegated, child);
+
+        assert_eq!(assigned[0].sub_total, 1);
+        assert_eq!(assigned[0].sub_done, 0); // 새 하위는 완료가 아니다
+        assert_eq!(assigned[1].id, "local-1");
+    }
+
+    #[test]
+    fn insert_placeholder_finds_a_parent_in_delegated_too() {
+        let mut assigned: Vec<WorkItemDto> = vec![];
+        let mut delegated = vec![dto("parent")];
+        let mut child = dto("local-1");
+        child.parent_id = Some("parent".into());
+
+        insert_placeholder_into_cache(&mut assigned, &mut delegated, child);
+
+        assert_eq!(delegated[0].sub_total, 1);
+        assert_eq!(assigned[0].id, "local-1");
+    }
+
+    #[test]
+    fn insert_placeholder_without_a_parent_touches_nothing_else() {
+        let mut assigned = vec![dto("a")];
+        let mut delegated = vec![dto("b")];
+
+        insert_placeholder_into_cache(&mut assigned, &mut delegated, dto("local-1"));
+
+        assert_eq!(assigned[0].sub_total, 0);
+        assert_eq!(delegated[0].sub_total, 0);
+        assert_eq!(assigned[1].id, "local-1");
+    }
+
+    #[test]
+    fn insert_placeholder_still_lands_when_the_parent_is_not_cached() {
+        let mut assigned = vec![dto("a")];
+        let mut delegated: Vec<WorkItemDto> = vec![];
+        let mut child = dto("local-1");
+        child.parent_id = Some("어딘가-다른-곳".into());
+
+        insert_placeholder_into_cache(&mut assigned, &mut delegated, child);
+
+        assert_eq!(assigned.len(), 2);
+        assert_eq!(assigned[1].id, "local-1");
     }
 
     #[test]
