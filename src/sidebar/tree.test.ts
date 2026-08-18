@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTreeRows, shouldCompleteParent } from "./tree";
+import { buildTreeRows, shouldCompleteParent, subDoneDelta } from "./tree";
 import type { WorkItem } from "../shared/types";
 
 function item(id: string, parent: string | null = null, subTotal = 0, subDone = 0): WorkItem {
@@ -71,5 +71,28 @@ describe("shouldCompleteParent", () => {
   it("자식이 없는 항목은 부모가 아니다", () => {
     const p = { ...item("x"), state_group: "started" };
     expect(shouldCompleteParent(p, "completed")).toBe(false);
+  });
+});
+
+describe("subDoneDelta", () => {
+  it("완료로 들어가면 하나 늘린다", () => {
+    expect(subDoneDelta("started", "completed")).toBe(1);
+  });
+
+  it("완료에서 나오면 하나 줄인다", () => {
+    expect(subDoneDelta("completed", "started")).toBe(-1);
+  });
+
+  it("완료를 거치지 않는 이동은 그대로 둔다", () => {
+    expect(subDoneDelta("started", "unstarted")).toBe(0);
+  });
+
+  it("완료에서 취소로 가도 하나 줄인다", () => {
+    expect(subDoneDelta("completed", "cancelled")).toBe(-1);
+  });
+
+  it("같은 상태로 두면 그대로 둔다", () => {
+    expect(subDoneDelta("unstarted", "unstarted")).toBe(0);
+    expect(subDoneDelta("completed", "completed")).toBe(0);
   });
 });

@@ -52,3 +52,14 @@ export function shouldCompleteParent(parent: WorkItem, nextGroup: string): boole
   if (parent.state_group === "completed") return false;
   return parent.sub_done === parent.sub_total - 1;
 }
+
+/** 자식 상태가 `prevGroup`에서 `nextGroup`으로 바뀔 때 부모 `sub_done`의 증감.
+ *
+ *  완료로 들어가면 +1, 완료에서 나오면 -1, 완료를 거치지 않는 이동은 0이다.
+ *  낙관적 업데이트에서 이 값을 더하고, 서버 호출이 실패하면 다시 빼서 되돌린다. */
+export function subDoneDelta(prevGroup: string, nextGroup: string): -1 | 0 | 1 {
+  const was = prevGroup === "completed";
+  const now = nextGroup === "completed";
+  if (was === now) return 0;
+  return now ? 1 : -1;
+}

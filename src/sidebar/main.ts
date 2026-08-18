@@ -7,7 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
-import { buildTreeRows, shouldCompleteParent, type TreeRow } from "./tree";
+import { buildTreeRows, shouldCompleteParent, subDoneDelta, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -793,12 +793,18 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
         return;
       }
       const prev = it.state_group;
+      const parent = it.parent_id ? allItems.find((x) => x.id === it.parent_id) : undefined;
+      // 판정은 sub_done을 갱신하기 전 값으로 해야 한다 — shouldCompleteParent가
+      // "변경 전 값" 기준이므로, 여기서 미리 정해 두고 서버 성공 후에 쓴다.
+      const completeParent = !!parent && shouldCompleteParent(parent, group);
+      const delta = subDoneDelta(prev, group);
       it.state_group = group;
+      // 진행 바가 즉시 맞도록 부모 카운트도 낙관적으로 옮긴다.
+      if (parent) parent.sub_done += delta;
       renderTasks(allItems, projects);
       updateWorkItemState(it.project_id, it.id, stateId)
         .then(() => {
-          const parent = it.parent_id ? allItems.find((x) => x.id === it.parent_id) : undefined;
-          if (!parent || !shouldCompleteParent(parent, group)) return;
+          if (!parent || !completeParent) return;
           const parentStateId = resolveStateId(states, parent.project_id, "completed");
           if (!parentStateId) return;
           const parentPrev = parent.state_group;
@@ -814,6 +820,8 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
         })
         .catch((err) => {
           it.state_group = prev;
+          // 낙관적으로 옮겼던 부모 카운트도 함께 되돌린다 — 안 그러면 진행 바가 영구히 틀어진다.
+          if (parent) parent.sub_done -= delta;
           renderTasks(allItems, projects);
           synced.textContent = "상태 변경 실패: " + err;
           console.error("updateWorkItemState failed:", err);
