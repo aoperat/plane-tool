@@ -132,18 +132,22 @@ pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts:
 /// 웹과 동일: 완료는 최근 완료순, 진행중은 마감 임박순(없는 것은 뒤로), 예정은
 /// 시작일(없으면 마감일) 임박순(둘 다 없는 것은 뒤로).
 ///
-/// 하위 작업(`parent_id`가 있는 항목)은 어느 그룹에도 넣지 않는다 — 업무일지는
-/// 사람이 읽는 보고서라 부모 한 줄로 묶는 편이 자연스럽다.
+/// 하위 작업은 부모가 같은 `items` 안에 있을 때만 뺀다 — 업무일지는 사람이 읽는
+/// 보고서라 부모 한 줄로 묶는 편이 자연스럽지만, 부모가 없으면 묶어 줄 줄이
+/// 없어서 그날 한 일이 통째로 사라진다.
 pub fn classify_groups<'a>(
     items: &'a [WorkItem],
     today: &str,
 ) -> (Vec<&'a WorkItem>, Vec<&'a WorkItem>, Vec<&'a WorkItem>) {
+    let present: std::collections::HashSet<&str> = items.iter().map(|i| i.id.as_str()).collect();
     let mut completed: Vec<&WorkItem> = Vec::new();
     let mut in_progress: Vec<&WorkItem> = Vec::new();
     let mut upcoming: Vec<&WorkItem> = Vec::new();
     for item in items {
-        // 보고서는 묶음 단위로 읽는 문서다 — 자식은 부모 한 줄로 갈음한다.
-        if item.parent_id.is_some() {
+        // 보고서는 묶음 단위로 읽는 문서다 — 부모가 이 목록에 있는 자식은 그
+        // 부모 한 줄로 갈음한다. 부모가 다른 프로젝트에 있거나 필터에 걸려
+        // 빠졌으면 자식이 스스로 한 줄이 된다.
+        if item.parent_id.as_deref().is_some_and(|p| present.contains(p)) {
             continue;
         }
         match item.state_group.as_str() {
@@ -418,5 +422,21 @@ mod tests {
 
         assert_eq!(in_progress.len(), 1);
         assert_eq!(in_progress[0].name, "부모");
+    }
+
+    /// 회귀 방지: 부모가 이 목록에 없으면(다른 프로젝트에 있거나, 내 담당이
+    /// 아니거나, 상태 필터로 빠졌거나) 자식이 스스로 한 줄이 된다 — 부모도
+    /// 자식도 없으면 그날 한 일이 보고서에서 통째로 사라진다.
+    #[test]
+    fn classify_groups_keeps_sub_issues_whose_parent_is_absent() {
+        let mut child = item("b", "고아 자식", 2, "none", None);
+        child.state_group = "started".into();
+        child.parent_id = Some("어딘가-다른-곳".into());
+
+        let items = [child];
+        let (_, in_progress, _) = classify_groups(&items, "2026-08-18");
+
+        assert_eq!(in_progress.len(), 1);
+        assert_eq!(in_progress[0].name, "고아 자식");
     }
 }
