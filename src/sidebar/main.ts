@@ -7,7 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
-import { buildTreeRows, shouldCompleteParent, subDoneDelta, type TreeRow } from "./tree";
+import { buildTreeRows, parentEffect, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -319,12 +319,48 @@ function renderFromLastData() {
   renderActiveTabView();
 }
 
+/** 이미 받아둔 목록(assigned·delegated 양쪽)에서 항목을 찾는다 —
+ *  부모가 어느 탭에 들어 있을지는 알 수 없다. */
+function findLoadedItem(id: string | null | undefined): WorkItem | undefined {
+  if (!id || !lastSidebarData) return undefined;
+  return lastSidebarData.assigned.find((i) => i.id === id)
+    ?? lastSidebarData.delegated.find((i) => i.id === id);
+}
+
+/** 자식이 완료된 뒤 부모도 완료 처리한다. 자식은 이미 서버에 반영된 상태이므로
+ *  건드리지 않고, 부모 저장이 실패하면 부모만 되돌린다.
+ *
+ *  반환하는 Promise는 실패를 안에서 삼킨다 — 호출부의 바깥 `.catch()`가
+ *  자식 실패 메시지를 겹쳐 띄우지 않게 하기 위해서다. */
+function completeParentAfterChild(parent: WorkItem, rerender: () => void): Promise<void> {
+  const parentStateId = resolveStateId(states, parent.project_id, "completed");
+  if (!parentStateId) return Promise.resolve();
+  const parentPrev = parent.state_group;
+  const parentPrevCompletedAt = parent.completed_at;
+  parent.state_group = "completed";
+  // 자식과 같은 이유로 completed_at도 채운다 — 비워 두면 filterVisibleToday가
+  // "오늘 완료"로 쳐주지 않아 방금 닫힌 상위 작업이 목록에서 곧장 사라진다.
+  parent.completed_at = new Date().toISOString();
+  rerender();
+  return updateWorkItemState(parent.project_id, parent.id, parentStateId).catch((err) => {
+    parent.state_group = parentPrev;
+    parent.completed_at = parentPrevCompletedAt;
+    rerender();
+    synced.textContent = "상위 작업 완료 처리 실패: " + err;
+    console.error("updateWorkItemState(parent) failed:", err);
+  });
+}
+
 // 백엔드가 수정/삭제 성공 시 보내는 로컬 패치 이벤트의 payload. 전체
 // 재동기화 대신 이미 받아둔 데이터에 변경분만 반영한다 — 서버 요청이 없다.
 function applyItemChange(c: ItemChange) {
   if (!lastSidebarData) return;
   // 담당자 변경으로 항목이 내 목록에서 빠지거나 탭 간 이동해야 하는 경우는
   // 여기서 판별할 수 없다(내 user id를 모름) — 다음 전체 새로고침이 맞춘다.
+
+  // 같은 항목이 두 목록에 다 들어 있어도 부모 카운트는 한 번만 옮긴다.
+  let parentHandled = false;
+  let parentToComplete: WorkItem | undefined;
   for (const list of [lastSidebarData.assigned, lastSidebarData.delegated]) {
     const it = list.find((i) => i.id === c.item_id);
     if (!it) continue;
@@ -334,6 +370,16 @@ function applyItemChange(c: ItemChange) {
     if (c.start_date != null) it.start_date = c.start_date === "" ? null : c.start_date;
     if (c.target_date != null) it.target_date = c.target_date === "" ? null : c.target_date;
     if (c.state_group != null && c.state_group !== it.state_group) {
+      // 부모 판정은 sub_done을 옮기기 전 값으로 해야 한다.
+      if (!parentHandled) {
+        const parent = findLoadedItem(it.parent_id);
+        const effect = parentEffect(parent, it.state_group, c.state_group);
+        if (parent) {
+          parent.sub_done += effect.delta;
+          if (effect.complete) parentToComplete = parent;
+        }
+        parentHandled = true;
+      }
       it.state_group = c.state_group;
       // 서버는 완료 전환 시 completed_at을 채운다 — 로컬에도 채워야
       // filterVisibleToday가 "오늘 완료"로 인정해 목록에서 사라지지 않는다.
@@ -341,6 +387,8 @@ function applyItemChange(c: ItemChange) {
     }
   }
   renderFromLastData();
+  // 이 이벤트는 서버 반영이 끝난 뒤 온다 — 자식은 다시 저장하지 않고 부모만 올린다.
+  if (parentToComplete) void completeParentAfterChild(parentToComplete, renderFromLastData);
 }
 
 function removeItemLocally(itemId: string) {
@@ -794,35 +842,24 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
       }
       const prev = it.state_group;
       const parent = it.parent_id ? allItems.find((x) => x.id === it.parent_id) : undefined;
-      // 판정은 sub_done을 갱신하기 전 값으로 해야 한다 — shouldCompleteParent가
-      // "변경 전 값" 기준이므로, 여기서 미리 정해 두고 서버 성공 후에 쓴다.
-      const completeParent = !!parent && shouldCompleteParent(parent, group);
-      const delta = subDoneDelta(prev, group);
+      // 판정은 sub_done을 갱신하기 전 값으로 해야 한다 — 여기서 미리 정해 두고
+      // 서버 성공 후에 쓴다.
+      const effect = parentEffect(parent, prev, group);
+      const rerender = () => renderTasks(allItems, projects);
       it.state_group = group;
       // 진행 바가 즉시 맞도록 부모 카운트도 낙관적으로 옮긴다.
-      if (parent) parent.sub_done += delta;
-      renderTasks(allItems, projects);
+      if (parent) parent.sub_done += effect.delta;
+      rerender();
       updateWorkItemState(it.project_id, it.id, stateId)
         .then(() => {
-          if (!parent || !completeParent) return;
-          const parentStateId = resolveStateId(states, parent.project_id, "completed");
-          if (!parentStateId) return;
-          const parentPrev = parent.state_group;
-          parent.state_group = "completed";
-          renderTasks(allItems, projects);
-          return updateWorkItemState(parent.project_id, parent.id, parentStateId).catch((err) => {
-            // 자식 변경은 이미 서버에 반영됐다 — 부모만 되돌린다.
-            parent.state_group = parentPrev;
-            renderTasks(allItems, projects);
-            synced.textContent = "상위 작업 완료 처리 실패: " + err;
-            console.error("updateWorkItemState(parent) failed:", err);
-          });
+          if (!parent || !effect.complete) return;
+          return completeParentAfterChild(parent, rerender);
         })
         .catch((err) => {
           it.state_group = prev;
           // 낙관적으로 옮겼던 부모 카운트도 함께 되돌린다 — 안 그러면 진행 바가 영구히 틀어진다.
-          if (parent) parent.sub_done -= delta;
-          renderTasks(allItems, projects);
+          if (parent) parent.sub_done -= effect.delta;
+          rerender();
           synced.textContent = "상태 변경 실패: " + err;
           console.error("updateWorkItemState failed:", err);
         });

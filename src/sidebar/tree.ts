@@ -63,3 +63,29 @@ export function subDoneDelta(prevGroup: string, nextGroup: string): -1 | 0 | 1 {
   if (was === now) return 0;
   return now ? 1 : -1;
 }
+
+export interface ParentEffect {
+  /** 부모 `sub_done`에 더할 값. */
+  delta: -1 | 0 | 1;
+  /** 부모도 완료 처리해야 하는가. */
+  complete: boolean;
+}
+
+/** 자식 하나가 `prevGroup`에서 `nextGroup`으로 바뀔 때 부모에 미치는 영향.
+ *
+ *  자식 상태를 바꾸는 경로가 여럿이라(사이드바 상태 팝오버, 수정 창이 보내는
+ *  item-updated) 규칙을 여기 한 곳에 모은다 — 두 벌로 두면 한쪽만 고쳐진다.
+ *
+ *  `parent`의 `sub_done`은 이 변경이 아직 반영되지 않은 값이어야 한다.
+ *
+ *  한계: 2단만 본다. 부모가 또 다른 항목의 자식이더라도 할아버지의 `sub_done`은
+ *  건드리지 않고 완료도 연쇄시키지 않는다 — 이 앱은 2단까지만 만들고(자식 행에는
+ *  하위 추가 버튼이 없다), 3단은 Plane 웹에서만 생기며 다음 전체 동기화가 맞춘다. */
+export function parentEffect(
+  parent: WorkItem | undefined,
+  prevGroup: string,
+  nextGroup: string,
+): ParentEffect {
+  if (!parent) return { delta: 0, complete: false };
+  return { delta: subDoneDelta(prevGroup, nextGroup), complete: shouldCompleteParent(parent, nextGroup) };
+}

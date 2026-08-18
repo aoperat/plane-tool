@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTreeRows, shouldCompleteParent, subDoneDelta } from "./tree";
+import { buildTreeRows, parentEffect, shouldCompleteParent, subDoneDelta } from "./tree";
 import type { WorkItem } from "../shared/types";
 
 function item(id: string, parent: string | null = null, subTotal = 0, subDone = 0): WorkItem {
@@ -94,5 +94,31 @@ describe("subDoneDelta", () => {
   it("같은 상태로 두면 그대로 둔다", () => {
     expect(subDoneDelta("unstarted", "unstarted")).toBe(0);
     expect(subDoneDelta("completed", "completed")).toBe(0);
+  });
+});
+
+describe("parentEffect", () => {
+  const parent = () => ({ ...item("p", null, 3, 2), state_group: "started" });
+
+  it("부모가 없으면 아무 영향도 없다", () => {
+    expect(parentEffect(undefined, "started", "completed")).toEqual({ delta: 0, complete: false });
+  });
+
+  it("마지막 자식이 완료되면 카운트를 올리고 부모도 완료한다", () => {
+    expect(parentEffect(parent(), "started", "completed")).toEqual({ delta: 1, complete: true });
+  });
+
+  it("남은 자식이 있으면 카운트만 올린다", () => {
+    const p = { ...parent(), sub_done: 0 };
+    expect(parentEffect(p, "started", "completed")).toEqual({ delta: 1, complete: false });
+  });
+
+  it("완료를 취소하면 카운트를 내리고 부모는 건드리지 않는다", () => {
+    const p = { ...parent(), sub_done: 3, state_group: "completed" };
+    expect(parentEffect(p, "completed", "started")).toEqual({ delta: -1, complete: false });
+  });
+
+  it("완료를 거치지 않는 이동은 아무것도 바꾸지 않는다", () => {
+    expect(parentEffect(parent(), "unstarted", "started")).toEqual({ delta: 0, complete: false });
   });
 });
