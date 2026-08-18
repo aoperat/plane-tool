@@ -22,6 +22,9 @@
 - 2단 계층만 그린다 — 자식의 자식(손자)은 트리 조립에서 무시한다.
 - 마지막 태스크에서 CHANGELOG `[Unreleased]`에 사용자 가시 변경을 기록한다 (프로젝트 CLAUDE.md 규칙).
 - 테스트: `cargo test --manifest-path src-tauri/Cargo.toml`, `pnpm test`, 빌드 `pnpm build`.
+- **타입 체크는 `npx tsc --noEmit`으로 따로 돌린다.** `pnpm build`는 `vite build`뿐이라
+  esbuild가 타입을 지우기만 하고 검사하지 않는다 — 빌드가 성공해도 타입 에러가 남아
+  있을 수 있다. 프론트를 건드리는 태스크(3·4·7·8·9)는 이 명령까지 통과해야 끝난다.
 
 ## File Structure
 
