@@ -35,6 +35,24 @@ describe("buildTreeRows", () => {
     expect(rows.map((r) => r.depth)).toEqual([0, 1, 1]);
   });
 
+  it("4단 이상으로 깊어져도 후손을 하나도 잃지 않는다", () => {
+    const rows = buildTreeRows([
+      item("p", null, 1, 0),
+      item("c", "p", 1, 0),
+      item("g", "c", 1, 0),
+      item("gg", "g"),
+    ]);
+    expect(rows.map((r) => r.item.id)).toEqual(["p", "c", "g", "gg"]);
+    expect(rows.map((r) => r.depth)).toEqual([0, 1, 1, 1]);
+  });
+
+  it("부모-자식이 서로를 가리켜도 무한 루프 없이 한 번씩만 그린다", () => {
+    const a = item("a", "b");
+    const b = item("b", "a");
+    const rows = buildTreeRows([a, b]);
+    expect(rows.map((r) => r.item.id).sort()).toEqual(["a", "b"]);
+  });
+
   it("접힌 부모의 자식은 빠진다", () => {
     const rows = buildTreeRows([item("p", null, 2, 0), item("c1", "p"), item("c2", "p")], new Set(["p"]));
     expect(rows.map((r) => r.item.id)).toEqual(["p"]);

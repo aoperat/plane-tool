@@ -12,7 +12,9 @@ export interface TreeRow {
  *
  *  - 부모가 목록에 없는 자식(남의 담당이거나 필터에 걸린 부모)은 최상위로
  *    그린다. 들여쓰면 연결선이 허공에 뜬다.
- *  - 손자는 자식과 같은 깊이로 눌러 2단만 유지한다.
+ *  - 깊이가 얼마든 모든 후손을 depth 1에 눌러 2단만 유지한다. 앱은 2단까지만
+ *    만들지만 Plane 웹에서 더 깊은 계층이 생길 수 있고, 그때 항목이 화면에서
+ *    조용히 사라지면 안 된다.
  *  - 입력 순서(정렬 결과)를 그대로 존중한다. */
 export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Set()): TreeRow[] {
   const present = new Set(items.map((i) => i.id));
@@ -25,18 +27,40 @@ export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Se
     else childrenOf.set(parent, [it]);
   }
 
-  const rows: TreeRow[] = [];
+  // 최상위 항목의 후손인가 — 후손은 그 조상 차례에 딸려 나오므로 제 차례를
+  // 건너뛴다. 순환(A의 부모가 B, B의 부모가 A)은 최상위가 하나도 없어 여기
+  // 걸리지 않고, 아래 루프에서 먼저 만난 쪽이 최상위가 된다.
+  const descendant = new Set<string>();
   for (const it of items) {
-    // 부모가 이 목록 안에 있는 항목은 그 부모 차례에 딸려 나온다.
     if (it.parent_id && present.has(it.parent_id)) continue;
+    const walk = [it.id];
+    while (walk.length) {
+      for (const child of childrenOf.get(walk.pop()!) ?? []) {
+        if (descendant.has(child.id)) continue;
+        descendant.add(child.id);
+        walk.push(child.id);
+      }
+    }
+  }
+
+  const rows: TreeRow[] = [];
+  const drawn = new Set<string>();
+  for (const it of items) {
+    if (descendant.has(it.id) || drawn.has(it.id)) continue;
     const children = childrenOf.get(it.id) ?? [];
+    drawn.add(it.id);
     rows.push({ item: it, depth: 0, isParent: children.length > 0 });
     if (collapsed.has(it.id)) continue;
-    for (const child of children) {
-      const grandChildren = childrenOf.get(child.id) ?? [];
-      rows.push({ item: child, depth: 1, isParent: false });
-      // 손자도 같은 깊이로 눌러 넣는다 — 2단만 그린다.
-      for (const g of grandChildren) rows.push({ item: g, depth: 1, isParent: false });
+    // 손자든 증손자든 전부 같은 깊이로 눌러 넣는다 — 2단만 그리되 하나도
+    // 빠뜨리지 않는다. `drawn`이 순환을 끊는다.
+    const stack = [...children].reverse();
+    while (stack.length) {
+      const node = stack.pop()!;
+      if (drawn.has(node.id)) continue;
+      drawn.add(node.id);
+      rows.push({ item: node, depth: 1, isParent: false });
+      const kids = childrenOf.get(node.id) ?? [];
+      for (let i = kids.length - 1; i >= 0; i -= 1) stack.push(kids[i]);
     }
   }
   return rows;
