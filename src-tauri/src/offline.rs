@@ -114,11 +114,16 @@ pub fn push_mutation(
 }
 
 /// 오프라인 생성 임시 id(`local-*`)를 참조하던 큐 항목들을 실제 서버 id로
-/// 치환한다 — `CreateIssue` 재생이 성공한 직후 호출.
+/// 치환한다 — `CreateIssue` 재생이 성공한 직후 호출. `target_id`뿐 아니라 payload의
+/// `parent_id`도 바꾼다: 오프라인에서 부모와 자식을 잇달아 만들면 자식은 부모의
+/// 로컬 id를 들고 있어서, 그대로 보내면 Plane이 400으로 거절한다.
 pub fn remap_target_id(queue: &mut OfflineQueue, old_id: &str, new_id: &str) {
     for m in queue.items.iter_mut() {
         if m.target_id == old_id {
             m.target_id = new_id.to_string();
+        }
+        if m.payload.get("parent_id").and_then(|v| v.as_str()) == Some(old_id) {
+            m.payload["parent_id"] = serde_json::json!(new_id);
         }
     }
 }
@@ -436,6 +441,32 @@ mod tests {
         assert_eq!(q.items[0].target_id, "real-99");
         assert_eq!(q.items[1].target_id, "real-99");
         assert_eq!(q.items[2].target_id, "other"); // untouched
+    }
+
+    #[test]
+    fn remap_target_id_also_rewrites_parent_in_payload() {
+        let mut queue = OfflineQueue::default();
+        push_mutation(&mut queue, MutationKind::CreateIssue, "p1", "local-1",
+            serde_json::json!({ "name": "부모" }), None, 1);
+        push_mutation(&mut queue, MutationKind::CreateIssue, "p1", "local-2",
+            serde_json::json!({ "name": "자식", "parent_id": "local-1" }), None, 2);
+
+        remap_target_id(&mut queue, "local-1", "server-1");
+
+        let child = queue.items.iter().find(|i| i.target_id == "local-2").unwrap();
+        assert_eq!(child.payload.get("parent_id").and_then(|v| v.as_str()), Some("server-1"));
+    }
+
+    #[test]
+    fn remap_target_id_leaves_other_parents_alone() {
+        let mut queue = OfflineQueue::default();
+        push_mutation(&mut queue, MutationKind::CreateIssue, "p1", "local-2",
+            serde_json::json!({ "name": "자식", "parent_id": "server-9" }), None, 1);
+
+        remap_target_id(&mut queue, "local-1", "server-1");
+
+        let child = queue.items.iter().find(|i| i.target_id == "local-2").unwrap();
+        assert_eq!(child.payload.get("parent_id").and_then(|v| v.as_str()), Some("server-9"));
     }
 
     #[test]

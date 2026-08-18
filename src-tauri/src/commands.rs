@@ -438,7 +438,7 @@ pub async fn create_issue(
                 completed_at: None,
                 created_at: None,
                 updated_at: None,
-                parent_id: None,
+                parent_id: parent_id.clone(),
                 sub_total: 0,
                 sub_done: 0,
             };
