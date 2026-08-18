@@ -604,6 +604,25 @@ kbd {
   border-radius: 8px; cursor: pointer; position: relative;
   background: var(--surface-task); border: 1px solid var(--surface-task-border);
 }
+/* 하위 작업. 왼쪽 여백과 갈고리 선으로 부모에 매달린 것처럼 보인다.
+   선은 ::after에 그린다 — ::before는 .task.in-progress의 회전 빔이 이미 쓰고
+   있어서, 진행 중인 하위 작업이면 둘이 같은 의사요소를 두고 겹친다. */
+.task.child { margin-left: 22px; position: relative; }
+.task.child::after {
+  content: ""; position: absolute; left: -11px; top: -5px; bottom: 50%; width: 9px;
+  border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 5px; pointer-events: none;
+}
+/* 부모 행. 칩을 그리지 않는 대신 진행 바와 비율이 들어간다. .task:hover 앞에
+   둬서 부모를 올려다봐도 hover 색이 그대로 먹게 한다 — 부모 행도 눌러서 수정
+   창을 여는 클릭 대상이다. */
+.task.parent { background: var(--panel-2); }
+.task.parent .subprog { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.task.parent .subprog .bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.task.parent .subprog .bar > i { display: block; height: 100%; background: var(--accent); }
+.task.parent .subprog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.task .subfold { color: var(--muted); font-size: 10px; width: 10px; text-align: center; cursor: pointer; flex: none; }
+.task.collapsed .subfold { transform: rotate(-90deg); }
 .task:hover { background: var(--surface-task-hover); }
 /* Chips sit on the raised card, not the list surface — see --surface-chip-on-task. */
 .task .chip { background: var(--surface-chip-on-task); }

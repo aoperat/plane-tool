@@ -7,6 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
+import { buildTreeRows, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -750,14 +751,34 @@ function openDeleteConfirm(it: WorkItem, x: number, y: number) {
   attachPopover(pop, x, y);
 }
 
-function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
+function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], row?: TreeRow): HTMLElement {
   const el = document.createElement("div");
+  const isParent = row?.isParent ?? false;
+  const isChild = (row?.depth ?? 0) > 0;
   el.className = "task"
     + (it.state_group === "completed" ? " completed" : "")
-    + (it.state_group === "started" ? " in-progress" : "");
+    + (it.state_group === "started" ? " in-progress" : "")
+    + (isChild ? " child" : "")
+    + (isParent ? " parent" : "")
+    + (isParent && collapsedGroups.has(it.id) ? " collapsed" : "");
 
   const top = document.createElement("div");
   top.className = "task-top";
+
+  if (isParent) {
+    const fold = document.createElement("span");
+    fold.className = "subfold";
+    fold.textContent = "▾";
+    fold.title = "하위 작업 접기";
+    fold.onclick = (e) => {
+      e.stopPropagation();
+      if (collapsedGroups.has(it.id)) collapsedGroups.delete(it.id);
+      else collapsedGroups.add(it.id);
+      persistCollapsedGroups();
+      renderTasks(allItems, projects);
+    };
+    top.appendChild(fold);
+  }
 
   const stateBtn = document.createElement("span");
   stateBtn.className = "task-state";
@@ -800,67 +821,86 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   top.appendChild(browserBtn);
   el.appendChild(top);
 
-  const chips = document.createElement("div");
-  chips.className = "task-chips";
-
-  const prioChip = document.createElement("span");
-  const noPriority = it.priority === "none";
-  prioChip.className = "chip sm" + (noPriority ? " empty" : "");
-  prioChip.title = "우선순위 변경";
-  if (noPriority) {
-    prioChip.innerHTML = `${PLUS_ICON} 우선순위`;
+  if (isParent) {
+    // 부모의 날짜·담당자는 자식들 것의 요약이라 새 정보가 아니다. 목록에서는
+    // 접고, 값 자체는 행을 눌러 수정 창을 열면 그대로 있다.
+    const prog = document.createElement("div");
+    prog.className = "subprog";
+    const bar = document.createElement("span");
+    bar.className = "bar";
+    const fill = document.createElement("i");
+    const pct = it.sub_total > 0 ? Math.round((it.sub_done / it.sub_total) * 100) : 0;
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    prog.appendChild(bar);
+    const txt = document.createElement("span");
+    txt.className = "txt";
+    txt.textContent = `${it.sub_done}/${it.sub_total}`;
+    prog.appendChild(txt);
+    el.appendChild(prog);
   } else {
-    prioChip.style.color = priorityColor(it.priority as any);
-    prioChip.innerHTML = `${priorityIcon(it.priority as any)} ${PRIORITY_LABELS[it.priority] ?? it.priority}`;
-  }
-  prioChip.onclick = (e) => {
-    e.stopPropagation();
-    openPriorityPopover(prioChip, it, (priority) => {
-      const prev = it.priority;
-      it.priority = priority;
-      renderTasks(allItems, projects);
-      updateWorkItemPriority(it.project_id, it.id, priority).catch((err) => {
-        it.priority = prev;
-        renderTasks(allItems, projects);
-        synced.textContent = "우선순위 변경 실패: " + err;
-        console.error("updateWorkItemPriority failed:", err);
-      });
-    });
-  };
-  chips.appendChild(prioChip);
+    const chips = document.createElement("div");
+    chips.className = "task-chips";
 
-  if (it.state_group === "completed" && it.completed_at) {
-    const doneChip = document.createElement("span");
-    doneChip.className = "chip sm info";
-    doneChip.innerHTML = `${CALENDAR_ICON} 완료 ${formatLocalTime(it.completed_at)}`;
-    chips.appendChild(doneChip);
-  } else {
-    const range = formatDateRange(it.start_date, it.target_date);
-    const dateChip = document.createElement("span");
-    dateChip.className = "chip sm" + (range ? "" : " empty");
-    dateChip.title = "기간 변경";
-    dateChip.innerHTML = range ? `${CALENDAR_ICON} ${range}` : `${PLUS_ICON} 마감일`;
-    dateChip.onclick = (e) => {
+    const prioChip = document.createElement("span");
+    const noPriority = it.priority === "none";
+    prioChip.className = "chip sm" + (noPriority ? " empty" : "");
+    prioChip.title = "우선순위 변경";
+    if (noPriority) {
+      prioChip.innerHTML = `${PLUS_ICON} 우선순위`;
+    } else {
+      prioChip.style.color = priorityColor(it.priority as any);
+      prioChip.innerHTML = `${priorityIcon(it.priority as any)} ${PRIORITY_LABELS[it.priority] ?? it.priority}`;
+    }
+    prioChip.onclick = (e) => {
       e.stopPropagation();
-      openSidebarDatePopover(dateChip, it, allItems, projects);
+      openPriorityPopover(prioChip, it, (priority) => {
+        const prev = it.priority;
+        it.priority = priority;
+        renderTasks(allItems, projects);
+        updateWorkItemPriority(it.project_id, it.id, priority).catch((err) => {
+          it.priority = prev;
+          renderTasks(allItems, projects);
+          synced.textContent = "우선순위 변경 실패: " + err;
+          console.error("updateWorkItemPriority failed:", err);
+        });
+      });
     };
-    chips.appendChild(dateChip);
+    chips.appendChild(prioChip);
+
+    if (it.state_group === "completed" && it.completed_at) {
+      const doneChip = document.createElement("span");
+      doneChip.className = "chip sm info";
+      doneChip.innerHTML = `${CALENDAR_ICON} 완료 ${formatLocalTime(it.completed_at)}`;
+      chips.appendChild(doneChip);
+    } else {
+      const range = formatDateRange(it.start_date, it.target_date);
+      const dateChip = document.createElement("span");
+      dateChip.className = "chip sm" + (range ? "" : " empty");
+      dateChip.title = "기간 변경";
+      dateChip.innerHTML = range ? `${CALENDAR_ICON} ${range}` : `${PLUS_ICON} 마감일`;
+      dateChip.onclick = (e) => {
+        e.stopPropagation();
+        openSidebarDatePopover(dateChip, it, allItems, projects);
+      };
+      chips.appendChild(dateChip);
+    }
+    if (activeTab === "delegated" && it.assignee_ids.length > 0) {
+      const [firstId, ...restIds] = it.assignee_ids;
+      const name = resolveAssigneeName(delegatedMemberNames, firstId);
+      const assigneeChip = document.createElement("span");
+      assigneeChip.className = "chip sm";
+      assigneeChip.title = "담당자";
+      const avatarEl = document.createElement("span");
+      avatarEl.className = "avatar";
+      avatarEl.style.background = colorForId(firstId);
+      avatarEl.textContent = name.slice(0, 1);
+      assigneeChip.appendChild(avatarEl);
+      assigneeChip.appendChild(document.createTextNode(name + (restIds.length > 0 ? ` +${restIds.length}` : "")));
+      chips.appendChild(assigneeChip);
+    }
+    el.appendChild(chips);
   }
-  if (activeTab === "delegated" && it.assignee_ids.length > 0) {
-    const [firstId, ...restIds] = it.assignee_ids;
-    const name = resolveAssigneeName(delegatedMemberNames, firstId);
-    const assigneeChip = document.createElement("span");
-    assigneeChip.className = "chip sm";
-    assigneeChip.title = "담당자";
-    const avatarEl = document.createElement("span");
-    avatarEl.className = "avatar";
-    avatarEl.style.background = colorForId(firstId);
-    avatarEl.textContent = name.slice(0, 1);
-    assigneeChip.appendChild(avatarEl);
-    assigneeChip.appendChild(document.createTextNode(name + (restIds.length > 0 ? ` +${restIds.length}` : "")));
-    chips.appendChild(assigneeChip);
-  }
-  el.appendChild(chips);
 
   el.onclick = () => openEditModal(it.project_id, it.id, it);
   el.oncontextmenu = (e) => {
@@ -961,8 +1001,11 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     } else {
       // Filter rows only — the group header (and its progress ring above) still
       // counts hidden completed items, so "3/3" stays visible when all are done.
-      for (const it of filterHiddenCompleted(groupItems, hideCompleted)) {
-        body.appendChild(renderTaskRow(it, items, projects));
+      // 트리는 완료 숨김을 적용한 뒤에 조립한다 — 숨겨진 부모의 자식이 갑자기
+      // 최상위로 튀어나오는 것이 자연스럽다(고아 자식 규칙과 같은 처리).
+      const visible = filterHiddenCompleted(groupItems, hideCompleted);
+      for (const row of buildTreeRows(visible, collapsedGroups)) {
+        body.appendChild(renderTaskRow(row.item, items, projects, row));
       }
     }
     tasksEl.appendChild(body);
@@ -1022,8 +1065,8 @@ function renderSubGroup(sub: SubGroup, items: WorkItem[], projects: Project[]): 
   if (rows.length > 0) {
     const body = document.createElement("div");
     body.className = "sub-body" + (collapsed ? " collapsed" : "");
-    for (const it of rows) {
-      body.appendChild(renderTaskRow(it, items, projects));
+    for (const row of buildTreeRows(rows, collapsedGroups)) {
+      body.appendChild(renderTaskRow(row.item, items, projects, row));
     }
     frag.appendChild(body);
   }
