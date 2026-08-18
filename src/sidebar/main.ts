@@ -7,7 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
-import { buildTreeRows, parentEffect, type TreeRow } from "./tree";
+import { buildTreeRows, countActionable, parentEffect, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -311,11 +311,13 @@ function renderActiveTabView() {
 
 /** 탭 카운트와 현재 탭 목록을 lastSidebarData 기준으로 다시 그린다 —
  *  전체 fetch(runRefresh)와 로컬 패치(item-updated/item-deleted)가 공유한다.
- *  개수는 목록과 같은 visibleTabItems로 세므로 둘이 어긋나지 않는다. */
+ *  개수는 목록과 같은 visibleTabItems 범위에서 세되, 하위를 가진 부모는
+ *  countActionable이 빼고 센다 — 목록에는 부모 행이 그대로 보이므로
+ *  부모 1 + 자식 3이면 4줄에 배지는 3이다. */
 function renderFromLastData() {
   if (!lastSidebarData) return;
-  assignedTabCountEl.textContent = String(visibleTabItems("assigned", lastSidebarData, delegatedShowAll).length);
-  delegatedTabCountEl.textContent = String(visibleTabItems("delegated", lastSidebarData, delegatedShowAll).length);
+  assignedTabCountEl.textContent = String(countActionable(visibleTabItems("assigned", lastSidebarData, delegatedShowAll)));
+  delegatedTabCountEl.textContent = String(countActionable(visibleTabItems("delegated", lastSidebarData, delegatedShowAll)));
   renderActiveTabView();
 }
 
@@ -1032,7 +1034,8 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
   // 헤더의 개수는 검색/필터와 무관하게 항상 할당된 작업 총합을 보여준다 —
   // 검색·필터는 목록의 "범위"를 좁히는 것이지 표시 설정이 아니므로, 그 결과
   // 개수는 검색 줄 자체의 searchCountEl에 따로 보여준다.
-  taskCount.textContent = String(items.length);
+  // 세는 것은 실제 할 일이라 하위를 가진 부모는 빼고 센다(목록에는 그대로 보인다).
+  taskCount.textContent = String(countActionable(items));
   tasksEl.innerHTML = "";
 
   let filtered = filterBySearch(items, projects, searchQuery);

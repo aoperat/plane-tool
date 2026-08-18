@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTreeRows, parentEffect, shouldCompleteParent, subDoneDelta } from "./tree";
+import { buildTreeRows, countActionable, parentEffect, shouldCompleteParent, subDoneDelta } from "./tree";
 import type { WorkItem } from "../shared/types";
 
 function item(id: string, parent: string | null = null, subTotal = 0, subDone = 0): WorkItem {
@@ -44,6 +44,22 @@ describe("buildTreeRows", () => {
     const rows = buildTreeRows([item("p", null, 2, 1), item("c1", "p")]);
     expect(rows[0].isParent).toBe(true);
     expect(rows[1].isParent).toBe(false);
+  });
+});
+
+describe("countActionable", () => {
+  it("하위를 가진 부모는 빼고 센다", () => {
+    const items = [item("p", null, 3, 0), item("c1", "p"), item("c2", "p"), item("c3", "p")];
+    expect(countActionable(items)).toBe(3);
+  });
+
+  it("하위가 없는 평범한 목록은 그대로 센다", () => {
+    expect(countActionable([item("a"), item("b")])).toBe(2);
+    expect(countActionable([])).toBe(0);
+  });
+
+  it("부모가 목록에 없는 고아 자식도 하나로 센다", () => {
+    expect(countActionable([item("c", "gone")])).toBe(1);
   });
 });
 

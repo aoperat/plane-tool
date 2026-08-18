@@ -42,6 +42,15 @@ export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Se
   return rows;
 }
 
+/** 개수로 셀 만한 항목 — 하위를 가진 부모는 빼고 센다.
+ *
+ *  부모는 묶음 머리글이라 그 자체로 할 일이 아니고, 자식과 함께 세면 같은 일이
+ *  두 번 세어진다. "제외"는 세지 않는다는 뜻일 뿐 숨긴다는 뜻이 아니다 —
+ *  목록에는 부모 행이 그대로 보이므로 부모 1 + 자식 3이면 4줄에 카운트는 3이다. */
+export function countActionable(items: WorkItem[]): number {
+  return items.filter((it) => it.sub_total === 0).length;
+}
+
 /** 자식 하나를 `nextGroup`으로 바꿀 때, 그 부모도 완료 처리해야 하는가.
  *
  *  `sub_done`은 이 변경이 반영되기 전 값이므로 "남은 미완료 자식이 하나뿐"이

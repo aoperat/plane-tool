@@ -131,6 +131,9 @@ pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts:
 /// `state_group == "unstarted"` 전체(backlog/cancelled 제외). 정렬 규칙은 Plane
 /// 웹과 동일: 완료는 최근 완료순, 진행중은 마감 임박순(없는 것은 뒤로), 예정은
 /// 시작일(없으면 마감일) 임박순(둘 다 없는 것은 뒤로).
+///
+/// 하위 작업(`parent_id`가 있는 항목)은 어느 그룹에도 넣지 않는다 — 업무일지는
+/// 사람이 읽는 보고서라 부모 한 줄로 묶는 편이 자연스럽다.
 pub fn classify_groups<'a>(
     items: &'a [WorkItem],
     today: &str,
@@ -139,6 +142,10 @@ pub fn classify_groups<'a>(
     let mut in_progress: Vec<&WorkItem> = Vec::new();
     let mut upcoming: Vec<&WorkItem> = Vec::new();
     for item in items {
+        // 보고서는 묶음 단위로 읽는 문서다 — 자식은 부모 한 줄로 갈음한다.
+        if item.parent_id.is_some() {
+            continue;
+        }
         match item.state_group.as_str() {
             "completed" if completed_within(item, today, today) => completed.push(item),
             "started" => in_progress.push(item),
@@ -395,5 +402,21 @@ mod tests {
         assert_eq!(completed.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["a"]);
         assert_eq!(in_progress.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["c"]);
         assert_eq!(upcoming.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["d"]);
+    }
+
+    /// 업무일지는 부모 한 줄로 묶어 읽는 문서다 — 자식은 따로 나열하지 않는다.
+    #[test]
+    fn classify_groups_excludes_sub_issues() {
+        let mut parent = item("a", "부모", 1, "none", None);
+        parent.state_group = "started".into();
+        let mut child = item("b", "자식", 2, "none", None);
+        child.state_group = "started".into();
+        child.parent_id = Some(parent.id.clone());
+
+        let items = [parent, child];
+        let (_, in_progress, _) = classify_groups(&items, "2026-08-18");
+
+        assert_eq!(in_progress.len(), 1);
+        assert_eq!(in_progress[0].name, "부모");
     }
 }
