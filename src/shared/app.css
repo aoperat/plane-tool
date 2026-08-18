@@ -623,6 +623,21 @@ kbd {
 .task.parent .subprog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .task .subfold { color: var(--muted); font-size: 10px; width: 10px; text-align: center; cursor: pointer; flex: none; }
 .task.collapsed .subfold { transform: rotate(-90deg); }
+/* 하위 작업 추가 버튼. 브라우저 열기 버튼과 나란히 서므로 .icon-btn을 같이
+   입혀 크기·여백을 맞춘다 — 안 그러면 두 아이콘의 높이가 어긋난다
+   (.task-top이 align-items: flex-start라 위에서부터 쌓인다). */
+.task .subaddbtn { opacity: 0; color: var(--muted); transition: opacity .1s; }
+.task:hover .subaddbtn { opacity: 1; }
+.task .subaddbtn:hover { color: var(--accent); }
+/* 부모 행 바로 아래에 끼어드는 한 줄 입력. 하위 작업(margin-left: 22px)보다
+   조금 더 들여써서 "이 자리에 하위가 생긴다"를 미리 보여준다. */
+.subadd-row { margin: 0 8px 5px 30px; }
+.subadd-row input {
+  width: 100%; box-sizing: border-box; background: var(--surface-task);
+  border: 1px solid var(--accent-ring); border-radius: 6px;
+  padding: 6px 8px; color: var(--text); font-size: 12px; outline: none;
+}
+.subadd-row input::placeholder { color: var(--muted-2); }
 .task:hover { background: var(--surface-task-hover); }
 /* Chips sit on the raised card, not the list surface — see --surface-chip-on-task. */
 .task .chip { background: var(--surface-chip-on-task); }

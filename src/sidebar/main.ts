@@ -819,6 +819,20 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
     openInBrowser(it);
   };
   top.appendChild(browserBtn);
+
+  // 하위가 없는 평범한 항목에도 단다 — 누르는 순간 그 항목이 부모가 된다.
+  // 자식 행에만 안 단다: 목록은 2단까지만 그린다.
+  if (!isChild) {
+    const subAddBtn = document.createElement("span");
+    subAddBtn.className = "icon-btn subaddbtn";
+    subAddBtn.title = "하위 작업 추가";
+    subAddBtn.innerHTML = PLUS_ICON;
+    subAddBtn.onclick = (e) => {
+      e.stopPropagation();
+      openSubAddRow(el, it);
+    };
+    top.appendChild(subAddBtn);
+  }
   el.appendChild(top);
 
   if (isParent) {
@@ -910,6 +924,44 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], 
   };
 
   return el;
+}
+
+/** 부모 행 바로 아래에 한 줄 입력을 연다. 등록하면 담당자는 나, 우선순위·마감일은
+ *  부모에서 상속하고 시작일은 비운다 — 부모의 시작일은 이미 지난 날짜일 때가 많다.
+ *  성공하면 create_issue가 refresh-sidebar를 띄우므로 목록은 저절로 다시 그려진다. */
+function openSubAddRow(anchor: HTMLElement, parent: WorkItem) {
+  if (anchor.nextElementSibling?.classList.contains("subadd-row")) return;
+
+  const row = document.createElement("div");
+  row.className = "subadd-row";
+  const input = document.createElement("input");
+  input.placeholder = "하위 작업 제목… (Enter 등록, Esc 취소)";
+  row.appendChild(input);
+  anchor.after(row);
+  input.focus();
+
+  const close = () => row.remove();
+  input.onkeydown = (e) => {
+    // Esc는 여기서 멈춰야 한다 — 문서 단 핸들러까지 올라가면 사이드바가 통째로 닫힌다.
+    if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    if (e.key !== "Enter") return;
+    const name = input.value.trim();
+    if (!name) { close(); return; }
+    // disabled를 먼저 세운다. 그 순간 포커스를 잃어 onblur가 도는데, 아래 조건이
+    // 이미 참이라 등록 중인 줄을 닫지 않는다.
+    input.disabled = true;
+    createIssue(
+      parent.project_id, name, [], undefined, parent.target_date ?? undefined,
+      parent.priority, "unstarted", "", parent.id,
+    )
+      .then(() => { close(); })
+      .catch((err) => {
+        input.disabled = false;
+        synced.textContent = "하위 작업 추가 실패: " + err;
+        console.error("createIssue(sub) failed:", err);
+      });
+  };
+  input.onblur = () => { if (!input.disabled) close(); };
 }
 
 function renderTasks(items: WorkItem[], projects: Project[]) {
