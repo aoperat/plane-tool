@@ -103,6 +103,8 @@ pub struct NewWorkItem<'a> {
     pub priority: &'a str,
     pub state_id: &'a str,
     pub description_html: Option<&'a str>,
+    /// 상위 작업 id. Plane이 워크스페이스·프로젝트 소속까지 검증한다.
+    pub parent_id: Option<&'a str>,
 }
 
 /// mng(외부 사내 그룹웨어)에 실제 등록된 일일 업무일지 한 행. 필드는 Plane 서버의
@@ -780,6 +782,9 @@ impl PlaneClient {
         if let Some(dh) = item.description_html {
             body.insert("description_html".into(), serde_json::json!(dh));
         }
+        if let Some(parent) = item.parent_id {
+            body.insert("parent".into(), serde_json::json!(parent));
+        }
         let resp = self
             .send_retrying(
                 self.http
@@ -1406,6 +1411,7 @@ mod tests {
             priority: "high",
             state_id: "state-1",
             description_html: Some("<p>World</p>"),
+            parent_id: None,
         };
         let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
         assert_eq!(id, "new-item-1");
@@ -1438,9 +1444,60 @@ mod tests {
             priority: "none",
             state_id: "state-1",
             description_html: None,
+            parent_id: None,
         };
         let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
         assert_eq!(id, "new-item-2");
+    }
+
+    #[tokio::test]
+    async fn create_work_item_sends_parent_when_present() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .and(body_partial_json(serde_json::json!({ "parent": "parent-1" })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-1" })))
+            .mount(&server)
+            .await;
+        let item = NewWorkItem {
+            name: "자식",
+            assignee_ids: &[],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "s1",
+            description_html: None,
+            parent_id: Some("parent-1"),
+        };
+        let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        assert_eq!(id, "new-1");
+    }
+
+    /// 회귀 방지: parent가 없으면 키 자체를 보내지 않는다. Plane 0.27+는
+    /// null을 400으로 거절한다 (description_html과 같은 이유).
+    #[tokio::test]
+    async fn create_work_item_omits_parent_key_when_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-2" })))
+            .mount(&server)
+            .await;
+        let client = client_for(&server).await;
+        let item = NewWorkItem {
+            name: "최상위",
+            assignee_ids: &[],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "s1",
+            description_html: None,
+            parent_id: None,
+        };
+        client.create_work_item("p1", &item).await.unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert!(body.get("parent").is_none(), "parent 키가 없어야 한다: {body}");
     }
 
     // The server's validation errors arrive in the response body — surfacing
@@ -1464,6 +1521,7 @@ mod tests {
             priority: "none",
             state_id: "state-1",
             description_html: None,
+            parent_id: None,
         };
         let err = client_for(&server).await.create_work_item("p1", &item).await.unwrap_err();
         assert!(err.contains("400"), "error should include status: {err}");

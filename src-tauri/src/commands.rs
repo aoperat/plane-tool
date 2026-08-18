@@ -361,6 +361,7 @@ pub(crate) async fn try_create_issue_online(
     priority: &str,
     state_group: &str,
     description: Option<&str>,
+    parent_id: Option<&str>,
 ) -> Result<String, String> {
     let assignees = if assignee_ids.is_empty() {
         let user = client.current_user_cached().await?;
@@ -380,6 +381,7 @@ pub(crate) async fn try_create_issue_online(
         priority,
         state_id: &state_id,
         description_html: description_html.as_deref(),
+        parent_id,
     };
     client.create_work_item(project_id, &item).await
 }
@@ -395,6 +397,7 @@ pub async fn create_issue(
     priority: String,
     state_group: String,
     description: Option<String>,
+    parent_id: Option<String>,
 ) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("empty_title".into());
@@ -404,6 +407,7 @@ pub async fn create_issue(
     let result = try_create_issue_online(
         &client, &project_id, &trimmed, &assignee_ids,
         start_date.as_deref(), target_date.as_deref(), &priority, &state_group, description.as_deref(),
+        parent_id.as_deref(),
     )
     .await;
     match result {
@@ -420,6 +424,7 @@ pub async fn create_issue(
                 "name": trimmed, "assignee_ids": assignee_ids,
                 "start_date": start_date, "target_date": target_date,
                 "priority": priority, "state_group": state_group, "description": description,
+                "parent_id": parent_id,
             });
             let placeholder = WorkItemDto {
                 id: String::new(),
