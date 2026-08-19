@@ -209,3 +209,20 @@ export interface MngProjectSearch {
   page: number;
   per_page: number;
 }
+
+/** AI가 제안한 분해 결과. Rust breakdown.rs의 BreakdownSuggestion과 같은 모양. */
+export interface BreakdownSuggestion {
+  title: string;
+  /** 제목을 실제로 다듬었는가. 거짓이면 시트에 비교 줄을 그리지 않는다. */
+  title_changed: boolean;
+  children: string[];
+  /** 왜 이렇게 쪼갰는지 한 줄. 비어 있을 수 있다. */
+  reason: string;
+}
+
+/** 트리 생성 결과. 부분 실패를 알리기 위해 실패한 제목을 함께 받는다. */
+export interface TreeCreateResult {
+  parent_id: string;
+  created: number;
+  failed: string[];
+}

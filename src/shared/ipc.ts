@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets, MngBulkEntry, MngBulkResult, MngProjectRow, MngProjectSearch } from "./types";
+import type { SidebarData, SettingsDto, Project, Member, WorkItem, WorkItemDetail, ReleaseNote, Briefing, PendingAssignment, OfflineStatus, Conflict, ConflictFields, CycleData, MngTargets, MngBulkEntry, MngBulkResult, MngProjectRow, MngProjectSearch, BreakdownSuggestion, TreeCreateResult } from "./types";
 
 export const getSettings = () => invoke<SettingsDto>("get_settings");
 export const saveSettings = (
@@ -75,6 +75,32 @@ export const createIssue = (
     description,
     parentId: parent_id,
   });
+export const suggestBreakdown = (title: string, description: string) =>
+  invoke<BreakdownSuggestion>("suggest_breakdown", { title, description });
+
+export const createIssueTree = (
+  project_id: string,
+  name: string,
+  children: string[],
+  assignee_ids: string[],
+  start_date: string | undefined,
+  target_date: string | undefined,
+  priority: string,
+  state_group: string,
+  description: string,
+) =>
+  invoke<TreeCreateResult>("create_issue_tree", {
+    projectId: project_id,
+    name,
+    children,
+    assigneeIds: assignee_ids,
+    startDate: start_date,
+    targetDate: target_date,
+    priority,
+    stateGroup: state_group,
+    description,
+  });
+
 export const listMembers = (project_id: string) =>
   invoke<Member[]>("list_members", { projectId: project_id });
 export const fetchSidebarData = (completedAfter: string, completedBefore: string) =>
