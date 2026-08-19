@@ -4,7 +4,7 @@ use crate::plane_api::{self, filter_assigned_visible, filter_delegated_visible, 
 use crate::mng_report;
 use serde::{Serialize, Deserialize};
 use crate::assign_watch;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use futures::stream::{self, StreamExt};
 
 /// 사이드바 동기화 시 프로젝트별로 동시에 날릴 요청 개수. 너무 높이면 Plane
@@ -59,6 +59,15 @@ pub struct WorkItemDto {
     pub completed_at: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    /// 상위 작업 id. 사이드바가 이 값으로 트리를 조립한다.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// 이 항목의 자식 총수 / 완료된 자식 수. **필터링 전 전체 목록** 기준이라
+    /// 오래된 완료 자식이 목록에서 빠져도 숫자가 맞는다. 0이면 부모가 아니다.
+    #[serde(default)]
+    pub sub_total: usize,
+    #[serde(default)]
+    pub sub_done: usize,
 }
 
 #[derive(Serialize)]
@@ -130,13 +139,16 @@ pub fn assemble_sidebar(
     completed_after: &str,
     completed_before: &str,
 ) -> SidebarData {
+    // 필터 전 전체 목록으로 센다 — 필터 후에 세면 오래된 완료 자식이 빠져
+    // 진행률이 틀린다 (plane_api::count_sub_issues 주석 참고).
+    let sub_counts = plane_api::count_sub_issues(&items);
     let delegated = filter_delegated_visible(items.clone(), user_id)
         .into_iter()
-        .map(work_item_to_dto)
+        .map(|w| work_item_to_dto(w, &sub_counts))
         .collect();
     let assigned = filter_assigned_visible(items, user_id, completed_after, completed_before)
         .into_iter()
-        .map(work_item_to_dto)
+        .map(|w| work_item_to_dto(w, &sub_counts))
         .collect();
     let projects = projects
         .into_iter()
@@ -153,7 +165,8 @@ pub fn assemble_sidebar(
     }
 }
 
-fn work_item_to_dto(w: WorkItem) -> WorkItemDto {
+fn work_item_to_dto(w: WorkItem, sub_counts: &HashMap<String, (usize, usize)>) -> WorkItemDto {
+    let (sub_total, sub_done) = sub_counts.get(&w.id).copied().unwrap_or((0, 0));
     WorkItemDto {
         id: w.id, name: w.name, priority: w.priority, target_date: w.target_date,
         start_date: w.start_date,
@@ -161,6 +174,8 @@ fn work_item_to_dto(w: WorkItem) -> WorkItemDto {
         assignee_ids: w.assignee_ids,
         completed_at: w.completed_at,
         created_at: w.created_at, updated_at: w.updated_at,
+        parent_id: w.parent_id,
+        sub_total, sub_done,
     }
 }
 
@@ -346,6 +361,7 @@ pub(crate) async fn try_create_issue_online(
     priority: &str,
     state_group: &str,
     description: Option<&str>,
+    parent_id: Option<&str>,
 ) -> Result<String, String> {
     let assignees = if assignee_ids.is_empty() {
         let user = client.current_user_cached().await?;
@@ -365,6 +381,7 @@ pub(crate) async fn try_create_issue_online(
         priority,
         state_id: &state_id,
         description_html: description_html.as_deref(),
+        parent_id,
     };
     client.create_work_item(project_id, &item).await
 }
@@ -380,6 +397,7 @@ pub async fn create_issue(
     priority: String,
     state_group: String,
     description: Option<String>,
+    parent_id: Option<String>,
 ) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("empty_title".into());
@@ -389,6 +407,7 @@ pub async fn create_issue(
     let result = try_create_issue_online(
         &client, &project_id, &trimmed, &assignee_ids,
         start_date.as_deref(), target_date.as_deref(), &priority, &state_group, description.as_deref(),
+        parent_id.as_deref(),
     )
     .await;
     match result {
@@ -405,6 +424,7 @@ pub async fn create_issue(
                 "name": trimmed, "assignee_ids": assignee_ids,
                 "start_date": start_date, "target_date": target_date,
                 "priority": priority, "state_group": state_group, "description": description,
+                "parent_id": parent_id,
             });
             let placeholder = WorkItemDto {
                 id: String::new(),
@@ -418,6 +438,9 @@ pub async fn create_issue(
                 completed_at: None,
                 created_at: None,
                 updated_at: None,
+                parent_id: parent_id.clone(),
+                sub_total: 0,
+                sub_done: 0,
             };
             crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
             config::set_last_project(&app, &project_id)?;
@@ -1116,6 +1139,18 @@ pub fn open_mng_daily(app: tauri::AppHandle) {
     let _ = app.emit_to("mngdaily", "mngdaily-open", ());
 }
 
+/// 하위 작업의 부모. 프론트가 일지 내용을 조립할 때 자식을 부모 아래로 묶는 데
+/// 쓴다(Plane 웹 업무보고서의 `IWorkReportItemParent`와 같은 역할). Plane은
+/// 프로젝트 밖의 부모도 담지만, 이 앱은 같은 프로젝트의 작업 목록만 들고 있어
+/// 거기서 찾을 수 있는 부모만 채운다 — 못 찾으면 `None`이고 프론트는 그 항목을
+/// 그냥 독립 항목으로 그린다.
+#[derive(Debug, Serialize, Clone)]
+pub struct MngReportItemParentDto {
+    pub id: String,
+    pub name: String,
+    pub sequence_id: u64,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct MngReportItemDto {
     pub id: String,
@@ -1129,9 +1164,20 @@ pub struct MngReportItemDto {
     pub completed_at: Option<String>,
     pub target_date: Option<String>,
     pub start_date: Option<String>,
+    pub parent: Option<MngReportItemParentDto>,
 }
 
-fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
+/// `siblings`는 부모를 찾을 대상 — 나에게 할당된 것만이 아니라 프로젝트의 작업
+/// 전체를 넘긴다. 부모가 남에게 할당돼 있어도 이름은 보여야 하기 때문이다
+/// (Plane 웹도 부모가 보고서에 없으면 회색 캡션 줄로 이름만 보여준다).
+fn to_mng_item_dto(w: &WorkItem, siblings: &[WorkItem]) -> MngReportItemDto {
+    let parent = w.parent_id.as_deref().and_then(|pid| {
+        siblings.iter().find(|s| s.id == pid).map(|p| MngReportItemParentDto {
+            id: p.id.clone(),
+            name: p.name.clone(),
+            sequence_id: p.sequence_id,
+        })
+    });
     MngReportItemDto {
         id: w.id.clone(),
         name: w.name.clone(),
@@ -1141,6 +1187,7 @@ fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
         completed_at: w.completed_at.clone(),
         target_date: w.target_date.clone(),
         start_date: w.start_date.clone(),
+        parent,
     }
 }
 
@@ -1272,8 +1319,10 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
 
     let mut targets: Vec<MngTargetDto> = Vec::new();
     for (project, items, states) in per_project {
+        // `items`(프로젝트 전체)는 그대로 두고 걸러 담는다 — 하위 작업의 부모를
+        // 찾으려면 나에게 할당되지 않은 작업까지 뒤져야 한다.
         let mine: Vec<WorkItem> =
-            items.into_iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).collect();
+            items.iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).cloned().collect();
         if mine.is_empty() {
             // 사이드바 기준을 그대로 따른다 — 나에게 할당된 작업이 하나도 없는
             // 프로젝트는 사이드바에도 안 뜨므로 여기서도 뺀다. 반대로 백로그만
@@ -1334,9 +1383,9 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             mng_linked,
             mng_link_name,
             state_ids,
-            completed: completed.iter().map(|i| to_mng_item_dto(i)).collect(),
-            in_progress: in_progress.iter().map(|i| to_mng_item_dto(i)).collect(),
-            upcoming: upcoming.iter().map(|i| to_mng_item_dto(i)).collect(),
+            completed: completed.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
+            in_progress: in_progress.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
+            upcoming: upcoming.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
             default_content,
             status: status.to_string(),
             existing_row,
@@ -1687,6 +1736,82 @@ mod tests {
         }
     }
 
+    fn item_with_parent(id: &str, group: &str, parent: Option<&str>) -> WorkItem {
+        WorkItem {
+            id: id.into(), name: format!("item {id}"), priority: "none".into(),
+            target_date: None, start_date: None, state_group: group.into(),
+            project_id: "p1".into(), assignee_ids: vec!["me".into()],
+            completed_at: Some("2026-08-18T09:00:00Z".into()).filter(|_| group == "completed"),
+            created_at: None, created_by: None, updated_at: None, sequence_id: 1,
+            parent_id: parent.map(str::to_string),
+        }
+    }
+
+    /// 하위 작업은 부모 이름·번호까지 실어 보낸다 — 프론트가 일지 내용에서
+    /// 자식을 부모 아래로 묶으려면 id만으로는 부족하다.
+    #[test]
+    fn to_mng_item_dto_carries_the_parent_found_in_the_project() {
+        let mut parent = item_with_parent("p1", "started", None);
+        parent.name = "부모 작업".into();
+        parent.sequence_id = 42;
+        // 부모가 남에게 할당돼 있어도 이름은 찾을 수 있어야 한다 — 자식만 내
+        // 목록에 있고 부모는 캡션 줄로만 나오는 경우가 실제로 흔하다.
+        parent.assignee_ids = vec!["other".into()];
+        let child = item_with_parent("c1", "started", Some("p1"));
+        let all = vec![parent, child.clone()];
+
+        let dto = to_mng_item_dto(&child, &all);
+        let p = dto.parent.expect("부모 정보가 있어야 한다");
+        assert_eq!(p.id, "p1");
+        assert_eq!(p.name, "부모 작업");
+        assert_eq!(p.sequence_id, 42);
+    }
+
+    #[test]
+    fn to_mng_item_dto_leaves_the_parent_empty_when_it_is_not_in_the_project() {
+        // 부모가 다른 프로젝트에 있거나 목록에 없으면 이름을 알 수 없다 —
+        // 프론트는 이 항목을 그냥 독립 항목으로 그린다.
+        let orphan = item_with_parent("c1", "started", Some("elsewhere"));
+        assert!(to_mng_item_dto(&orphan, std::slice::from_ref(&orphan)).parent.is_none());
+        // 부모가 아예 없는 항목도 마찬가지.
+        let plain = item_with_parent("t1", "started", None);
+        assert!(to_mng_item_dto(&plain, std::slice::from_ref(&plain)).parent.is_none());
+    }
+
+    #[test]
+    fn assemble_sidebar_carries_parent_id_and_sub_counts() {
+        let items = vec![
+            item_with_parent("p1", "started", None),
+            item_with_parent("c1", "completed", Some("p1")),
+            item_with_parent("c2", "started", Some("p1")),
+        ];
+        let data = assemble_sidebar("me", Vec::new(), items, Vec::new(), "2026-08-18", "2026-08-18");
+        let parent = data.assigned.iter().find(|i| i.id == "p1").unwrap();
+        assert_eq!(parent.sub_total, 2);
+        assert_eq!(parent.sub_done, 1);
+        assert_eq!(parent.parent_id, None);
+        let child = data.assigned.iter().find(|i| i.id == "c2").unwrap();
+        assert_eq!(child.parent_id.as_deref(), Some("p1"));
+        assert_eq!(child.sub_total, 0);
+    }
+
+    /// 회귀 방지: 완료 자식이 표시 창(completed_after/before) 밖이라 목록에서
+    /// 빠져도 부모의 진행률은 2개 중 1개로 남아야 한다.
+    #[test]
+    fn assemble_sidebar_counts_children_hidden_by_completed_window() {
+        let mut old_done = item_with_parent("c1", "completed", Some("p1"));
+        old_done.completed_at = Some("2026-07-01T09:00:00Z".into());
+        let items = vec![
+            item_with_parent("p1", "started", None),
+            old_done,
+            item_with_parent("c2", "started", Some("p1")),
+        ];
+        let data = assemble_sidebar("me", Vec::new(), items, Vec::new(), "2026-08-18", "2026-08-18");
+        assert!(data.assigned.iter().all(|i| i.id != "c1"), "오래된 완료 항목은 목록에서 빠진다");
+        let parent = data.assigned.iter().find(|i| i.id == "p1").unwrap();
+        assert_eq!((parent.sub_total, parent.sub_done), (2, 1));
+    }
+
     #[test]
     fn assemble_filters_to_my_open_items_across_projects() {
         let projects = vec![
@@ -1827,6 +1952,7 @@ mod tests {
                     completed_at: None,
                     target_date: None,
                     start_date: None,
+                    parent: None,
                 })
                 .collect::<Vec<_>>()
         };

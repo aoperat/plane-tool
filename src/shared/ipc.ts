@@ -62,6 +62,7 @@ export const createIssue = (
   priority: string,
   state_group: string,
   description: string,
+  parent_id?: string,
 ) =>
   invoke<void>("create_issue", {
     projectId: project_id,
@@ -72,6 +73,7 @@ export const createIssue = (
     priority,
     stateGroup: state_group,
     description,
+    parentId: parent_id,
   });
 export const listMembers = (project_id: string) =>
   invoke<Member[]>("list_members", { projectId: project_id });

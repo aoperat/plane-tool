@@ -664,6 +664,7 @@ async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutatio
                 .and_then(|v| v.as_array())
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                 .unwrap_or_default();
+            let parent_id = p.get("parent_id").and_then(|v| v.as_str());
             let new_id = commands::try_create_issue_online(
                 client,
                 &m.project_id,
@@ -674,6 +675,7 @@ async fn replay_one(client: &plane_api::PlaneClient, m: &offline::PendingMutatio
                 p.get("priority").and_then(|v| v.as_str()).unwrap_or("none"),
                 p.get("state_group").and_then(|v| v.as_str()).unwrap_or_default(),
                 p.get("description").and_then(|v| v.as_str()),
+                parent_id,
             )
             .await?;
             Ok(ReplayOutcome::Applied(Some(new_id)))

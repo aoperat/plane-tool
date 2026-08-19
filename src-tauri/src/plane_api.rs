@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Part B(맡긴 작업 창)가 이 문자열로 확인 여부를 판정한다 — 절대 바꾸지 말 것.
 pub const ACK_COMMENT_TEXT: &str = "🔔 할당을 확인했습니다 (Quick Dock)";
@@ -102,6 +103,8 @@ pub struct NewWorkItem<'a> {
     pub priority: &'a str,
     pub state_id: &'a str,
     pub description_html: Option<&'a str>,
+    /// 상위 작업 id. Plane이 워크스페이스·프로젝트 소속까지 검증한다.
+    pub parent_id: Option<&'a str>,
 }
 
 /// mng(외부 사내 그룹웨어)에 실제 등록된 일일 업무일지 한 행. 필드는 Plane 서버의
@@ -384,6 +387,25 @@ pub fn filter_delegated_visible(items: Vec<WorkItem>, user_id: &str) -> Vec<Work
         .filter(|i| !i.assignee_ids.iter().any(|a| a == user_id))
         .filter(|i| i.state_group != "cancelled")
         .collect()
+}
+
+/// 부모 id → (자식 총수, 완료된 자식 수).
+///
+/// **반드시 필터링 전 전체 목록을 넘긴다.** 사이드바가 쓰는
+/// `filter_assigned_visible`은 오래된 완료 항목을 걸러내므로, 필터 후 목록으로
+/// 세면 "3개 중 1개 완료"가 "1개 중 0개"로 보인다. 부모가 목록에 없는 고아
+/// 자식도 그대로 센다 — 그 항목은 프론트에서 최상위로 그려진다.
+pub fn count_sub_issues(items: &[WorkItem]) -> HashMap<String, (usize, usize)> {
+    let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
+    for item in items {
+        let Some(parent) = item.parent_id.as_deref() else { continue };
+        let entry = counts.entry(parent.to_string()).or_insert((0, 0));
+        entry.0 += 1;
+        if item.state_group == "completed" {
+            entry.1 += 1;
+        }
+    }
+    counts
 }
 
 #[derive(Deserialize)]
@@ -760,6 +782,9 @@ impl PlaneClient {
         if let Some(dh) = item.description_html {
             body.insert("description_html".into(), serde_json::json!(dh));
         }
+        if let Some(parent) = item.parent_id {
+            body.insert("parent".into(), serde_json::json!(parent));
+        }
         let resp = self
             .send_retrying(
                 self.http
@@ -1011,6 +1036,46 @@ mod tests {
         let mut item = wi(id, group, assignees);
         item.created_by = created_by.map(|s| s.to_string());
         item
+    }
+
+    fn wi_child(id: &str, group: &str, parent: &str) -> WorkItem {
+        let mut w = wi(id, group, &["me"]);
+        w.parent_id = Some(parent.into());
+        w
+    }
+
+    #[test]
+    fn count_sub_issues_counts_children_per_parent() {
+        let items = vec![
+            wi("p1", "started", &["me"]),
+            wi_child("c1", "completed", "p1"),
+            wi_child("c2", "started", "p1"),
+            wi_child("c3", "unstarted", "p1"),
+            wi("solo", "started", &["me"]),
+        ];
+        let counts = count_sub_issues(&items);
+        assert_eq!(counts.get("p1"), Some(&(3, 1)));
+        assert_eq!(counts.get("solo"), None);
+    }
+
+    /// 회귀 방지: 완료 자식이 사이드바 필터에서 빠져도 카운트는 전체 기준이다.
+    /// 이 함수에 넘기는 것은 항상 필터 전 목록이어야 한다.
+    #[test]
+    fn count_sub_issues_counts_cancelled_children_as_not_done() {
+        let items = vec![
+            wi("p1", "started", &["me"]),
+            wi_child("c1", "cancelled", "p1"),
+            wi_child("c2", "completed", "p1"),
+        ];
+        let counts = count_sub_issues(&items);
+        assert_eq!(counts.get("p1"), Some(&(2, 1)));
+    }
+
+    #[test]
+    fn count_sub_issues_ignores_children_of_unknown_parents() {
+        let items = vec![wi_child("c1", "started", "gone")];
+        let counts = count_sub_issues(&items);
+        assert_eq!(counts.get("gone"), Some(&(1, 0)));
     }
 
     #[test]
@@ -1346,6 +1411,7 @@ mod tests {
             priority: "high",
             state_id: "state-1",
             description_html: Some("<p>World</p>"),
+            parent_id: None,
         };
         let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
         assert_eq!(id, "new-item-1");
@@ -1378,9 +1444,60 @@ mod tests {
             priority: "none",
             state_id: "state-1",
             description_html: None,
+            parent_id: None,
         };
         let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
         assert_eq!(id, "new-item-2");
+    }
+
+    #[tokio::test]
+    async fn create_work_item_sends_parent_when_present() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .and(body_partial_json(serde_json::json!({ "parent": "parent-1" })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-1" })))
+            .mount(&server)
+            .await;
+        let item = NewWorkItem {
+            name: "자식",
+            assignee_ids: &[],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "s1",
+            description_html: None,
+            parent_id: Some("parent-1"),
+        };
+        let id = client_for(&server).await.create_work_item("p1", &item).await.unwrap();
+        assert_eq!(id, "new-1");
+    }
+
+    /// 회귀 방지: parent가 없으면 키 자체를 보내지 않는다. Plane 0.27+는
+    /// null을 400으로 거절한다 (description_html과 같은 이유).
+    #[tokio::test]
+    async fn create_work_item_omits_parent_key_when_absent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/workspaces/acme/projects/p1/work-items/"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({ "id": "new-2" })))
+            .mount(&server)
+            .await;
+        let client = client_for(&server).await;
+        let item = NewWorkItem {
+            name: "최상위",
+            assignee_ids: &[],
+            start_date: None,
+            target_date: None,
+            priority: "none",
+            state_id: "s1",
+            description_html: None,
+            parent_id: None,
+        };
+        client.create_work_item("p1", &item).await.unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert!(body.get("parent").is_none(), "parent 키가 없어야 한다: {body}");
     }
 
     // The server's validation errors arrive in the response body — surfacing
@@ -1404,6 +1521,7 @@ mod tests {
             priority: "none",
             state_id: "state-1",
             description_html: None,
+            parent_id: None,
         };
         let err = client_for(&server).await.create_work_item("p1", &item).await.unwrap_err();
         assert!(err.contains("400"), "error should include status: {err}");

@@ -41,8 +41,18 @@ pub struct Briefing {
 /// 브리핑 대상: 내게 할당된 미완료 작업. 완료·취소는 여기서 걸러져
 /// 이후 어떤 경로(프롬프트·폴백)에도 들어가지 않는다.
 pub fn open_assigned_items(user_id: &str, projects: &[Project], items: Vec<WorkItem>) -> Vec<BriefingItem> {
+    // 자식을 가진 항목(부모)은 제외한다. 오늘 무엇을 할지는 자식 단위이고,
+    // 부모까지 넣으면 브리핑과 마감 알림이 같은 일을 두 번 말한다.
+    let referenced: std::collections::HashSet<&str> =
+        items.iter().filter_map(|i| i.parent_id.as_deref()).collect();
+    let parent_ids: std::collections::HashSet<String> = items
+        .iter()
+        .filter(|i| referenced.contains(i.id.as_str()))
+        .map(|i| i.id.clone())
+        .collect();
     items
         .into_iter()
+        .filter(|i| !parent_ids.contains(&i.id))
         .filter(|i| i.assignee_ids.iter().any(|a| a == user_id))
         .filter(|i| i.state_group != "completed" && i.state_group != "cancelled")
         .map(|i| {
@@ -296,6 +306,46 @@ mod tests {
         let ids: Vec<_> = out.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["a"]);
         assert_eq!(out[0].project_identifier, "WEB");
+    }
+
+    /// 부모는 브리핑에도 마감 알림에도 나오지 않는다 — 오늘 뭘 할지는 자식
+    /// 단위이고, 부모까지 넣으면 같은 일이 두 번 울린다.
+    /// (마감 알림은 lib.rs의 deadline_watch::summarize가 이 함수의 결과를 그대로 쓴다)
+    #[test]
+    fn open_assigned_items_excludes_parents_with_children() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
+        let mk = |id: &str, parent: Option<&str>| WorkItem {
+            id: id.into(), name: format!("n{id}"), priority: "none".into(),
+            target_date: None, start_date: None, state_group: "started".into(),
+            project_id: "p1".into(),
+            assignee_ids: vec!["me".into()],
+            completed_at: None, created_at: None, created_by: None, updated_at: None,
+            sequence_id: 0, parent_id: parent.map(str::to_string),
+        };
+        let items = vec![mk("parent", None), mk("child", Some("parent"))];
+
+        let out = open_assigned_items("me", &projects, items);
+
+        let ids: Vec<_> = out.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["child"]);
+    }
+
+    /// 회귀 방지: 자식이 없는 평범한 항목은 그대로 남는다 — 부모 제외 규칙이
+    /// 목록 전체를 비우지 않는지 확인한다.
+    #[test]
+    fn open_assigned_items_keeps_items_without_children() {
+        let projects = vec![Project { id: "p1".into(), name: "Web".into(), identifier: "WEB".into(), cycle_view: true, mng_link: None }];
+        let solo = WorkItem {
+            id: "solo".into(), name: "혼자".into(), priority: "none".into(),
+            target_date: None, start_date: None, state_group: "started".into(),
+            project_id: "p1".into(), assignee_ids: vec!["me".into()],
+            completed_at: None, created_at: None, created_by: None, updated_at: None,
+            sequence_id: 0, parent_id: None,
+        };
+
+        let out = open_assigned_items("me", &projects, vec![solo]);
+
+        assert_eq!(out.len(), 1);
     }
 
     #[test]

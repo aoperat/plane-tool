@@ -39,6 +39,9 @@ function item(
     assignee_ids: [],
     completed_at: null,
     created_at: null,
+    parent_id: null,
+    sub_total: 0,
+    sub_done: 0,
     ...overrides,
   };
 }

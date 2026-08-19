@@ -7,6 +7,7 @@ import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
 import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
+import { buildTreeRows, countActionable, parentEffect, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
 import { applyTheme, toggledThemePref } from "../shared/theme";
@@ -310,12 +311,46 @@ function renderActiveTabView() {
 
 /** 탭 카운트와 현재 탭 목록을 lastSidebarData 기준으로 다시 그린다 —
  *  전체 fetch(runRefresh)와 로컬 패치(item-updated/item-deleted)가 공유한다.
- *  개수는 목록과 같은 visibleTabItems로 세므로 둘이 어긋나지 않는다. */
+ *  개수는 목록과 같은 visibleTabItems 범위에서 세되, 하위를 가진 부모는
+ *  countActionable이 빼고 센다 — 목록에는 부모 행이 그대로 보이므로
+ *  부모 1 + 자식 3이면 4줄에 배지는 3이다. */
 function renderFromLastData() {
   if (!lastSidebarData) return;
-  assignedTabCountEl.textContent = String(visibleTabItems("assigned", lastSidebarData, delegatedShowAll).length);
-  delegatedTabCountEl.textContent = String(visibleTabItems("delegated", lastSidebarData, delegatedShowAll).length);
+  assignedTabCountEl.textContent = String(countActionable(visibleTabItems("assigned", lastSidebarData, delegatedShowAll)));
+  delegatedTabCountEl.textContent = String(countActionable(visibleTabItems("delegated", lastSidebarData, delegatedShowAll)));
   renderActiveTabView();
+}
+
+/** 이미 받아둔 목록(assigned·delegated 양쪽)에서 항목을 찾는다 —
+ *  부모가 어느 탭에 들어 있을지는 알 수 없다. */
+function findLoadedItem(id: string | null | undefined): WorkItem | undefined {
+  if (!id || !lastSidebarData) return undefined;
+  return lastSidebarData.assigned.find((i) => i.id === id)
+    ?? lastSidebarData.delegated.find((i) => i.id === id);
+}
+
+/** 자식이 완료된 뒤 부모도 완료 처리한다. 자식은 이미 서버에 반영된 상태이므로
+ *  건드리지 않고, 부모 저장이 실패하면 부모만 되돌린다.
+ *
+ *  반환하는 Promise는 실패를 안에서 삼킨다 — 호출부의 바깥 `.catch()`가
+ *  자식 실패 메시지를 겹쳐 띄우지 않게 하기 위해서다. */
+function completeParentAfterChild(parent: WorkItem, rerender: () => void): Promise<void> {
+  const parentStateId = resolveStateId(states, parent.project_id, "completed");
+  if (!parentStateId) return Promise.resolve();
+  const parentPrev = parent.state_group;
+  const parentPrevCompletedAt = parent.completed_at;
+  parent.state_group = "completed";
+  // 자식과 같은 이유로 completed_at도 채운다 — 비워 두면 filterVisibleToday가
+  // "오늘 완료"로 쳐주지 않아 방금 닫힌 상위 작업이 목록에서 곧장 사라진다.
+  parent.completed_at = new Date().toISOString();
+  rerender();
+  return updateWorkItemState(parent.project_id, parent.id, parentStateId).catch((err) => {
+    parent.state_group = parentPrev;
+    parent.completed_at = parentPrevCompletedAt;
+    rerender();
+    synced.textContent = "상위 작업 완료 처리 실패: " + err;
+    console.error("updateWorkItemState(parent) failed:", err);
+  });
 }
 
 // 백엔드가 수정/삭제 성공 시 보내는 로컬 패치 이벤트의 payload. 전체
@@ -324,6 +359,10 @@ function applyItemChange(c: ItemChange) {
   if (!lastSidebarData) return;
   // 담당자 변경으로 항목이 내 목록에서 빠지거나 탭 간 이동해야 하는 경우는
   // 여기서 판별할 수 없다(내 user id를 모름) — 다음 전체 새로고침이 맞춘다.
+
+  // 같은 항목이 두 목록에 다 들어 있어도 부모 카운트는 한 번만 옮긴다.
+  let parentHandled = false;
+  let parentToComplete: WorkItem | undefined;
   for (const list of [lastSidebarData.assigned, lastSidebarData.delegated]) {
     const it = list.find((i) => i.id === c.item_id);
     if (!it) continue;
@@ -333,6 +372,16 @@ function applyItemChange(c: ItemChange) {
     if (c.start_date != null) it.start_date = c.start_date === "" ? null : c.start_date;
     if (c.target_date != null) it.target_date = c.target_date === "" ? null : c.target_date;
     if (c.state_group != null && c.state_group !== it.state_group) {
+      // 부모 판정은 sub_done을 옮기기 전 값으로 해야 한다.
+      if (!parentHandled) {
+        const parent = findLoadedItem(it.parent_id);
+        const effect = parentEffect(parent, it.state_group, c.state_group);
+        if (parent) {
+          parent.sub_done += effect.delta;
+          if (effect.complete) parentToComplete = parent;
+        }
+        parentHandled = true;
+      }
       it.state_group = c.state_group;
       // 서버는 완료 전환 시 completed_at을 채운다 — 로컬에도 채워야
       // filterVisibleToday가 "오늘 완료"로 인정해 목록에서 사라지지 않는다.
@@ -340,6 +389,8 @@ function applyItemChange(c: ItemChange) {
     }
   }
   renderFromLastData();
+  // 이 이벤트는 서버 반영이 끝난 뒤 온다 — 자식은 다시 저장하지 않고 부모만 올린다.
+  if (parentToComplete) void completeParentAfterChild(parentToComplete, renderFromLastData);
 }
 
 function removeItemLocally(itemId: string) {
@@ -750,14 +801,34 @@ function openDeleteConfirm(it: WorkItem, x: number, y: number) {
   attachPopover(pop, x, y);
 }
 
-function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]): HTMLElement {
+function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[], row?: TreeRow): HTMLElement {
   const el = document.createElement("div");
+  const isParent = row?.isParent ?? false;
+  const isChild = (row?.depth ?? 0) > 0;
   el.className = "task"
     + (it.state_group === "completed" ? " completed" : "")
-    + (it.state_group === "started" ? " in-progress" : "");
+    + (it.state_group === "started" ? " in-progress" : "")
+    + (isChild ? " child" : "")
+    + (isParent ? " parent" : "")
+    + (isParent && collapsedGroups.has(it.id) ? " collapsed" : "");
 
   const top = document.createElement("div");
   top.className = "task-top";
+
+  if (isParent) {
+    const fold = document.createElement("span");
+    fold.className = "subfold";
+    fold.textContent = "▾";
+    fold.title = "하위 작업 접기";
+    fold.onclick = (e) => {
+      e.stopPropagation();
+      if (collapsedGroups.has(it.id)) collapsedGroups.delete(it.id);
+      else collapsedGroups.add(it.id);
+      persistCollapsedGroups();
+      renderTasks(allItems, projects);
+    };
+    top.appendChild(fold);
+  }
 
   const stateBtn = document.createElement("span");
   stateBtn.className = "task-state";
@@ -772,14 +843,28 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
         return;
       }
       const prev = it.state_group;
+      const parent = it.parent_id ? allItems.find((x) => x.id === it.parent_id) : undefined;
+      // 판정은 sub_done을 갱신하기 전 값으로 해야 한다 — 여기서 미리 정해 두고
+      // 서버 성공 후에 쓴다.
+      const effect = parentEffect(parent, prev, group);
+      const rerender = () => renderTasks(allItems, projects);
       it.state_group = group;
-      renderTasks(allItems, projects);
-      updateWorkItemState(it.project_id, it.id, stateId).catch((err) => {
-        it.state_group = prev;
-        renderTasks(allItems, projects);
-        synced.textContent = "상태 변경 실패: " + err;
-        console.error("updateWorkItemState failed:", err);
-      });
+      // 진행 바가 즉시 맞도록 부모 카운트도 낙관적으로 옮긴다.
+      if (parent) parent.sub_done += effect.delta;
+      rerender();
+      updateWorkItemState(it.project_id, it.id, stateId)
+        .then(() => {
+          if (!parent || !effect.complete) return;
+          return completeParentAfterChild(parent, rerender);
+        })
+        .catch((err) => {
+          it.state_group = prev;
+          // 낙관적으로 옮겼던 부모 카운트도 함께 되돌린다 — 안 그러면 진행 바가 영구히 틀어진다.
+          if (parent) parent.sub_done -= effect.delta;
+          rerender();
+          synced.textContent = "상태 변경 실패: " + err;
+          console.error("updateWorkItemState failed:", err);
+        });
     });
   };
   top.appendChild(stateBtn);
@@ -798,69 +883,102 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
     openInBrowser(it);
   };
   top.appendChild(browserBtn);
+
+  // 하위가 없는 평범한 항목에도 단다 — 누르는 순간 그 항목이 부모가 된다.
+  // 자식 행에만 안 단다: 목록은 2단까지만 그린다.
+  if (!isChild) {
+    const subAddBtn = document.createElement("span");
+    subAddBtn.className = "icon-btn subaddbtn";
+    subAddBtn.title = "하위 작업 추가";
+    subAddBtn.innerHTML = PLUS_ICON;
+    subAddBtn.onclick = (e) => {
+      e.stopPropagation();
+      openSubAddRow(el, it);
+    };
+    top.appendChild(subAddBtn);
+  }
   el.appendChild(top);
 
-  const chips = document.createElement("div");
-  chips.className = "task-chips";
-
-  const prioChip = document.createElement("span");
-  const noPriority = it.priority === "none";
-  prioChip.className = "chip sm" + (noPriority ? " empty" : "");
-  prioChip.title = "우선순위 변경";
-  if (noPriority) {
-    prioChip.innerHTML = `${PLUS_ICON} 우선순위`;
+  if (isParent) {
+    // 부모의 날짜·담당자는 자식들 것의 요약이라 새 정보가 아니다. 목록에서는
+    // 접고, 값 자체는 행을 눌러 수정 창을 열면 그대로 있다.
+    const prog = document.createElement("div");
+    prog.className = "subprog";
+    const bar = document.createElement("span");
+    bar.className = "bar";
+    const fill = document.createElement("i");
+    const pct = it.sub_total > 0 ? Math.round((it.sub_done / it.sub_total) * 100) : 0;
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    prog.appendChild(bar);
+    const txt = document.createElement("span");
+    txt.className = "txt";
+    txt.textContent = `${it.sub_done}/${it.sub_total}`;
+    prog.appendChild(txt);
+    el.appendChild(prog);
   } else {
-    prioChip.style.color = priorityColor(it.priority as any);
-    prioChip.innerHTML = `${priorityIcon(it.priority as any)} ${PRIORITY_LABELS[it.priority] ?? it.priority}`;
-  }
-  prioChip.onclick = (e) => {
-    e.stopPropagation();
-    openPriorityPopover(prioChip, it, (priority) => {
-      const prev = it.priority;
-      it.priority = priority;
-      renderTasks(allItems, projects);
-      updateWorkItemPriority(it.project_id, it.id, priority).catch((err) => {
-        it.priority = prev;
-        renderTasks(allItems, projects);
-        synced.textContent = "우선순위 변경 실패: " + err;
-        console.error("updateWorkItemPriority failed:", err);
-      });
-    });
-  };
-  chips.appendChild(prioChip);
+    const chips = document.createElement("div");
+    chips.className = "task-chips";
 
-  if (it.state_group === "completed" && it.completed_at) {
-    const doneChip = document.createElement("span");
-    doneChip.className = "chip sm info";
-    doneChip.innerHTML = `${CALENDAR_ICON} 완료 ${formatLocalTime(it.completed_at)}`;
-    chips.appendChild(doneChip);
-  } else {
-    const range = formatDateRange(it.start_date, it.target_date);
-    const dateChip = document.createElement("span");
-    dateChip.className = "chip sm" + (range ? "" : " empty");
-    dateChip.title = "기간 변경";
-    dateChip.innerHTML = range ? `${CALENDAR_ICON} ${range}` : `${PLUS_ICON} 마감일`;
-    dateChip.onclick = (e) => {
+    const prioChip = document.createElement("span");
+    const noPriority = it.priority === "none";
+    prioChip.className = "chip sm" + (noPriority ? " empty" : "");
+    prioChip.title = "우선순위 변경";
+    if (noPriority) {
+      prioChip.innerHTML = `${PLUS_ICON} 우선순위`;
+    } else {
+      prioChip.style.color = priorityColor(it.priority as any);
+      prioChip.innerHTML = `${priorityIcon(it.priority as any)} ${PRIORITY_LABELS[it.priority] ?? it.priority}`;
+    }
+    prioChip.onclick = (e) => {
       e.stopPropagation();
-      openSidebarDatePopover(dateChip, it, allItems, projects);
+      openPriorityPopover(prioChip, it, (priority) => {
+        const prev = it.priority;
+        it.priority = priority;
+        renderTasks(allItems, projects);
+        updateWorkItemPriority(it.project_id, it.id, priority).catch((err) => {
+          it.priority = prev;
+          renderTasks(allItems, projects);
+          synced.textContent = "우선순위 변경 실패: " + err;
+          console.error("updateWorkItemPriority failed:", err);
+        });
+      });
     };
-    chips.appendChild(dateChip);
+    chips.appendChild(prioChip);
+
+    if (it.state_group === "completed" && it.completed_at) {
+      const doneChip = document.createElement("span");
+      doneChip.className = "chip sm info";
+      doneChip.innerHTML = `${CALENDAR_ICON} 완료 ${formatLocalTime(it.completed_at)}`;
+      chips.appendChild(doneChip);
+    } else {
+      const range = formatDateRange(it.start_date, it.target_date);
+      const dateChip = document.createElement("span");
+      dateChip.className = "chip sm" + (range ? "" : " empty");
+      dateChip.title = "기간 변경";
+      dateChip.innerHTML = range ? `${CALENDAR_ICON} ${range}` : `${PLUS_ICON} 마감일`;
+      dateChip.onclick = (e) => {
+        e.stopPropagation();
+        openSidebarDatePopover(dateChip, it, allItems, projects);
+      };
+      chips.appendChild(dateChip);
+    }
+    if (activeTab === "delegated" && it.assignee_ids.length > 0) {
+      const [firstId, ...restIds] = it.assignee_ids;
+      const name = resolveAssigneeName(delegatedMemberNames, firstId);
+      const assigneeChip = document.createElement("span");
+      assigneeChip.className = "chip sm";
+      assigneeChip.title = "담당자";
+      const avatarEl = document.createElement("span");
+      avatarEl.className = "avatar";
+      avatarEl.style.background = colorForId(firstId);
+      avatarEl.textContent = name.slice(0, 1);
+      assigneeChip.appendChild(avatarEl);
+      assigneeChip.appendChild(document.createTextNode(name + (restIds.length > 0 ? ` +${restIds.length}` : "")));
+      chips.appendChild(assigneeChip);
+    }
+    el.appendChild(chips);
   }
-  if (activeTab === "delegated" && it.assignee_ids.length > 0) {
-    const [firstId, ...restIds] = it.assignee_ids;
-    const name = resolveAssigneeName(delegatedMemberNames, firstId);
-    const assigneeChip = document.createElement("span");
-    assigneeChip.className = "chip sm";
-    assigneeChip.title = "담당자";
-    const avatarEl = document.createElement("span");
-    avatarEl.className = "avatar";
-    avatarEl.style.background = colorForId(firstId);
-    avatarEl.textContent = name.slice(0, 1);
-    assigneeChip.appendChild(avatarEl);
-    assigneeChip.appendChild(document.createTextNode(name + (restIds.length > 0 ? ` +${restIds.length}` : "")));
-    chips.appendChild(assigneeChip);
-  }
-  el.appendChild(chips);
 
   el.onclick = () => openEditModal(it.project_id, it.id, it);
   el.oncontextmenu = (e) => {
@@ -872,13 +990,52 @@ function renderTaskRow(it: WorkItem, allItems: WorkItem[], projects: Project[]):
   return el;
 }
 
+/** 부모 행 바로 아래에 한 줄 입력을 연다. 등록하면 담당자는 나, 우선순위·마감일은
+ *  부모에서 상속하고 시작일은 비운다 — 부모의 시작일은 이미 지난 날짜일 때가 많다.
+ *  성공하면 create_issue가 refresh-sidebar를 띄우므로 목록은 저절로 다시 그려진다. */
+function openSubAddRow(anchor: HTMLElement, parent: WorkItem) {
+  if (anchor.nextElementSibling?.classList.contains("subadd-row")) return;
+
+  const row = document.createElement("div");
+  row.className = "subadd-row";
+  const input = document.createElement("input");
+  input.placeholder = "하위 작업 제목… (Enter 등록, Esc 취소)";
+  row.appendChild(input);
+  anchor.after(row);
+  input.focus();
+
+  const close = () => row.remove();
+  input.onkeydown = (e) => {
+    // Esc는 여기서 멈춰야 한다 — 문서 단 핸들러까지 올라가면 사이드바가 통째로 닫힌다.
+    if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    if (e.key !== "Enter") return;
+    const name = input.value.trim();
+    if (!name) { close(); return; }
+    // disabled를 먼저 세운다. 그 순간 포커스를 잃어 onblur가 도는데, 아래 조건이
+    // 이미 참이라 등록 중인 줄을 닫지 않는다.
+    input.disabled = true;
+    createIssue(
+      parent.project_id, name, [], undefined, parent.target_date ?? undefined,
+      parent.priority, "unstarted", "", parent.id,
+    )
+      .then(() => { close(); })
+      .catch((err) => {
+        input.disabled = false;
+        synced.textContent = "하위 작업 추가 실패: " + err;
+        console.error("createIssue(sub) failed:", err);
+      });
+  };
+  input.onblur = () => { if (!input.disabled) close(); };
+}
+
 function renderTasks(items: WorkItem[], projects: Project[]) {
   lastItems = items;
   lastProjects = projects;
   // 헤더의 개수는 검색/필터와 무관하게 항상 할당된 작업 총합을 보여준다 —
   // 검색·필터는 목록의 "범위"를 좁히는 것이지 표시 설정이 아니므로, 그 결과
   // 개수는 검색 줄 자체의 searchCountEl에 따로 보여준다.
-  taskCount.textContent = String(items.length);
+  // 세는 것은 실제 할 일이라 하위를 가진 부모는 빼고 센다(목록에는 그대로 보인다).
+  taskCount.textContent = String(countActionable(items));
   tasksEl.innerHTML = "";
 
   let filtered = filterBySearch(items, projects, searchQuery);
@@ -961,8 +1118,11 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     } else {
       // Filter rows only — the group header (and its progress ring above) still
       // counts hidden completed items, so "3/3" stays visible when all are done.
-      for (const it of filterHiddenCompleted(groupItems, hideCompleted)) {
-        body.appendChild(renderTaskRow(it, items, projects));
+      // 트리는 완료 숨김을 적용한 뒤에 조립한다 — 숨겨진 부모의 자식이 갑자기
+      // 최상위로 튀어나오는 것이 자연스럽다(고아 자식 규칙과 같은 처리).
+      const visible = filterHiddenCompleted(groupItems, hideCompleted);
+      for (const row of buildTreeRows(visible, collapsedGroups)) {
+        body.appendChild(renderTaskRow(row.item, items, projects, row));
       }
     }
     tasksEl.appendChild(body);
@@ -1022,8 +1182,8 @@ function renderSubGroup(sub: SubGroup, items: WorkItem[], projects: Project[]): 
   if (rows.length > 0) {
     const body = document.createElement("div");
     body.className = "sub-body" + (collapsed ? " collapsed" : "");
-    for (const it of rows) {
-      body.appendChild(renderTaskRow(it, items, projects));
+    for (const row of buildTreeRows(rows, collapsedGroups)) {
+      body.appendChild(renderTaskRow(row.item, items, projects, row));
     }
     frag.appendChild(body);
   }

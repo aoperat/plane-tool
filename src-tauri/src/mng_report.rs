@@ -3,9 +3,11 @@
 //! Plane 웹의 실제 업무보고서 포맷(`apps/web/.../work-report/report-text.ts`의
 //! `projectToText`, `report-body.tsx`의 `badgeFor`/`priorityLabel`)을 한 글자도
 //!다르지 않게 이식한다 — plane-tool이 만드는 내용이 사람이 웹에서 복사한 것과
-//! 미묘하게 달라 헷갈리지 않게 하기 위해서다. 부모-자식 클러스터링(`└` 들여쓰기)은
-//! 이번 범위에서 제외했다 — 완료 항목의 부모가 같은 상태 그룹에 없는 게 대부분이라
-//! 드물게만 발생하고, 포팅 비용 대비 효과가 낮다.
+//! 미묘하게 달라 헷갈리지 않게 하기 위해서다. 다만 부모-자식 클러스터링
+//! (`└` 들여쓰기)은 프론트(`src/mngdaily/logic.ts`의 `clusterByParent`)에만 있다 —
+//! 여기서 만드는 `default_content`는 체크 상태를 반영하지 않아 창이 뜨는 즉시
+//! 프론트가 다시 조립한 내용으로 대체되므로, 같은 알고리즘을 두 번 유지할 이유가
+//! 없다. 항목 한 줄의 서식(코드·우선순위·기한)은 계속 프론트와 같아야 한다.
 //!
 //! 네트워크/커맨드는 commands.rs가 담당하고, 이 모듈은 이미 가져온 `WorkItem`
 //! 목록을 텍스트로 조립하는 것까지만 한다(assign_watch.rs·deadline_watch.rs와
@@ -105,7 +107,7 @@ pub fn badge_for(item: &WorkItem, group: MngReportGroup, today: NaiveDate) -> Op
     }
 }
 
-/// `report-text.ts:85-93`의 `itemToLine` 이식(깊이 0 고정 — 클러스터링 없음).
+/// `report-text.ts:85-93`의 `itemToLine` 이식(깊이 0 고정 — 클러스터링은 프론트가 한다).
 pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts: &MngContentOptions, today: NaiveDate) -> String {
     let code = if opts.include_code {
         format!("{}-{} ", identifier, item.sequence_id)
@@ -131,6 +133,10 @@ pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts:
 /// `state_group == "unstarted"` 전체(backlog/cancelled 제외). 정렬 규칙은 Plane
 /// 웹과 동일: 완료는 최근 완료순, 진행중은 마감 임박순(없는 것은 뒤로), 예정은
 /// 시작일(없으면 마감일) 임박순(둘 다 없는 것은 뒤로).
+///
+/// 하위 작업도 그대로 넣는다 — Plane 웹의 업무보고서(`build_work_report`)가
+/// 자식을 거르지 않고 오히려 각 줄에 부모 정보를 함께 실어 보내기 때문이다.
+/// 앱만 자식을 빼면 같은 날 같은 일을 두 도구가 다르게 보고하게 된다.
 pub fn classify_groups<'a>(
     items: &'a [WorkItem],
     today: &str,
@@ -395,5 +401,37 @@ mod tests {
         assert_eq!(completed.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["a"]);
         assert_eq!(in_progress.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["c"]);
         assert_eq!(upcoming.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["d"]);
+    }
+
+    /// 하위 작업도 부모와 나란히 일지에 오른다 — Plane 웹의 업무보고서가
+    /// 자식을 거르지 않으므로, 앱만 빼면 같은 날 같은 일을 두 도구가 다르게
+    /// 보고하게 된다.
+    #[test]
+    fn classify_groups_keeps_sub_issues_alongside_their_parent() {
+        let mut parent = item("a", "부모", 1, "none", None);
+        parent.state_group = "started".into();
+        let mut child = item("b", "자식", 2, "none", None);
+        child.state_group = "started".into();
+        child.parent_id = Some(parent.id.clone());
+
+        let items = [parent, child];
+        let (_, in_progress, _) = classify_groups(&items, "2026-08-18");
+
+        assert_eq!(in_progress.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), vec!["부모", "자식"]);
+    }
+
+    /// 회귀 방지: 부모가 이 목록에 없는 자식(다른 프로젝트에 있거나, 내 담당이
+    /// 아니거나, 상태 필터로 빠진 부모)도 당연히 남는다.
+    #[test]
+    fn classify_groups_keeps_sub_issues_whose_parent_is_absent() {
+        let mut child = item("b", "고아 자식", 2, "none", None);
+        child.state_group = "started".into();
+        child.parent_id = Some("어딘가-다른-곳".into());
+
+        let items = [child];
+        let (_, in_progress, _) = classify_groups(&items, "2026-08-18");
+
+        assert_eq!(in_progress.len(), 1);
+        assert_eq!(in_progress[0].name, "고아 자식");
     }
 }

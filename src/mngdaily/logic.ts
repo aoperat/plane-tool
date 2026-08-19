@@ -1,11 +1,15 @@
-import type { MngReportItem, MngTargetStatus, MngApiError } from "../shared/types";
+import type { MngReportItem, MngReportItemParent, MngTargetStatus, MngApiError } from "../shared/types";
 
 /** Plane 웹의 실제 업무보고서 텍스트 포맷(`apps/web/.../work-report/report-text.ts`의
- *  `projectToText`, `report-body.tsx`의 `badgeFor`/`priorityLabel`)을 그대로 이식한다 —
- *  `src-tauri/src/mng_report.rs`와 정확히 같은 규칙이어야 한다("포함 항목" 토글을 바꿀
- *  때 여기서 즉시 재조립하고, 실제 제출 시점의 원문은 Rust가 만든 `default_content`를
- *  기준으로 시작하므로 두 구현이 어긋나면 화면과 실제 전송 내용이 달라진다).
- *  부모-자식 클러스터링(`└` 들여쓰기)은 Rust 쪽과 마찬가지로 이번 범위에서 제외했다. */
+ *  `projectToText`/`clusterByParent`, `report-body.tsx`의 `badgeFor`/`priorityLabel`)을
+ *  그대로 이식한다 — 사용자가 두 도구의 결과를 나란히 놓고 비교하므로 들여쓰기 한
+ *  칸까지 같아야 한다.
+ *
+ *  창이 보여주는 내용은 항상 여기서 조립한다(Rust가 내려주는 `default_content`는
+ *  체크 상태를 반영하지 않아 창이 뜨자마자 이 함수의 결과로 대체된다). 그래서
+ *  부모-자식 클러스터링은 Rust에 포팅하지 않고 여기에만 둔다 —
+ *  `src-tauri/src/mng_report.rs`는 항목별 서식 규칙(코드·우선순위·기한)만
+ *  프론트와 맞춰 유지한다. */
 
 export type MngReportGroup = "completed" | "in_progress" | "upcoming";
 
@@ -116,20 +120,85 @@ export function badgeFor(item: MngReportItem, group: MngReportGroup, today: stri
   return null;
 }
 
-/** `report-text.ts:85-93`의 `itemToLine` 이식(깊이 0 고정 — 클러스터링 없음). */
+/** 상태 그룹 하나를 그리는 단위. 같은 부모를 가진 항목은 한 덩어리로 묶인다.
+ *  - "promoted": 부모가 이 그룹의 항목이기도 하다 — 자식이 부모 줄 아래로 들어간다.
+ *  - "caption":  부모가 이 그룹에 없다 — 자식이 부모 이름만 적은 캡션 줄 아래로 들어간다.
+ *  `report-text.ts`의 `TRenderUnit`과 같다. */
+export type MngRenderUnit =
+  | { type: "item"; item: MngReportItem }
+  | { type: "promoted"; item: MngReportItem; children: MngReportItem[] }
+  | { type: "caption"; parent: MngReportItemParent; items: MngReportItem[] };
+
+/** `report-text.ts:22-61`의 `clusterByParent` 이식.
+ *
+ *  덩어리의 정렬 위치는 구성원 중 가장 앞선 인덱스를 따른다 — 그래야 서버가
+ *  정해 준 그룹 안 정렬(완료는 최근순, 진행중은 마감 임박순 …)이 보존된다.
+ *  중첩 깊이는 1로 고정이다: 자기 자신이 다른 항목의 부모인 항목은 (부모가
+ *  있더라도) 절대 남의 아래로 들어가지 않는다. */
+export function clusterByParent(items: MngReportItem[]): MngRenderUnit[] {
+  const indexOf = new Map(items.map((item, i) => [item.id, i]));
+  // 이 그룹의 다른 항목이 부모로 지목한 id들(= 승격 후보).
+  const inGroupParentIds = new Set(
+    items.filter((i) => i.parent && indexOf.has(i.parent.id)).map((i) => i.parent!.id),
+  );
+  const promotedChildren = new Map<string, MngReportItem[]>();
+  const captionClusters = new Map<string, { parent: MngReportItemParent; items: MngReportItem[] }>();
+  const roots: MngReportItem[] = [];
+  items.forEach((item) => {
+    if (inGroupParentIds.has(item.id) || !item.parent) {
+      roots.push(item);
+      return;
+    }
+    if (inGroupParentIds.has(item.parent.id)) {
+      promotedChildren.set(item.parent.id, [...(promotedChildren.get(item.parent.id) ?? []), item]);
+    } else {
+      const cluster = captionClusters.get(item.parent.id) ?? { parent: item.parent, items: [] };
+      cluster.items.push(item);
+      captionClusters.set(item.parent.id, cluster);
+    }
+  });
+  const units: { key: number; unit: MngRenderUnit }[] = [];
+  roots.forEach((item) => {
+    const children = promotedChildren.get(item.id);
+    const selfKey = indexOf.get(item.id)!;
+    if (children?.length) {
+      units.push({
+        key: Math.min(selfKey, ...children.map((c) => indexOf.get(c.id)!)),
+        unit: { type: "promoted", item, children },
+      });
+    } else {
+      units.push({ key: selfKey, unit: { type: "item", item } });
+    }
+  });
+  captionClusters.forEach((cluster) => {
+    units.push({
+      key: Math.min(...cluster.items.map((c) => indexOf.get(c.id)!)),
+      unit: { type: "caption", parent: cluster.parent, items: cluster.items },
+    });
+  });
+  // 원본은 `toSorted`를 쓰지만 이 앱의 tsconfig 타깃(ES2020)에는 없어 복사 후
+  // 정렬한다 — key가 항목 인덱스라 서로 겹치지 않으므로 결과는 같다.
+  return [...units].sort((a, b) => a.key - b.key).map((u) => u.unit);
+}
+
+/** `report-text.ts:85-93`의 `itemToLine` 이식. `depth 0`은 최상위 줄, `depth 1`은
+ *  부모 아래로 들어간 자식 줄 — 평문에서도 중첩이 분명하도록 "└"를 쓴다. */
 export function itemLine(
   item: MngReportItem,
   identifier: string,
   group: MngReportGroup,
   opts: MngContentOptions,
   today: string,
+  depth: 0 | 1 = 0,
 ): string {
   const code = opts.includeCode ? `${identifier}-${item.sequence_id} ` : "";
   const label = opts.includePriority ? mngPriorityLabel(item.priority) : "";
   const prio = label ? ` (${label})` : "";
   const badge = opts.includeDates ? badgeFor(item, group, today) : null;
   const suffix = badge ? ` — ${badge}` : "";
-  return `  • ${code}${item.name}${prio}${suffix}`;
+  const indent = depth === 0 ? "  " : "    ";
+  const bullet = depth === 0 ? "•" : "└";
+  return `${indent}${bullet} ${code}${item.name}${prio}${suffix}`;
 }
 
 /** `report-text.ts:68-123`의 `projectToText` 이식. */
@@ -151,7 +220,19 @@ export function projectToText(
     if (!items.length) return;
     if (lines.length) lines.push("");
     lines.push(groupLabel(group));
-    items.forEach((item) => lines.push(itemLine(item, identifier, group, opts, today)));
+    clusterByParent(items).forEach((unit) => {
+      if (unit.type === "item") {
+        lines.push(itemLine(unit.item, identifier, group, opts, today, 0));
+      } else if (unit.type === "promoted") {
+        lines.push(itemLine(unit.item, identifier, group, opts, today, 0));
+        unit.children.forEach((child) => lines.push(itemLine(child, identifier, group, opts, today, 1)));
+      } else {
+        // 캡션 줄에는 불릿이 없다 — 이 그룹의 항목이 아니라 자식들의 맥락일 뿐이다.
+        const pcode = opts.includeCode ? `${identifier}-${unit.parent.sequence_id} ` : "";
+        lines.push(`  ${pcode}${unit.parent.name}`);
+        unit.items.forEach((child) => lines.push(itemLine(child, identifier, group, opts, today, 1)));
+      }
+    });
   });
   return lines.join("\n");
 }
