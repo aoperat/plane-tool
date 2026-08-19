@@ -546,7 +546,7 @@ kbd {
   font-size: 9.5px; font-weight: 700; color: var(--muted-2); letter-spacing: .05em;
   padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; flex: none;
 }
-.grp .chev { color: var(--muted); font-size: 10px; transition: transform .15s; flex: none; width: 10px; text-align: center; }
+.grp .chev { color: var(--muted); font-size: 16px; transition: transform .15s; flex: none; width: 18px; text-align: center; }
 .grp.collapsed .chev { transform: rotate(-90deg); }
 .grp .prog { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
 .grp .prog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -571,7 +571,7 @@ kbd {
   font-size: 11px; font-weight: 600; color: var(--muted);
 }
 .sub:hover { background: var(--surface-grp-hover); color: var(--text); }
-.sub .chev { flex: none; width: 9px; text-align: center; font-size: 9px; transition: transform .15s; }
+.sub .chev { flex: none; width: 17px; text-align: center; font-size: 15px; transition: transform .15s; }
 .sub.collapsed .chev { transform: rotate(-90deg); }
 .sub .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub .spacer { margin-left: auto; }
@@ -621,7 +621,15 @@ kbd {
 .task.parent .subprog .bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
 .task.parent .subprog .bar > i { display: block; height: 100%; background: var(--accent); }
 .task.parent .subprog .txt { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.task .subfold { color: var(--muted); font-size: 10px; width: 10px; text-align: center; cursor: pointer; flex: none; }
+/* 접기 화살표는 프로젝트 그룹(.grp .chev)과 같은 크기로 맞춘다 — 같은 동작을
+   하는 것이 자리마다 다른 크기면 눈이 헷갈린다. 카드 안이라 클릭 영역이 좁아
+   지므로 좌우 여백을 조금 줘서 누르기 쉽게 한다. */
+.task .subfold {
+  color: var(--muted); font-size: 16px; width: 18px; text-align: center;
+  cursor: pointer; flex: none; padding: 0 2px; margin-left: -2px;
+  transition: transform .15s;
+}
+.task .subfold:hover { color: var(--text); }
 .task.collapsed .subfold { transform: rotate(-90deg); }
 /* 하위 작업 추가 버튼. 브라우저 열기 버튼과 나란히 서므로 .icon-btn을 같이
    입혀 크기·여백을 맞춘다 — 안 그러면 두 아이콘의 높이가 어긋난다
