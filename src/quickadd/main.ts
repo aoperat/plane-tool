@@ -14,6 +14,8 @@ import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
 import { openBreakdownSheet } from "./breakdownSheet";
+import { resolveSubmitRoute } from "./submitRoute";
+import type { PendingTree } from "./submitRoute";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
 import { mountIssueCard, layoutKindOf } from "../shared/issueForm/card";
 import "../shared/app.css";
@@ -42,6 +44,9 @@ let projects: Project[] = [];
 
 // AI가 제안한 하위 작업. 적용하면 채워지고, 등록하거나 폼을 비우면 사라진다.
 let pendingChildren: string[] = [];
+// 트리를 만들다 하위 일부가 실패했을 때만 채워진다. 재시도가 상위를 또 만들지
+// 않도록 붙잡아 두는 기록이다 — 판정은 submitRoute.ts가 한다.
+let pendingTree: PendingTree | null = null;
 
 const card = mountIssueCard({
   root: document.getElementById("cardHost")!,
@@ -222,34 +227,56 @@ async function submitIssue() {
     card.showError("프로젝트를 선택하세요");
     return;
   }
+  const projectId = card.state.selectedId;
+  const startDate = resolveDateChoice(card.state.startChoice, card.state.startCustomDate);
+  const targetDate = resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate);
+  const route = resolveSubmitRoute(pendingTree, pendingChildren, projectId, name);
+
   submitting = true;
   try {
-    if (pendingChildren.length > 0) {
+    if (route.kind === "attach") {
+      // 상위는 이미 서버에 있다. 하위만 만들어 붙인다 — 폼의 제목·설명은 상위의
+      // 것이라 여기서 다시 보내지 않는다.
+      const failed = await attachChildren(route.tree, route.children);
+      if (failed.length > 0) {
+        reportPartialFailure(failed);
+        return;
+      }
+    } else if (route.kind === "tree") {
       const result = await createIssueTree(
-        card.state.selectedId,
+        projectId,
         name,
-        pendingChildren,
+        route.children,
         card.state.assigneeIds,
-        resolveDateChoice(card.state.startChoice, card.state.startCustomDate),
-        resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate),
+        startDate,
+        targetDate,
         card.state.priority,
         card.state.stateGroup,
         card.descriptionValue,
       );
       if (result.failed.length > 0) {
         // 부모와 일부 자식은 이미 만들어졌다 — 창을 닫지 않고 실패만 알린다.
-        card.showError(`하위 ${result.failed.length}개를 만들지 못했습니다: ${result.failed.join(", ")}`);
-        pendingChildren = result.failed;
-        renderPendingBadge();
+        // 다시 누르면 이 부모에 붙이도록 하위가 물려받은 값까지 적어 둔다.
+        pendingTree = {
+          parentId: result.parent_id,
+          title: name,
+          projectId,
+          assigneeIds: card.state.assigneeIds,
+          startDate,
+          targetDate,
+          priority: card.state.priority,
+          stateGroup: card.state.stateGroup,
+        };
+        reportPartialFailure(result.failed);
         return;
       }
     } else {
       await createIssue(
-        card.state.selectedId,
+        projectId,
         name,
         card.state.assigneeIds,
-        resolveDateChoice(card.state.startChoice, card.state.startCustomDate),
-        resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate),
+        startDate,
+        targetDate,
         card.state.priority,
         card.state.stateGroup,
         card.descriptionValue,
@@ -267,10 +294,48 @@ async function submitIssue() {
   }
 }
 
+/** 이미 만들어진 상위에 하위를 하나씩 붙인다. 만들지 못한 제목만 돌려준다.
+ *
+ *  하위가 물려받는 값은 `tree`에 적어 둔 것을 쓴다 — 먼저 성공한 형제와 같은
+ *  모양이어야 하기 때문이다. 설명은 비워 보낸다: create_issue_tree도 하위에는
+ *  설명을 넣지 않으므로, 여기서 폼의 설명을 넣으면 재시도로 만들어진 하위만
+ *  설명을 갖게 된다. */
+async function attachChildren(tree: PendingTree, children: string[]): Promise<string[]> {
+  const failed: string[] = [];
+  for (const child of children) {
+    try {
+      await createIssue(
+        tree.projectId,
+        child,
+        tree.assigneeIds,
+        tree.startDate,
+        tree.targetDate,
+        tree.priority,
+        tree.stateGroup,
+        "",
+        tree.parentId,
+      );
+    } catch (err) {
+      console.error("child create failed:", child, err);
+      failed.push(child);
+    }
+  }
+  return failed;
+}
+
+/** 상위는 만들어졌는데 하위 일부가 남은 상태. 창을 닫지 않고 실패분만 남겨
+ *  Ctrl+Enter로 다시 시도할 수 있게 한다. */
+function reportPartialFailure(failed: string[]) {
+  card.showError(`하위 ${failed.length}개를 만들지 못했습니다: ${failed.join(", ")}`);
+  pendingChildren = failed;
+  renderPendingBadge();
+}
+
 function resetFields() {
   resetFormFields(card.state);
   card.descriptionValue = "";
   pendingChildren = [];
+  pendingTree = null;
   renderPendingBadge();
   dismissCoach(false); // 등록하고 창이 숨으므로 안내도 함께 치운다
   card.resetView();
