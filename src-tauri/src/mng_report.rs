@@ -132,24 +132,17 @@ pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts:
 /// 웹과 동일: 완료는 최근 완료순, 진행중은 마감 임박순(없는 것은 뒤로), 예정은
 /// 시작일(없으면 마감일) 임박순(둘 다 없는 것은 뒤로).
 ///
-/// 하위 작업은 부모가 같은 `items` 안에 있을 때만 뺀다 — 업무일지는 사람이 읽는
-/// 보고서라 부모 한 줄로 묶는 편이 자연스럽지만, 부모가 없으면 묶어 줄 줄이
-/// 없어서 그날 한 일이 통째로 사라진다.
+/// 하위 작업도 그대로 넣는다 — Plane 웹의 업무보고서(`build_work_report`)가
+/// 자식을 거르지 않고 오히려 각 줄에 부모 정보를 함께 실어 보내기 때문이다.
+/// 앱만 자식을 빼면 같은 날 같은 일을 두 도구가 다르게 보고하게 된다.
 pub fn classify_groups<'a>(
     items: &'a [WorkItem],
     today: &str,
 ) -> (Vec<&'a WorkItem>, Vec<&'a WorkItem>, Vec<&'a WorkItem>) {
-    let present: std::collections::HashSet<&str> = items.iter().map(|i| i.id.as_str()).collect();
     let mut completed: Vec<&WorkItem> = Vec::new();
     let mut in_progress: Vec<&WorkItem> = Vec::new();
     let mut upcoming: Vec<&WorkItem> = Vec::new();
     for item in items {
-        // 보고서는 묶음 단위로 읽는 문서다 — 부모가 이 목록에 있는 자식은 그
-        // 부모 한 줄로 갈음한다. 부모가 다른 프로젝트에 있거나 필터에 걸려
-        // 빠졌으면 자식이 스스로 한 줄이 된다.
-        if item.parent_id.as_deref().is_some_and(|p| present.contains(p)) {
-            continue;
-        }
         match item.state_group.as_str() {
             "completed" if completed_within(item, today, today) => completed.push(item),
             "started" => in_progress.push(item),
@@ -408,9 +401,11 @@ mod tests {
         assert_eq!(upcoming.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["d"]);
     }
 
-    /// 업무일지는 부모 한 줄로 묶어 읽는 문서다 — 자식은 따로 나열하지 않는다.
+    /// 하위 작업도 부모와 나란히 일지에 오른다 — Plane 웹의 업무보고서가
+    /// 자식을 거르지 않으므로, 앱만 빼면 같은 날 같은 일을 두 도구가 다르게
+    /// 보고하게 된다.
     #[test]
-    fn classify_groups_excludes_sub_issues() {
+    fn classify_groups_keeps_sub_issues_alongside_their_parent() {
         let mut parent = item("a", "부모", 1, "none", None);
         parent.state_group = "started".into();
         let mut child = item("b", "자식", 2, "none", None);
@@ -420,13 +415,11 @@ mod tests {
         let items = [parent, child];
         let (_, in_progress, _) = classify_groups(&items, "2026-08-18");
 
-        assert_eq!(in_progress.len(), 1);
-        assert_eq!(in_progress[0].name, "부모");
+        assert_eq!(in_progress.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), vec!["부모", "자식"]);
     }
 
-    /// 회귀 방지: 부모가 이 목록에 없으면(다른 프로젝트에 있거나, 내 담당이
-    /// 아니거나, 상태 필터로 빠졌거나) 자식이 스스로 한 줄이 된다 — 부모도
-    /// 자식도 없으면 그날 한 일이 보고서에서 통째로 사라진다.
+    /// 회귀 방지: 부모가 이 목록에 없는 자식(다른 프로젝트에 있거나, 내 담당이
+    /// 아니거나, 상태 필터로 빠진 부모)도 당연히 남는다.
     #[test]
     fn classify_groups_keeps_sub_issues_whose_parent_is_absent() {
         let mut child = item("b", "고아 자식", 2, "none", None);
