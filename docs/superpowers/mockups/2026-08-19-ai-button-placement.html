@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>AI 제안 버튼 위치 — 목업</title>
+<link rel="stylesheet" href="../../../src/shared/app.css" />
+<style>
+  /* 목업 전용. 실제 앱 CSS(app.css) 위에 얹어 안을 나란히 놓는다.
+     실제 화면이 "한눈에 보기" 레이아웃이므로 그 폭(660px)과 줄 구성을 따른다. */
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif;
+         margin: 0; padding: 28px 28px 60px; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 26px; line-height: 1.65; }
+  .case { margin-bottom: 34px; }
+  .case > h2 { font-size: 13.5px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .tag { background: var(--accent); color: #fff; border-radius: 999px;
+         padding: 1px 9px; font-size: 10.5px; font-weight: 700; }
+  .tag.now { background: var(--muted-2); }
+  .case > p { color: var(--muted); font-size: 12px; margin: 0 0 11px; line-height: 1.6; }
+  .frame { width: 660px; background: var(--panel); border: 1px solid var(--border);
+           border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .hd { display: flex; align-items: center; gap: 9px; padding: 10px 15px;
+        border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .hd .grip { color: var(--muted-2); }
+  .hd .t { color: var(--text); font-weight: 600; }
+  .hd .sp { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+  .segbtn { border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px;
+            color: var(--muted); font-size: 11px; background: var(--panel-2); }
+  .segbtn.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-ring); }
+  .ic { color: var(--muted-2); font-size: 13px; }
+  .body { padding: 14px 15px 6px; }
+  .titleline { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .titleline .bar { width: 3px; height: 20px; background: var(--accent); border-radius: 2px; }
+  .titleline .txt { font-size: 15px; font-weight: 600; flex: 1; }
+  .descbtn { border: 1px solid var(--accent-ring); color: var(--accent); background: var(--accent-soft);
+             border-radius: 7px; padding: 4px 10px; font-size: 11.5px; }
+  .desc { color: var(--muted-2); font-size: 12.5px; margin: 8px 0 14px; }
+  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; font-size: 12px; }
+  .row .lb { width: 58px; color: var(--muted); flex: none; }
+  .row .hint { margin-left: auto; color: var(--muted-2); font-size: 11px; }
+  .pill { border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px;
+          font-size: 11.5px; color: var(--muted); background: var(--panel-2); }
+  .pill.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-ring); }
+  .av { width: 20px; height: 20px; border-radius: 50%; display: inline-flex;
+        align-items: center; justify-content: center; color: #fff; font-size: 10px; margin-right: 5px; }
+  .ai-inline { color: var(--accent); font-size: 15px; cursor: pointer; flex: none; }
+  .ai-head { color: var(--accent); font-size: 14px; cursor: pointer; }
+  .note { margin-top: 10px; font-size: 11.5px; color: var(--muted-2); line-height: 1.6; width: 660px; }
+  .note b { color: var(--muted); font-weight: 600; }
+  .arrow { color: var(--accent); font-weight: 700; }
+  hr.sep { border: none; border-top: 1px dashed var(--border); margin: 30px 0; width: 660px; }
+</style>
+</head>
+<body>
+
+<h1>✨ AI 제안 버튼을 어디에 둘까</h1>
+<p class="sub">
+  실제 화면(한눈에 보기, 660px)을 그대로 옮겼습니다 — 앱 CSS를 얹어 색·여백·글꼴이 같습니다.<br>
+  <b>지금 문제:</b> 푸터가 양끝 정렬이라 세 요소가 놓이면 AI 제안이 <b>한가운데 떠서</b> 프로젝트에도 등록에도 속하지 않습니다.
+</p>
+
+<!-- 지금 -->
+<div class="case">
+  <h2><span class="tag now">지금</span> 푸터 한가운데</h2>
+  <p>양끝 정렬 사이에 끼어 어디에도 속하지 않는 자리가 됐습니다.</p>
+  <div class="frame">
+    <div class="hd"><span class="grip">⠿</span><span class="t">빠른 추가</span>
+      <span class="sp"><span class="segbtn">▭▭</span><span class="segbtn on">☰</span><span class="ic">✕</span></span></div>
+    <div class="body">
+      <div class="titleline"><span class="bar"></span><span class="txt">나라장터 보고서 자료 정리 및 전달</span>
+        <span class="descbtn">≡ 설명</span></div>
+      <div class="desc">설명을 입력하세요…</div>
+      <div class="row"><span class="lb">담당자</span>
+        <span class="pill on"><span class="av" style="background:#4f7cff">이</span>나</span>
+        <span class="pill"><span class="av" style="background:#a855f7">j</span>jyj7970</span>
+        <span class="pill"><span class="av" style="background:#22c55e">s</span>shinyh</span>
+        <span class="hint">Ctrl+클릭 다중</span></div>
+      <div class="row"><span class="lb">상태</span>
+        <span class="pill">Backlog</span><span class="pill on">Todo</span><span class="pill">In Progress</span><span class="pill">Done</span></div>
+      <div class="row"><span class="lb">우선순위</span>
+        <span class="pill">없음</span><span class="pill">낮음</span><span class="pill on">보통</span><span class="pill">높음</span><span class="pill">긴급</span></div>
+      <div class="row"><span class="lb">마감일</span>
+        <span class="pill on">오늘</span><span class="pill">내일</span><span class="pill">다음 주</span>
+        <span class="pill">‹ 2026-08-19 (수) ›</span></div>
+    </div>
+    <div class="popup-bottom">
+      <button class="proj-select"><span class="dot" style="background:#eab308"></span>홍익대학교<span class="chev">▾</span></button>
+      <button class="qa-ai">✨ AI 제안</button>
+      <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+    </div>
+  </div>
+  <div class="note"><b>문제</b> 가운데 홀로 떠 있어 무리에서 벗어나 보이고, 창 폭이 바뀌면 위치도 따라 움직입니다.</div>
+</div>
+
+<hr class="sep">
+
+<!-- A -->
+<div class="case">
+  <h2><span class="tag">A</span> 제목 줄 오른쪽 — 설명 버튼 옆</h2>
+  <p>제목을 다듬는 기능이니 제목 옆에 둡니다. 이미 그 자리에 [≡ 설명]이 있어 짝을 이룹니다.</p>
+  <div class="frame">
+    <div class="hd"><span class="grip">⠿</span><span class="t">빠른 추가</span>
+      <span class="sp"><span class="segbtn">▭▭</span><span class="segbtn on">☰</span><span class="ic">✕</span></span></div>
+    <div class="body">
+      <div class="titleline"><span class="bar"></span><span class="txt">나라장터 보고서 자료 정리 및 전달</span>
+        <button class="qa-ai" style="padding:4px 10px; font-size:11.5px;">✨ AI 제안</button>
+        <span class="descbtn">≡ 설명</span></div>
+      <div class="desc">설명을 입력하세요…</div>
+      <div class="row"><span class="lb">담당자</span>
+        <span class="pill on"><span class="av" style="background:#4f7cff">이</span>나</span>
+        <span class="pill"><span class="av" style="background:#a855f7">j</span>jyj7970</span>
+        <span class="pill"><span class="av" style="background:#22c55e">s</span>shinyh</span>
+        <span class="hint">Ctrl+클릭 다중</span></div>
+      <div class="row"><span class="lb">상태</span>
+        <span class="pill">Backlog</span><span class="pill on">Todo</span><span class="pill">In Progress</span><span class="pill">Done</span></div>
+      <div class="row"><span class="lb">우선순위</span>
+        <span class="pill">없음</span><span class="pill">낮음</span><span class="pill on">보통</span><span class="pill">높음</span><span class="pill">긴급</span></div>
+      <div class="row"><span class="lb">마감일</span>
+        <span class="pill on">오늘</span><span class="pill">내일</span><span class="pill">다음 주</span>
+        <span class="pill">‹ 2026-08-19 (수) ›</span></div>
+    </div>
+    <div class="popup-bottom">
+      <button class="proj-select"><span class="dot" style="background:#eab308"></span>홍익대학교<span class="chev">▾</span></button>
+      <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+    </div>
+  </div>
+  <div class="note"><b>장점</b> 다루는 대상(제목) 바로 옆이라 뜻이 분명하고, 푸터가 원래의 두 요소로 돌아갑니다.<br>
+    <b>단점</b> 제목이 아주 길면 버튼 두 개에 밀려 제목 표시 폭이 줄어듭니다.</div>
+</div>
+
+<hr class="sep">
+
+<!-- B -->
+<div class="case">
+  <h2><span class="tag">B</span> 푸터 오른쪽 — 추가 버튼과 한 묶음</h2>
+  <p>가운데 뜨지 않게 오른쪽 무리에 붙입니다. 지금과 가장 가깝지만 자리가 분명해집니다.</p>
+  <div class="frame">
+    <div class="hd"><span class="grip">⠿</span><span class="t">빠른 추가</span>
+      <span class="sp"><span class="segbtn">▭▭</span><span class="segbtn on">☰</span><span class="ic">✕</span></span></div>
+    <div class="body">
+      <div class="titleline"><span class="bar"></span><span class="txt">나라장터 보고서 자료 정리 및 전달</span>
+        <span class="descbtn">≡ 설명</span></div>
+      <div class="desc">설명을 입력하세요…</div>
+      <div class="row"><span class="lb">담당자</span>
+        <span class="pill on"><span class="av" style="background:#4f7cff">이</span>나</span>
+        <span class="pill"><span class="av" style="background:#a855f7">j</span>jyj7970</span>
+        <span class="pill"><span class="av" style="background:#22c55e">s</span>shinyh</span>
+        <span class="hint">Ctrl+클릭 다중</span></div>
+      <div class="row"><span class="lb">상태</span>
+        <span class="pill">Backlog</span><span class="pill on">Todo</span><span class="pill">In Progress</span><span class="pill">Done</span></div>
+      <div class="row"><span class="lb">우선순위</span>
+        <span class="pill">없음</span><span class="pill">낮음</span><span class="pill on">보통</span><span class="pill">높음</span><span class="pill">긴급</span></div>
+      <div class="row"><span class="lb">마감일</span>
+        <span class="pill on">오늘</span><span class="pill">내일</span><span class="pill">다음 주</span>
+        <span class="pill">‹ 2026-08-19 (수) ›</span></div>
+    </div>
+    <div class="popup-bottom">
+      <button class="proj-select"><span class="dot" style="background:#eab308"></span>홍익대학교<span class="chev">▾</span></button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="qa-ai">✨ AI 제안</button>
+        <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="note"><b>장점</b> 고칠 것이 적고 "누르는 것들" 무리에 속합니다.<br>
+    <b>단점</b> 등록 버튼 바로 옆이라 손이 스칠 수 있습니다.</div>
+</div>
+
+<hr class="sep">
+
+<!-- C -->
+<div class="case">
+  <h2><span class="tag">C</span> 푸터 왼쪽 — 프로젝트 옆</h2>
+  <p>등록 버튼과 반대편 끝으로 떨어뜨립니다. 잘못 누를 일이 가장 적습니다.</p>
+  <div class="frame">
+    <div class="hd"><span class="grip">⠿</span><span class="t">빠른 추가</span>
+      <span class="sp"><span class="segbtn">▭▭</span><span class="segbtn on">☰</span><span class="ic">✕</span></span></div>
+    <div class="body">
+      <div class="titleline"><span class="bar"></span><span class="txt">나라장터 보고서 자료 정리 및 전달</span>
+        <span class="descbtn">≡ 설명</span></div>
+      <div class="desc">설명을 입력하세요…</div>
+      <div class="row"><span class="lb">담당자</span>
+        <span class="pill on"><span class="av" style="background:#4f7cff">이</span>나</span>
+        <span class="pill"><span class="av" style="background:#a855f7">j</span>jyj7970</span>
+        <span class="pill"><span class="av" style="background:#22c55e">s</span>shinyh</span>
+        <span class="hint">Ctrl+클릭 다중</span></div>
+      <div class="row"><span class="lb">상태</span>
+        <span class="pill">Backlog</span><span class="pill on">Todo</span><span class="pill">In Progress</span><span class="pill">Done</span></div>
+      <div class="row"><span class="lb">우선순위</span>
+        <span class="pill">없음</span><span class="pill">낮음</span><span class="pill on">보통</span><span class="pill">높음</span><span class="pill">긴급</span></div>
+      <div class="row"><span class="lb">마감일</span>
+        <span class="pill on">오늘</span><span class="pill">내일</span><span class="pill">다음 주</span>
+        <span class="pill">‹ 2026-08-19 (수) ›</span></div>
+    </div>
+    <div class="popup-bottom">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="proj-select"><span class="dot" style="background:#eab308"></span>홍익대학교<span class="chev">▾</span></button>
+        <button class="qa-ai">✨ AI 제안</button>
+      </div>
+      <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+    </div>
+  </div>
+  <div class="note"><b>장점</b> 등록 버튼과 가장 멀어 오조작이 없습니다.<br>
+    <b>단점</b> 프로젝트 이름이 길면 나란히 놓기 빠듯해집니다(컴팩트 폭에서 특히).</div>
+</div>
+
+<hr class="sep">
+
+<div class="case">
+  <h2>참고 — 하위를 적용한 뒤</h2>
+  <p>어느 안을 골라도 배지 모양은 같습니다. 옆의 ✕로 걷어냅니다.</p>
+  <div class="frame">
+    <div class="hd"><span class="grip">⠿</span><span class="t">빠른 추가</span>
+      <span class="sp"><span class="segbtn">▭▭</span><span class="segbtn on">☰</span><span class="ic">✕</span></span></div>
+    <div class="body">
+      <div class="titleline"><span class="bar"></span><span class="txt">나라장터 보고서 대응</span>
+        <button class="qa-ai" style="padding:4px 10px; font-size:11.5px;">✨ 하위 2 <span style="opacity:.55">✕</span></button>
+        <span class="descbtn">≡ 설명</span></div>
+      <div class="desc">설명을 입력하세요…</div>
+      <div class="row"><span class="lb">담당자</span>
+        <span class="pill on"><span class="av" style="background:#4f7cff">이</span>나</span>
+        <span class="hint">하위도 같은 값을 물려받습니다</span></div>
+    </div>
+    <div class="popup-bottom">
+      <button class="proj-select"><span class="dot" style="background:#eab308"></span>홍익대학교<span class="chev">▾</span></button>
+      <button class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

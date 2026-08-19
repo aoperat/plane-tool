@@ -1,4 +1,5 @@
 pub mod assign_watch;
+pub mod breakdown;
 pub mod briefing;
 pub mod commands;
 pub mod config;
@@ -912,6 +913,7 @@ pub fn run() {
             commands::save_settings,
             commands::verify_delegated_tab_password,
             commands::create_issue,
+            commands::create_issue_tree,
             commands::fetch_sidebar_data,
             commands::fetch_cycle_data,
             commands::list_projects,
@@ -931,6 +933,7 @@ pub fn run() {
             commands::set_quickadd_layout,
             commands::fetch_release_notes,
             commands::generate_briefing,
+            commands::suggest_breakdown,
             commands::open_briefing,
             commands::get_pending_assignments,
             commands::acknowledge_assignment,
