@@ -13,7 +13,7 @@ import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
-import { openBreakdownSheet } from "./breakdownSheet";
+import { openBreakdownSheet, type SheetHandle } from "./breakdownSheet";
 import { resolveSubmitRoute } from "./submitRoute";
 import type { PendingTree } from "./submitRoute";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
@@ -47,6 +47,9 @@ let pendingChildren: string[] = [];
 // 트리를 만들다 하위 일부가 실패했을 때만 채워진다. 재시도가 상위를 또 만들지
 // 않도록 붙잡아 두는 기록이다 — 판정은 submitRoute.ts가 한다.
 let pendingTree: PendingTree | null = null;
+// 열려 있는 AI 제안 시트. 폼을 비울 때 함께 치우지 않으면 창을 다시 열었을 때
+// 지난 제안이 떠 있는 채로 남는다.
+let sheetHandle: SheetHandle | null = null;
 
 const card = mountIssueCard({
   root: document.getElementById("cardHost")!,
@@ -89,6 +92,9 @@ const card = mountIssueCard({
   onSubmit: () => { submitIssue(); },
   onClose: () => {
     dismissCoach(false);
+    // 시트를 열어 둔 채 창을 닫으면 다음에 열 때 지난 제안이 남아 있다.
+    sheetHandle?.close();
+    sheetHandle = null;
     win.hide();
   },
 });
@@ -186,7 +192,7 @@ aiBtn.onclick = async () => {
   aiBtn.textContent = "✨ 생각 중…";
   try {
     const suggestion = await suggestBreakdown(title, card.descriptionValue);
-    openBreakdownSheet({
+    sheetHandle = openBreakdownSheet({
       host: card.element,
       suggestion,
       originalTitle: title,
@@ -336,6 +342,8 @@ function resetFields() {
   card.descriptionValue = "";
   pendingChildren = [];
   pendingTree = null;
+  sheetHandle?.close();
+  sheetHandle = null;
   renderPendingBadge();
   dismissCoach(false); // 등록하고 창이 숨으므로 안내도 함께 치운다
   card.resetView();

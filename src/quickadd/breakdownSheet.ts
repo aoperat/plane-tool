@@ -66,6 +66,8 @@ export function openBreakdownSheet(opts: {
   overlay.appendChild(sheet);
 
   const close = () => {
+    // 여러 번 불려도 안전해야 한다 — 취소·Esc·적용으로 이미 닫힌 뒤에도
+    // 폼 리셋이 한 번 더 부른다.
     document.removeEventListener("keydown", onKey, true);
     overlay.remove();
   };
@@ -73,6 +75,15 @@ export function openBreakdownSheet(opts: {
     if (e.key === "Escape") {
       e.stopPropagation(); // 사이드바·창 닫기까지 번지지 않게 여기서 멈춘다
       close();
+      return;
+    }
+    // 시트는 카드 위에 겹치는 모달이다. 뒤쪽 폼의 제출키(card.ts가 document에
+    // 걸어 둔 Ctrl+Enter)가 살아 있으면, 제안을 검토하던 중에 원본 제목 그대로
+    // 등록되고 창이 닫혀 시트만 허공에 남는다. 여기서 멈춘다 — 등록하려면
+    // 먼저 적용하거나 취소해야 한다.
+    if (e.key === "Enter" && e.ctrlKey) {
+      e.preventDefault();
+      e.stopPropagation();
     }
   };
   document.addEventListener("keydown", onKey, true);
