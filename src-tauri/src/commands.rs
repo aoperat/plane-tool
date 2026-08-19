@@ -1123,6 +1123,28 @@ pub async fn generate_briefing(app: tauri::AppHandle, force: bool) -> Result<cra
     Ok(b)
 }
 
+/// 빠른 추가의 [✨ AI 제안]. 제목·설명을 OpenAI에 보내 제목 다듬기와 하위 작업
+/// 분해를 제안받는다.
+///
+/// 브리핑과 달리 폴백이 없다 — 규칙 기반으로 흉내 낼 것이 없고, 억지 분해는 이
+/// 기능의 존재 이유를 무너뜨린다. 실패는 그대로 오류로 올린다.
+#[tauri::command]
+pub async fn suggest_breakdown(
+    app: tauri::AppHandle,
+    title: String,
+    description: String,
+) -> Result<crate::breakdown::BreakdownSuggestion, String> {
+    if title.trim().is_empty() {
+        return Err("제목을 먼저 입력하세요".into());
+    }
+    let key = config::get_openai_key().ok_or("no_key")?;
+    let s = config::load_settings(&app);
+    let (system, user_msg) = crate::breakdown::build_prompt(&title, &description);
+    let ai = crate::openai::OpenAiClient::new(key);
+    let content = ai.chat_json(&s.briefing_model, &system, &user_msg).await?;
+    crate::breakdown::parse_suggestion(&content, &title)
+}
+
 /// 브리핑 창을 설정된 디스플레이 중앙에 표시하고, 창에게 로드 신호를 보낸다.
 #[tauri::command]
 pub fn open_briefing(app: tauri::AppHandle) {

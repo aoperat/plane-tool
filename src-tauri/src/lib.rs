@@ -932,6 +932,7 @@ pub fn run() {
             commands::set_quickadd_layout,
             commands::fetch_release_notes,
             commands::generate_briefing,
+            commands::suggest_breakdown,
             commands::open_briefing,
             commands::get_pending_assignments,
             commands::acknowledge_assignment,
