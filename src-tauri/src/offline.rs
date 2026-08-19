@@ -474,6 +474,30 @@ mod tests {
         assert_eq!(child.payload.get("parent_id").and_then(|v| v.as_str()), Some("server-1"));
     }
 
+    /// `create_issue_tree`가 오프라인일 때 기대는 계약이다: 부모를 먼저 큐에
+    /// 넣고 하위들이 그 로컬 id를 `parent_id`로 들고 뒤따르면, 부모 재생이
+    /// 성공한 순간 하위 전부가 실제 서버 id를 가리키게 된다.
+    #[test]
+    fn remap_target_id_reconnects_every_child_of_a_queued_tree() {
+        let mut queue = OfflineQueue::default();
+        push_mutation(&mut queue, MutationKind::CreateIssue, "p1", "local-1",
+            serde_json::json!({ "name": "상위" }), None, 1);
+        for (i, name) in ["하위 A", "하위 B", "하위 C"].iter().enumerate() {
+            push_mutation(&mut queue, MutationKind::CreateIssue, "p1", &format!("local-{}", i + 2),
+                serde_json::json!({ "name": name, "parent_id": "local-1" }), None, 2);
+        }
+
+        // 큐는 FIFO다 — 부모가 맨 앞이라 먼저 재생되고, 그때 치환이 일어난다.
+        assert_eq!(queue.items[0].target_id, "local-1");
+        remap_target_id(&mut queue, "local-1", "server-1");
+
+        let parents: Vec<_> = queue.items[1..]
+            .iter()
+            .map(|m| m.payload.get("parent_id").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(parents, vec![Some("server-1"), Some("server-1"), Some("server-1")]);
+    }
+
     #[test]
     fn remap_target_id_leaves_other_parents_alone() {
         let mut queue = OfflineQueue::default();

@@ -386,6 +386,51 @@ pub(crate) async fn try_create_issue_online(
     client.create_work_item(project_id, &item).await
 }
 
+/// 네트워크가 끊겼을 때 작업 하나를 오프라인 큐에 적재하고, 캐시에 임시
+/// placeholder를 꽂아 화면에 바로 보이게 한다. 돌려주는 값은 그 placeholder의
+/// 로컬 id(`local-*`)다.
+///
+/// 이 로컬 id를 이어지는 항목의 `parent_id`로 넘기면 트리도 큐에 담을 수 있다 —
+/// 재생할 때 부모가 먼저 만들어지고, 그 실제 서버 id로 뒤따르는 항목들의
+/// `parent_id`가 치환된다(`offline::remap_target_id`).
+#[allow(clippy::too_many_arguments)]
+async fn queue_issue_offline(
+    app: &tauri::AppHandle,
+    project_id: &str,
+    name: &str,
+    assignee_ids: &[String],
+    start_date: Option<&str>,
+    target_date: Option<&str>,
+    priority: &str,
+    state_group: &str,
+    description: Option<&str>,
+    parent_id: Option<&str>,
+) -> Result<String, String> {
+    let payload = serde_json::json!({
+        "name": name, "assignee_ids": assignee_ids,
+        "start_date": start_date, "target_date": target_date,
+        "priority": priority, "state_group": state_group, "description": description,
+        "parent_id": parent_id,
+    });
+    let placeholder = WorkItemDto {
+        id: String::new(),
+        name: name.to_string(),
+        priority: priority.to_string(),
+        target_date: target_date.map(str::to_string),
+        start_date: start_date.map(str::to_string),
+        state_group: state_group.to_string(),
+        project_id: project_id.to_string(),
+        assignee_ids: assignee_ids.to_vec(),
+        completed_at: None,
+        created_at: None,
+        updated_at: None,
+        parent_id: parent_id.map(str::to_string),
+        sub_total: 0,
+        sub_done: 0,
+    };
+    crate::offline::queue_create_and_insert(app, project_id, payload, placeholder).await
+}
+
 #[tauri::command]
 pub async fn create_issue(
     app: tauri::AppHandle,
@@ -420,29 +465,12 @@ pub async fn create_issue(
             Ok(())
         }
         Err(e) if plane_api::is_network_error(&e) => {
-            let payload = serde_json::json!({
-                "name": trimmed, "assignee_ids": assignee_ids,
-                "start_date": start_date, "target_date": target_date,
-                "priority": priority, "state_group": state_group, "description": description,
-                "parent_id": parent_id,
-            });
-            let placeholder = WorkItemDto {
-                id: String::new(),
-                name: trimmed,
-                priority: priority.clone(),
-                target_date: target_date.clone(),
-                start_date: start_date.clone(),
-                state_group: state_group.clone(),
-                project_id: project_id.clone(),
-                assignee_ids: assignee_ids.clone(),
-                completed_at: None,
-                created_at: None,
-                updated_at: None,
-                parent_id: parent_id.clone(),
-                sub_total: 0,
-                sub_done: 0,
-            };
-            crate::offline::queue_create_and_insert(&app, &project_id, payload, placeholder).await?;
+            queue_issue_offline(
+                &app, &project_id, &trimmed, &assignee_ids,
+                start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+                description.as_deref(), parent_id.as_deref(),
+            )
+            .await?;
             config::set_last_project(&app, &project_id)?;
             // 오프라인 새로고침은 방금 placeholder가 삽입된 캐시를 그대로
             // 돌려주므로, 여기서도 새 항목이 즉시 보인다.
@@ -457,10 +485,13 @@ pub async fn create_issue(
 /// 것 수와 실패한 제목을 함께 돌려준다.
 #[derive(Debug, Serialize)]
 pub struct TreeCreateResult {
+    /// 서버가 준 상위 작업 id. 오프라인이면 임시 로컬 id(`local-*`)다.
     pub parent_id: String,
-    /// 실제로 만들어진 하위 작업 수.
+    /// 만들어졌거나 오프라인 큐에 들어간 하위 작업 수 — 둘 다 사용자에게는
+    /// "잃지 않았다"는 같은 뜻이다.
     pub created: usize,
-    /// 만들지 못한 하위 작업의 제목들.
+    /// 만들지 못한 하위 작업의 제목들. 네트워크 문제로 실패한 것은 큐로
+    /// 가므로 여기 오지 않는다 — 권한·검증처럼 다시 눌러도 같을 실패만 남는다.
     pub failed: Vec<String>,
 }
 
@@ -469,6 +500,10 @@ pub struct TreeCreateResult {
 /// 시작일도 같은 값이 맞다.
 ///
 /// 부분 실패는 롤백하지 않는다. 이미 만든 것을 지우는 쪽이 더 나쁜 실패 모드다.
+///
+/// 네트워크가 끊겨 있으면 `create_issue`와 같은 계약을 지킨다 — 오류로 끝내지
+/// 않고 오프라인 큐에 담는다. 하위가 하나라도 붙으면 등록 자체가 막히던 것이
+/// 이 함수의 옛 동작이었다.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_issue_tree(
@@ -487,12 +522,46 @@ pub async fn create_issue_tree(
         return Err("empty_title".into());
     }
     let (client, _s) = client(&app)?;
-    let parent_id = try_create_issue_online(
+    let parent_id = match try_create_issue_online(
         &client, &project_id, name.trim(), &assignee_ids,
         start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
         description.as_deref(), None,
     )
-    .await?;
+    .await
+    {
+        Ok(id) => id,
+        Err(e) if plane_api::is_network_error(&e) => {
+            // 트리 전체를 큐에 담는다. 하위는 부모의 로컬 id를 `parent_id`로
+            // 들고 있다가, 재생할 때 부모가 먼저 만들어지고 그 서버 id로
+            // 치환된다 — 큐는 FIFO라 순서가 뒤집히지 않는다.
+            let local_parent = queue_issue_offline(
+                &app, &project_id, name.trim(), &assignee_ids,
+                start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+                description.as_deref(), None,
+            )
+            .await?;
+            let mut queued = 0usize;
+            for child in &children {
+                let child = child.trim();
+                if child.is_empty() {
+                    continue;
+                }
+                // 하위에 설명을 넣지 않는 것은 온라인 경로와 같다.
+                queue_issue_offline(
+                    &app, &project_id, child, &assignee_ids,
+                    start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+                    None, Some(&local_parent),
+                )
+                .await?;
+                queued += 1;
+            }
+            config::set_last_project(&app, &project_id)?;
+            crate::emit_shared_item_event(&app, "refresh-sidebar", ());
+            return Ok(TreeCreateResult { parent_id: local_parent, created: queued, failed: Vec::new() });
+        }
+        // 네트워크가 아닌 실패(권한·검증 등)는 다시 눌러도 같으므로 그대로 올린다.
+        Err(e) => return Err(e),
+    };
 
     let mut created = 0usize;
     let mut failed: Vec<String> = Vec::new();
@@ -509,6 +578,20 @@ pub async fn create_issue_tree(
         .await
         {
             Ok(_) => created += 1,
+            Err(e) if plane_api::is_network_error(&e) => {
+                // 만드는 도중 끊겼다. 상위는 이미 서버에 있으므로 실제 상위
+                // id를 그대로 들려 큐에 넣는다 — 재생 때 치환할 것이 없다.
+                match queue_issue_offline(
+                    &app, &project_id, child, &assignee_ids,
+                    start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+                    None, Some(&parent_id),
+                )
+                .await
+                {
+                    Ok(_) => created += 1,
+                    Err(_) => failed.push(child.to_string()),
+                }
+            }
             Err(_) => failed.push(child.to_string()),
         }
     }
