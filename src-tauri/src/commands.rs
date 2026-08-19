@@ -453,6 +453,71 @@ pub async fn create_issue(
     }
 }
 
+/// `create_issue_tree`의 결과. 부분 실패를 사용자에게 정확히 알리기 위해 만든
+/// 것 수와 실패한 제목을 함께 돌려준다.
+#[derive(Debug, Serialize)]
+pub struct TreeCreateResult {
+    pub parent_id: String,
+    /// 실제로 만들어진 하위 작업 수.
+    pub created: usize,
+    /// 만들지 못한 하위 작업의 제목들.
+    pub failed: Vec<String>,
+}
+
+/// 상위 작업 하나와 하위 작업 여럿을 한 번에 만든다. 하위는 상위의
+/// 담당자·우선순위·기한을 그대로 물려받는다 — 한자리에서 만들어지는 것이라
+/// 시작일도 같은 값이 맞다.
+///
+/// 부분 실패는 롤백하지 않는다. 이미 만든 것을 지우는 쪽이 더 나쁜 실패 모드다.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn create_issue_tree(
+    app: tauri::AppHandle,
+    project_id: String,
+    name: String,
+    children: Vec<String>,
+    assignee_ids: Vec<String>,
+    start_date: Option<String>,
+    target_date: Option<String>,
+    priority: String,
+    state_group: String,
+    description: Option<String>,
+) -> Result<TreeCreateResult, String> {
+    if name.trim().is_empty() {
+        return Err("empty_title".into());
+    }
+    let (client, _s) = client(&app)?;
+    let parent_id = try_create_issue_online(
+        &client, &project_id, name.trim(), &assignee_ids,
+        start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+        description.as_deref(), None,
+    )
+    .await?;
+
+    let mut created = 0usize;
+    let mut failed: Vec<String> = Vec::new();
+    for child in children {
+        let child = child.trim();
+        if child.is_empty() {
+            continue;
+        }
+        match try_create_issue_online(
+            &client, &project_id, child, &assignee_ids,
+            start_date.as_deref(), target_date.as_deref(), &priority, &state_group,
+            None, Some(&parent_id),
+        )
+        .await
+        {
+            Ok(_) => created += 1,
+            Err(_) => failed.push(child.to_string()),
+        }
+    }
+
+    config::set_last_project(&app, &project_id)?;
+    crate::emit_shared_item_event(&app, "refresh-sidebar", ());
+    Ok(TreeCreateResult { parent_id, created, failed })
+}
+
 #[tauri::command]
 pub async fn fetch_sidebar_data(
     app: tauri::AppHandle,

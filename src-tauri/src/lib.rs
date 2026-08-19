@@ -913,6 +913,7 @@ pub fn run() {
             commands::save_settings,
             commands::verify_delegated_tab_password,
             commands::create_issue,
+            commands::create_issue_tree,
             commands::fetch_sidebar_data,
             commands::fetch_cycle_data,
             commands::list_projects,
