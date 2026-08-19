@@ -101,6 +101,15 @@ export interface CycleData {
   is_partial: boolean;
 }
 
+/** 하위 작업의 부모. 일지 내용에서 자식을 부모 아래로 묶을 때 쓴다. 같은
+ *  프로젝트에서 찾은 부모만 오고, 못 찾았으면 null이다(그 항목은 독립 항목으로
+ *  그린다). */
+export interface MngReportItemParent {
+  id: string;
+  name: string;
+  sequence_id: number;
+}
+
 /** mng 업무일지 내용 조립에 필요한 최소 필드. Rust `mng_report::classify_groups`가
  *  이미 상태 그룹별로 나눠 보낸 것이라 여기엔 `state_group`이 없다. */
 export interface MngReportItem {
@@ -113,6 +122,7 @@ export interface MngReportItem {
   completed_at: string | null;
   target_date: string | null;
   start_date: string | null;
+  parent: MngReportItemParent | null;
 }
 
 export interface MngDailyRow {

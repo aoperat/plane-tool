@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MNG_CONTENT_OPTIONS,
   badgeFor,
+  clusterByParent,
   defaultSelectedItemIds,
   isEmployeeNoMissing,
   isSelectable,
@@ -43,8 +44,17 @@ function item(overrides: Partial<MngReportItem> = {}): MngReportItem {
     completed_at: null,
     target_date: null,
     start_date: null,
+    parent: null,
     ...overrides,
   };
+}
+
+/** 하위 작업 — 부모는 `{ id, name, sequence_id }`만 온다(같은 프로젝트에서 찾은 것). */
+function child(
+  parent: { id: string; name: string; sequence_id: number },
+  overrides: Partial<MngReportItem> = {},
+): MngReportItem {
+  return item({ parent, ...overrides });
 }
 
 const TODAY = "2026-08-12";
@@ -128,6 +138,154 @@ describe("projectToText", () => {
     expect(text).toBe(
       "[P / P]\n\n✅ 완료된 일\n  • P-1 완료작업 — 08-12 완료\n\n🔄 진행 중인 일\n  • P-2 진행작업 — D-3 · 08-15 마감",
     );
+  });
+});
+
+/** Plane 웹 업무보고서(`report-text.ts`의 `clusterByParent`)와 같은 묶음 규칙이어야
+ *  한다 — 사용자가 두 도구의 결과를 나란히 놓고 비교한다. */
+describe("부모-자식 묶음", () => {
+  const 취약점 = { id: "p-vuln", name: "홍익대 취약점 문서 확인 및 조치일정 담당자에게 메일 전달", sequence_id: 10 };
+
+  it("사용자가 보고한 예시를 Plane과 같게 그린다", () => {
+    const text = projectToText(
+      "홍익대",
+      "HIU",
+      "",
+      {
+        // 부모는 진행 중 그룹에만 있다 — 완료·예정 그룹의 자식들은 캡션 줄로 묶인다.
+        completed: [child(취약점, { id: "c1", name: "취약점 문서확인", sequence_id: 11 })],
+        in_progress: [item({ id: 취약점.id, name: 취약점.name, sequence_id: 취약점.sequence_id })],
+        upcoming: [
+          child(취약점, { id: "u1", name: "담당자에게 메일 전달", sequence_id: 12 }),
+          child(취약점, { id: "u2", name: "조치: 게시판 쿼리스트링으로 접근 가능한 문제 수정", sequence_id: 13 }),
+          item({ id: "u3", name: "홍익대 게시판 모듈 생성 및 권한 기능 추가", sequence_id: 14 }),
+        ],
+      },
+      DEFAULT_MNG_CONTENT_OPTIONS,
+      TODAY,
+    );
+    expect(text).toBe(
+      [
+        "✅ 완료된 일",
+        "  홍익대 취약점 문서 확인 및 조치일정 담당자에게 메일 전달",
+        "    └ 취약점 문서확인",
+        "",
+        "🔄 진행 중인 일",
+        "  • 홍익대 취약점 문서 확인 및 조치일정 담당자에게 메일 전달",
+        "",
+        "📌 진행 예정인 일",
+        "  홍익대 취약점 문서 확인 및 조치일정 담당자에게 메일 전달",
+        "    └ 담당자에게 메일 전달",
+        "    └ 조치: 게시판 쿼리스트링으로 접근 가능한 문제 수정",
+        "  • 홍익대 게시판 모듈 생성 및 권한 기능 추가",
+      ].join("\n"),
+    );
+  });
+
+  it("부모가 같은 그룹에 있으면 그 줄 아래로 자식을 넣는다", () => {
+    const text = projectToText(
+      "P",
+      "PRJ",
+      "",
+      {
+        completed: [],
+        in_progress: [
+          item({ id: 취약점.id, name: "부모작업", sequence_id: 10 }),
+          child({ ...취약점, name: "부모작업" }, { id: "k1", name: "자식1", sequence_id: 11 }),
+          child({ ...취약점, name: "부모작업" }, { id: "k2", name: "자식2", sequence_id: 12 }),
+        ],
+        upcoming: [],
+      },
+      DEFAULT_MNG_CONTENT_OPTIONS,
+      TODAY,
+    );
+    expect(text).toBe("🔄 진행 중인 일\n  • 부모작업\n    └ 자식1\n    └ 자식2");
+  });
+
+  it("작업 번호를 켜면 캡션 줄에도 번호가 붙고, 불릿은 여전히 없다", () => {
+    const text = projectToText(
+      "P",
+      "PRJ",
+      "",
+      {
+        completed: [child(취약점, { id: "c1", name: "자식", sequence_id: 11, completed_at: "2026-08-12T09:00:00Z" })],
+        in_progress: [],
+        upcoming: [],
+      },
+      { ...ALL_ON, includeProjectName: false },
+      TODAY,
+    );
+    expect(text).toBe(
+      "✅ 완료된 일\n  PRJ-10 홍익대 취약점 문서 확인 및 조치일정 담당자에게 메일 전달\n    └ PRJ-11 자식 — 08-12 완료",
+    );
+  });
+
+  it("부모를 못 찾은 자식은 독립 항목으로 그린다", () => {
+    // 부모가 다른 프로젝트에 있거나 목록에 없으면 Rust가 parent를 null로
+    // 내려준다 — 캡션 줄을 만들 이름이 없으니 평소처럼 한 줄로 그린다.
+    const orphan = item({ id: "x", name: "고아 자식", sequence_id: 5, parent: null });
+    expect(clusterByParent([orphan]).map((u) => u.type)).toEqual(["item"]);
+    const text = projectToText(
+      "P",
+      "PRJ",
+      "",
+      { completed: [], in_progress: [orphan], upcoming: [] },
+      DEFAULT_MNG_CONTENT_OPTIONS,
+      TODAY,
+    );
+    expect(text).toBe("🔄 진행 중인 일\n  • 고아 자식");
+  });
+
+  it("자기 자신이 부모인 항목은 남의 아래로 들어가지 않는다", () => {
+    // 조부모 - 부모 - 자식이 한 그룹에 다 있어도 중첩은 한 단계까지다.
+    const units = clusterByParent([
+      item({ id: "g", name: "조부모", sequence_id: 1 }),
+      child({ id: "g", name: "조부모", sequence_id: 1 }, { id: "p", name: "부모", sequence_id: 2 }),
+      child({ id: "p", name: "부모", sequence_id: 2 }, { id: "c", name: "자식", sequence_id: 3 }),
+    ]);
+    expect(units.map((u) => u.type)).toEqual(["item", "promoted"]);
+    // "부모"는 자식을 거느리므로 조부모 아래로 접히지 않고 최상위에 남는다.
+    expect(units[1]).toMatchObject({ type: "promoted", item: { id: "p" } });
+  });
+
+  it("묶음의 자리는 구성원 중 가장 앞선 것을 따른다", () => {
+    // 자식이 목록 맨 앞이면 묶음 전체가 맨 앞으로 온다 — 서버가 정해 준 그룹 안
+    // 정렬(완료는 최근순 등)을 깨지 않기 위해서다.
+    const text = projectToText(
+      "P",
+      "PRJ",
+      "",
+      {
+        completed: [],
+        in_progress: [
+          child(취약점, { id: "k1", name: "자식", sequence_id: 11 }),
+          item({ id: "z", name: "다른 작업", sequence_id: 20 }),
+          item({ id: 취약점.id, name: "부모작업", sequence_id: 10 }),
+        ],
+        upcoming: [],
+      },
+      DEFAULT_MNG_CONTENT_OPTIONS,
+      TODAY,
+    );
+    expect(text).toBe("🔄 진행 중인 일\n  • 부모작업\n    └ 자식\n  • 다른 작업");
+  });
+
+  it("부모-자식이 없는 목록은 예전과 똑같이 나온다", () => {
+    const flat = [
+      item({ id: "a", name: "첫째", sequence_id: 1 }),
+      item({ id: "b", name: "둘째", sequence_id: 2 }),
+      item({ id: "c", name: "셋째", sequence_id: 3 }),
+    ];
+    const text = projectToText(
+      "P",
+      "PRJ",
+      "",
+      { completed: [], in_progress: flat, upcoming: [] },
+      DEFAULT_MNG_CONTENT_OPTIONS,
+      TODAY,
+    );
+    expect(text).toBe("🔄 진행 중인 일\n  • 첫째\n  • 둘째\n  • 셋째");
+    expect(clusterByParent(flat).map((u) => u.type)).toEqual(["item", "item", "item"]);
   });
 });
 

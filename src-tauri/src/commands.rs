@@ -1139,6 +1139,18 @@ pub fn open_mng_daily(app: tauri::AppHandle) {
     let _ = app.emit_to("mngdaily", "mngdaily-open", ());
 }
 
+/// 하위 작업의 부모. 프론트가 일지 내용을 조립할 때 자식을 부모 아래로 묶는 데
+/// 쓴다(Plane 웹 업무보고서의 `IWorkReportItemParent`와 같은 역할). Plane은
+/// 프로젝트 밖의 부모도 담지만, 이 앱은 같은 프로젝트의 작업 목록만 들고 있어
+/// 거기서 찾을 수 있는 부모만 채운다 — 못 찾으면 `None`이고 프론트는 그 항목을
+/// 그냥 독립 항목으로 그린다.
+#[derive(Debug, Serialize, Clone)]
+pub struct MngReportItemParentDto {
+    pub id: String,
+    pub name: String,
+    pub sequence_id: u64,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct MngReportItemDto {
     pub id: String,
@@ -1152,9 +1164,20 @@ pub struct MngReportItemDto {
     pub completed_at: Option<String>,
     pub target_date: Option<String>,
     pub start_date: Option<String>,
+    pub parent: Option<MngReportItemParentDto>,
 }
 
-fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
+/// `siblings`는 부모를 찾을 대상 — 나에게 할당된 것만이 아니라 프로젝트의 작업
+/// 전체를 넘긴다. 부모가 남에게 할당돼 있어도 이름은 보여야 하기 때문이다
+/// (Plane 웹도 부모가 보고서에 없으면 회색 캡션 줄로 이름만 보여준다).
+fn to_mng_item_dto(w: &WorkItem, siblings: &[WorkItem]) -> MngReportItemDto {
+    let parent = w.parent_id.as_deref().and_then(|pid| {
+        siblings.iter().find(|s| s.id == pid).map(|p| MngReportItemParentDto {
+            id: p.id.clone(),
+            name: p.name.clone(),
+            sequence_id: p.sequence_id,
+        })
+    });
     MngReportItemDto {
         id: w.id.clone(),
         name: w.name.clone(),
@@ -1164,6 +1187,7 @@ fn to_mng_item_dto(w: &WorkItem) -> MngReportItemDto {
         completed_at: w.completed_at.clone(),
         target_date: w.target_date.clone(),
         start_date: w.start_date.clone(),
+        parent,
     }
 }
 
@@ -1295,8 +1319,10 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
 
     let mut targets: Vec<MngTargetDto> = Vec::new();
     for (project, items, states) in per_project {
+        // `items`(프로젝트 전체)는 그대로 두고 걸러 담는다 — 하위 작업의 부모를
+        // 찾으려면 나에게 할당되지 않은 작업까지 뒤져야 한다.
         let mine: Vec<WorkItem> =
-            items.into_iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).collect();
+            items.iter().filter(|i| i.assignee_ids.iter().any(|a| a == &user.id)).cloned().collect();
         if mine.is_empty() {
             // 사이드바 기준을 그대로 따른다 — 나에게 할당된 작업이 하나도 없는
             // 프로젝트는 사이드바에도 안 뜨므로 여기서도 뺀다. 반대로 백로그만
@@ -1357,9 +1383,9 @@ async fn list_mng_targets_online(client: &PlaneClient, today: &str) -> Result<Mn
             mng_linked,
             mng_link_name,
             state_ids,
-            completed: completed.iter().map(|i| to_mng_item_dto(i)).collect(),
-            in_progress: in_progress.iter().map(|i| to_mng_item_dto(i)).collect(),
-            upcoming: upcoming.iter().map(|i| to_mng_item_dto(i)).collect(),
+            completed: completed.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
+            in_progress: in_progress.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
+            upcoming: upcoming.iter().map(|i| to_mng_item_dto(i, &items)).collect(),
             default_content,
             status: status.to_string(),
             existing_row,
@@ -1721,6 +1747,37 @@ mod tests {
         }
     }
 
+    /// 하위 작업은 부모 이름·번호까지 실어 보낸다 — 프론트가 일지 내용에서
+    /// 자식을 부모 아래로 묶으려면 id만으로는 부족하다.
+    #[test]
+    fn to_mng_item_dto_carries_the_parent_found_in_the_project() {
+        let mut parent = item_with_parent("p1", "started", None);
+        parent.name = "부모 작업".into();
+        parent.sequence_id = 42;
+        // 부모가 남에게 할당돼 있어도 이름은 찾을 수 있어야 한다 — 자식만 내
+        // 목록에 있고 부모는 캡션 줄로만 나오는 경우가 실제로 흔하다.
+        parent.assignee_ids = vec!["other".into()];
+        let child = item_with_parent("c1", "started", Some("p1"));
+        let all = vec![parent, child.clone()];
+
+        let dto = to_mng_item_dto(&child, &all);
+        let p = dto.parent.expect("부모 정보가 있어야 한다");
+        assert_eq!(p.id, "p1");
+        assert_eq!(p.name, "부모 작업");
+        assert_eq!(p.sequence_id, 42);
+    }
+
+    #[test]
+    fn to_mng_item_dto_leaves_the_parent_empty_when_it_is_not_in_the_project() {
+        // 부모가 다른 프로젝트에 있거나 목록에 없으면 이름을 알 수 없다 —
+        // 프론트는 이 항목을 그냥 독립 항목으로 그린다.
+        let orphan = item_with_parent("c1", "started", Some("elsewhere"));
+        assert!(to_mng_item_dto(&orphan, std::slice::from_ref(&orphan)).parent.is_none());
+        // 부모가 아예 없는 항목도 마찬가지.
+        let plain = item_with_parent("t1", "started", None);
+        assert!(to_mng_item_dto(&plain, std::slice::from_ref(&plain)).parent.is_none());
+    }
+
     #[test]
     fn assemble_sidebar_carries_parent_id_and_sub_counts() {
         let items = vec![
@@ -1895,6 +1952,7 @@ mod tests {
                     completed_at: None,
                     target_date: None,
                     start_date: None,
+                    parent: None,
                 })
                 .collect::<Vec<_>>()
         };

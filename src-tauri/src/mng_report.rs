@@ -3,9 +3,11 @@
 //! Plane 웹의 실제 업무보고서 포맷(`apps/web/.../work-report/report-text.ts`의
 //! `projectToText`, `report-body.tsx`의 `badgeFor`/`priorityLabel`)을 한 글자도
 //!다르지 않게 이식한다 — plane-tool이 만드는 내용이 사람이 웹에서 복사한 것과
-//! 미묘하게 달라 헷갈리지 않게 하기 위해서다. 부모-자식 클러스터링(`└` 들여쓰기)은
-//! 이번 범위에서 제외했다 — 완료 항목의 부모가 같은 상태 그룹에 없는 게 대부분이라
-//! 드물게만 발생하고, 포팅 비용 대비 효과가 낮다.
+//! 미묘하게 달라 헷갈리지 않게 하기 위해서다. 다만 부모-자식 클러스터링
+//! (`└` 들여쓰기)은 프론트(`src/mngdaily/logic.ts`의 `clusterByParent`)에만 있다 —
+//! 여기서 만드는 `default_content`는 체크 상태를 반영하지 않아 창이 뜨는 즉시
+//! 프론트가 다시 조립한 내용으로 대체되므로, 같은 알고리즘을 두 번 유지할 이유가
+//! 없다. 항목 한 줄의 서식(코드·우선순위·기한)은 계속 프론트와 같아야 한다.
 //!
 //! 네트워크/커맨드는 commands.rs가 담당하고, 이 모듈은 이미 가져온 `WorkItem`
 //! 목록을 텍스트로 조립하는 것까지만 한다(assign_watch.rs·deadline_watch.rs와
@@ -105,7 +107,7 @@ pub fn badge_for(item: &WorkItem, group: MngReportGroup, today: NaiveDate) -> Op
     }
 }
 
-/// `report-text.ts:85-93`의 `itemToLine` 이식(깊이 0 고정 — 클러스터링 없음).
+/// `report-text.ts:85-93`의 `itemToLine` 이식(깊이 0 고정 — 클러스터링은 프론트가 한다).
 pub fn item_line(item: &WorkItem, identifier: &str, group: MngReportGroup, opts: &MngContentOptions, today: NaiveDate) -> String {
     let code = if opts.include_code {
         format!("{}-{} ", identifier, item.sequence_id)
