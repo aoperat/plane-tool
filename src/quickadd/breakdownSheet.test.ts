@@ -45,4 +45,27 @@ describe("breakdownSheet 상태", () => {
     expect(acceptedChildren(s)).toEqual([]);
     expect(hasAnythingToApply(s)).toBe(true);
   });
+
+  it("제목이 그대로여도 하위를 전부 끄면 적용할 수 있다 — 그것도 하나의 결정이다", () => {
+    // 켜진 수로 재면 여기서 [적용]이 죽고, 폼에 붙은 하위를 걷어낼 길이
+    // 사라진다. "제안을 받아 적용했는데 마음이 바뀌었다"에서 빠져나오는 문.
+    let s = createSheetState(suggestion({ title_changed: false }));
+    s = toggleChild(s, 0);
+    s = toggleChild(s, 1);
+    expect(acceptedChildren(s)).toEqual([]);
+    expect(hasAnythingToApply(s)).toBe(true);
+  });
+
+  it("하위 제목을 전부 비워도 마찬가지다", () => {
+    let s = createSheetState(suggestion({ title_changed: false }));
+    s = editChild(s, 0, "");
+    s = editChild(s, 1, "  ");
+    expect(acceptedChildren(s)).toEqual([]);
+    expect(hasAnythingToApply(s)).toBe(true);
+  });
+
+  it("제안된 하위가 애초에 없고 제목도 그대로면 적용할 것이 없다", () => {
+    const s = createSheetState(suggestion({ title_changed: false, children: [] }));
+    expect(hasAnythingToApply(s)).toBe(false);
+  });
 });

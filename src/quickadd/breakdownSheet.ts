@@ -39,10 +39,16 @@ export function acceptedChildren(state: SheetState): string[] {
   return state.children.filter((c) => c.on && c.text.trim() !== "").map((c) => c.text.trim());
 }
 
-/** 적용 버튼을 눌러 바뀔 것이 하나라도 있는가. 제목도 그대로고 하위도 없으면
- *  시트는 "지금 이대로 충분합니다"만 보여주고 닫힌다. */
+/** 적용 버튼을 눌러 결정할 것이 하나라도 있는가.
+ *
+ *  켜 둔 하위의 수가 아니라 **제안된 하위가 있었는지**로 판정한다. 전부 꺼 두는
+ *  것도 "하위 없이 간다"는 하나의 결정이고, 폼에 이미 붙어 있던 하위를 걷어내는
+ *  유일한 길이기 때문이다 — 켜진 수로 재면 그 길이 막힌 버튼 뒤로 사라진다.
+ *
+ *  제목도 그대로고 제안된 하위도 애초에 없을 때만 false다. 그때 시트는
+ *  "지금 이대로 충분합니다"만 보여주고 닫힌다. */
 export function hasAnythingToApply(state: SheetState): boolean {
-  return state.titleChanged || acceptedChildren(state).length > 0;
+  return state.titleChanged || state.children.length > 0;
 }
 
 export interface SheetHandle {
@@ -100,7 +106,7 @@ export function openBreakdownSheet(opts: {
     head.appendChild(esc);
     sheet.appendChild(head);
 
-    if (!hasAnythingToApply(state) && state.children.length === 0) {
+    if (!hasAnythingToApply(state)) {
       const empty = document.createElement("div");
       empty.className = "bd-empty";
       empty.textContent = "지금 이대로 충분합니다 — 쪼갤 만한 단계가 보이지 않습니다.";

@@ -17,7 +17,12 @@
           <span data-proj-name id="projName">프로젝트 선택</span>
           <span class="chev">▾</span>
         </button>
-        <button type="button" id="qaAiBtn" class="qa-ai">✨ AI 제안</button>
+        <!-- 지우기는 하위가 붙어 있을 때만 나타난다 — 제목을 고치지 않고도
+             적용한 하위를 걷어낼 수 있어야 한다 (main.ts renderPendingBadge). -->
+        <span class="qa-ai-group">
+          <button type="button" id="qaAiBtn" class="qa-ai">✨ AI 제안</button>
+          <button type="button" id="qaAiClear" class="qa-ai-clear" hidden aria-label="적용한 하위 작업 지우기">×</button>
+        </span>
         <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
       </div>
     </template>

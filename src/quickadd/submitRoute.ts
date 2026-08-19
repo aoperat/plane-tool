@@ -18,13 +18,37 @@ export interface PendingTree {
   stateGroup: string;
 }
 
+/** AI 제안을 적용해 폼에 딸려 있는 하위 작업들. 어느 제목에 붙은 것인지 함께
+ *  기억한다 — 적용한 뒤 제목을 지우고 전혀 다른 일을 적었는데 지난 제안의 하위가
+ *  따라 등록되면 안 되기 때문이다. PendingTree와 같은 원칙이다.
+ *
+ *  프로젝트는 기억하지 않는다. PendingTree와 달리 이것은 아직 아무것도 만들어지지
+ *  않은 제목 목록일 뿐이라, 프로젝트를 옮겨도 그대로 유효하다 — 거기서 버리면
+ *  사용자가 고른 하위를 이유 없이 잃는다. */
+export interface PendingChildren {
+  /** 적용할 때 폼에 넣은 제목(trim된 값). */
+  formTitle: string;
+  titles: string[];
+}
+
+/** 지금 등록하면 함께 만들어질 하위 작업들. 제목이 적용 당시와 다르면 빈
+ *  배열이다 — **폼이 곧 만들어질 것을 말한다**(아래 resolveSubmitRoute 참고).
+ *
+ *  기록을 지우는 것이 아니라 무시할 뿐이라, 제목을 되돌리면 하위도 함께
+ *  돌아온다. 한 글자 잘못 고쳤다고 잃게 할 이유는 없다. */
+export function activeChildren(pending: PendingChildren | null, title: string): string[] {
+  return pending && pending.formTitle === title ? pending.titles : [];
+}
+
 export type SubmitRoute =
   /** 하위 없는 평범한 등록. */
   | { kind: "single" }
   /** 상위 하나와 하위 여럿을 새로 만든다. */
   | { kind: "tree"; children: string[] }
   /** 이미 있는 상위에 하위만 붙인다(부분 실패 재시도). */
-  | { kind: "attach"; tree: PendingTree; children: string[] };
+  | { kind: "attach"; tree: PendingTree; children: string[] }
+  /** 만들 것이 남지 않았다. 상위는 이미 서버에 있고 하위는 사용자가 걷어냈다. */
+  | { kind: "done"; tree: PendingTree };
 
 /** 지금 Ctrl+Enter를 누르면 무엇을 만들어야 하는가.
  *
@@ -40,9 +64,14 @@ export function resolveSubmitRoute(
   projectId: string,
   title: string,
 ): SubmitRoute {
-  if (children.length === 0) return { kind: "single" };
   if (pending && pending.projectId === projectId && pending.title === title) {
-    return { kind: "attach", tree: pending, children };
+    // 폼이 가리키는 상위는 이미 서버에 있다. 남은 하위가 있으면 거기 붙이고,
+    // 사용자가 하위를 걷어냈으면 만들 것이 없다 — 여기서 단일 등록으로 새면
+    // 같은 이름의 상위가 하나 더 생긴다.
+    return children.length > 0
+      ? { kind: "attach", tree: pending, children }
+      : { kind: "done", tree: pending };
   }
+  if (children.length === 0) return { kind: "single" };
   return { kind: "tree", children };
 }

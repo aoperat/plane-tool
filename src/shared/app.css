@@ -1457,6 +1457,14 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 }
 .qa-ai:hover { background: var(--accent-soft); }
 .qa-ai:disabled { opacity: 0.5; cursor: default; }
+/* 푸터는 space-between이라 버튼 하나를 그냥 더하면 간격이 벌어진다 — 지우기는
+   AI 버튼과 한 덩어리로 묶어 둔다. */
+.qa-ai-group { display: flex; align-items: center; gap: 4px; }
+.qa-ai-clear {
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+  border-radius: 6px; padding: 2px 5px; font-size: 15px; line-height: 1; font-family: inherit;
+}
+.qa-ai-clear:hover { color: var(--text); background: var(--surface-task); }
 /* 제안 시트 — 카드 위에 겹쳐 뜬다. 창 크기는 바뀌지 않는다(기존 .qa-coach와 같은 방식). */
 .bd-overlay {
   position: absolute; inset: 0; z-index: 40; border-radius: var(--radius);

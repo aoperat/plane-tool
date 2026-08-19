@@ -14,8 +14,8 @@ import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
 import { openBreakdownSheet, type SheetHandle } from "./breakdownSheet";
-import { resolveSubmitRoute } from "./submitRoute";
-import type { PendingTree } from "./submitRoute";
+import { resolveSubmitRoute, activeChildren } from "./submitRoute";
+import type { PendingTree, PendingChildren } from "./submitRoute";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
 import { mountIssueCard, layoutKindOf } from "../shared/issueForm/card";
 import "../shared/app.css";
@@ -38,12 +38,15 @@ const coachEl = cloneTemplate("qaCoach");
 const projBtn = footer.querySelector<HTMLElement>("#projBtn")!;
 const qaSubmit = footer.querySelector<HTMLElement>("#qaSubmit")!;
 const aiBtn = footer.querySelector<HTMLButtonElement>("#qaAiBtn")!;
+const aiClearBtn = footer.querySelector<HTMLButtonElement>("#qaAiClear")!;
 const coachOk = coachEl.querySelector<HTMLElement>("#qaCoachOk")!;
 
 let projects: Project[] = [];
 
 // AI가 제안한 하위 작업. 적용하면 채워지고, 등록하거나 폼을 비우면 사라진다.
-let pendingChildren: string[] = [];
+// 어느 제목에 붙은 것인지 함께 들고 있어서, 제목이 달라지면 딸려가지 않는다 —
+// 판정은 submitRoute.ts의 activeChildren이 한다.
+let pendingChildren: PendingChildren | null = null;
 // 트리를 만들다 하위 일부가 실패했을 때만 채워진다. 재시도가 상위를 또 만들지
 // 않도록 붙잡아 두는 기록이다 — 판정은 submitRoute.ts가 한다.
 let pendingTree: PendingTree | null = null;
@@ -198,7 +201,10 @@ aiBtn.onclick = async () => {
       originalTitle: title,
       onApply: (newTitle, children) => {
         card.titleValue = newTitle;
-        pendingChildren = children;
+        // 하위를 전부 꺼 두고 적용하면 붙어 있던 하위가 걷힌다 — 시트에서
+        // 빠져나오는 길이다(breakdownSheet.hasAnythingToApply 참고).
+        pendingChildren =
+          children.length > 0 ? { formTitle: card.titleValue.trim(), titles: children } : null;
         renderPendingBadge();
       },
     });
@@ -211,11 +217,26 @@ aiBtn.onclick = async () => {
   }
 };
 
-/** 적용된 하위 작업이 몇 개인지 버튼 옆에 남긴다 — 시트를 닫은 뒤에도
- *  "쪼개진 상태로 등록된다"는 것이 보여야 한다. */
+/** 적용된 하위 작업이 몇 개인지 버튼에 남긴다 — 시트를 닫은 뒤에도 "쪼개진
+ *  상태로 등록된다"는 것이 보여야 한다.
+ *
+ *  지금 제목 기준으로 센다. 제목을 고쳐 지난 제안이 떨어져 나가면 숫자도 그
+ *  자리에서 사라져야 한다 — 조용히 딸려 등록되거나, 반대로 조용히 사라지거나
+ *  둘 다 안 된다. 그래서 제목을 칠 때마다 다시 그린다. */
 function renderPendingBadge() {
-  aiBtn.textContent = pendingChildren.length > 0 ? `✨ 하위 ${pendingChildren.length}` : "✨ AI 제안";
+  const count = activeChildren(pendingChildren, card.titleValue.trim()).length;
+  aiBtn.textContent = count > 0 ? `✨ 하위 ${count}` : "✨ AI 제안";
+  aiClearBtn.hidden = count === 0;
 }
+
+// 하위만 걷어내는 길. 제목은 그대로 두고 상위 하나로만 등록하고 싶을 때 쓴다 —
+// 이것이 없으면 제목을 고치거나 AI를 다시 부르는 수밖에 없다.
+bindTip(aiClearBtn, "적용한 하위 작업 지우기", "above");
+aiClearBtn.onclick = () => {
+  pendingChildren = null;
+  renderPendingBadge();
+  card.titleElement.focus();
+};
 
 // Ctrl+Enter and the submit button can fire while a create request is still in flight;
 // without this guard each extra press files the same issue again.
@@ -236,7 +257,8 @@ async function submitIssue() {
   const projectId = card.state.selectedId;
   const startDate = resolveDateChoice(card.state.startChoice, card.state.startCustomDate);
   const targetDate = resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate);
-  const route = resolveSubmitRoute(pendingTree, pendingChildren, projectId, name);
+  const children = activeChildren(pendingChildren, name);
+  const route = resolveSubmitRoute(pendingTree, children, projectId, name);
 
   submitting = true;
   try {
@@ -245,7 +267,7 @@ async function submitIssue() {
       // 것이라 여기서 다시 보내지 않는다.
       const failed = await attachChildren(route.tree, route.children);
       if (failed.length > 0) {
-        reportPartialFailure(failed);
+        reportPartialFailure(name, failed);
         return;
       }
     } else if (route.kind === "tree") {
@@ -273,10 +295,10 @@ async function submitIssue() {
           priority: card.state.priority,
           stateGroup: card.state.stateGroup,
         };
-        reportPartialFailure(result.failed);
+        reportPartialFailure(name, result.failed);
         return;
       }
-    } else {
+    } else if (route.kind === "single") {
       await createIssue(
         projectId,
         name,
@@ -288,6 +310,9 @@ async function submitIssue() {
         card.descriptionValue,
       );
     }
+    // route.kind === "done"이면 아무것도 보내지 않고 여기로 온다 — 상위는 이미
+    // 서버에 있고 남은 하위는 사용자가 걷어냈다. 다시 만들면 같은 이름의 작업이
+    // 둘이 되므로, 등록이 끝난 것으로 보고 폼만 비운다.
     card.titleValue = "";
     resetFields();
     await win.hide();
@@ -330,17 +355,18 @@ async function attachChildren(tree: PendingTree, children: string[]): Promise<st
 }
 
 /** 상위는 만들어졌는데 하위 일부가 남은 상태. 창을 닫지 않고 실패분만 남겨
- *  Ctrl+Enter로 다시 시도할 수 있게 한다. */
-function reportPartialFailure(failed: string[]) {
+ *  Ctrl+Enter로 다시 시도할 수 있게 한다. 남은 하위도 이 제목에 매어 둔다 —
+ *  제목을 바꾸면 pendingTree와 함께 떨어져 나가야 하기 때문이다. */
+function reportPartialFailure(title: string, failed: string[]) {
   card.showError(`하위 ${failed.length}개를 만들지 못했습니다: ${failed.join(", ")}`);
-  pendingChildren = failed;
+  pendingChildren = { formTitle: title, titles: failed };
   renderPendingBadge();
 }
 
 function resetFields() {
   resetFormFields(card.state);
   card.descriptionValue = "";
-  pendingChildren = [];
+  pendingChildren = null;
   pendingTree = null;
   sheetHandle?.close();
   sheetHandle = null;
@@ -387,6 +413,11 @@ card.titleElement.addEventListener("keydown", (e) => {
     pulseSubmit();
   }
 });
+
+// 제목이 달라지면 지난 제안의 하위는 더 이상 이 폼의 것이 아니다(activeChildren).
+// 배지를 그 자리에서 다시 그려 무슨 일이 일어났는지 보이게 한다 — 되돌려 치면
+// 숫자도 함께 돌아온다.
+card.titleElement.addEventListener("input", renderPendingBadge);
 
 qaSubmit.addEventListener("click", () => { submitIssue(); });
 
