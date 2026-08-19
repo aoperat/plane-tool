@@ -1,10 +1,19 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { createIssue, listProjects, listMembers, getSettings, setQuickaddLayout } from "../shared/ipc";
+import {
+  createIssue,
+  listProjects,
+  listMembers,
+  getSettings,
+  setQuickaddLayout,
+  suggestBreakdown,
+  createIssueTree,
+} from "../shared/ipc";
 import type { Project } from "../shared/types";
 import { applyTheme } from "../shared/theme";
 import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
+import { openBreakdownSheet } from "./breakdownSheet";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
 import { mountIssueCard, layoutKindOf } from "../shared/issueForm/card";
 import "../shared/app.css";
@@ -26,9 +35,13 @@ const footer = cloneTemplate("qaFooter");
 const coachEl = cloneTemplate("qaCoach");
 const projBtn = footer.querySelector<HTMLElement>("#projBtn")!;
 const qaSubmit = footer.querySelector<HTMLElement>("#qaSubmit")!;
+const aiBtn = footer.querySelector<HTMLButtonElement>("#qaAiBtn")!;
 const coachOk = coachEl.querySelector<HTMLElement>("#qaCoachOk")!;
 
 let projects: Project[] = [];
+
+// AI가 제안한 하위 작업. 적용하면 채워지고, 등록하거나 폼을 비우면 사라진다.
+let pendingChildren: string[] = [];
 
 const card = mountIssueCard({
   root: document.getElementById("cardHost")!,
@@ -154,6 +167,45 @@ coachOk.addEventListener("click", () => {
   card.titleElement.focus();
 });
 
+/* ---- AI 작업 분해 ----
+   제목을 다듬고 하위 작업을 제안받는다. 적용은 폼에 반영만 하고 등록하지 않는다 —
+   확정은 언제나 Ctrl+Enter다. */
+aiBtn.onclick = async () => {
+  const title = card.titleValue.trim();
+  if (!title) {
+    card.markTitleError();
+    card.showError("제목을 입력하세요");
+    return;
+  }
+  aiBtn.disabled = true;
+  aiBtn.textContent = "✨ 생각 중…";
+  try {
+    const suggestion = await suggestBreakdown(title, card.descriptionValue);
+    openBreakdownSheet({
+      host: card.element,
+      suggestion,
+      originalTitle: title,
+      onApply: (newTitle, children) => {
+        card.titleValue = newTitle;
+        pendingChildren = children;
+        renderPendingBadge();
+      },
+    });
+  } catch (err) {
+    const msg = String(err);
+    card.showError(msg === "no_key" ? "설정에서 OpenAI 키를 먼저 등록하세요" : "AI 제안 실패: " + msg);
+  } finally {
+    aiBtn.disabled = false;
+    renderPendingBadge();
+  }
+};
+
+/** 적용된 하위 작업이 몇 개인지 버튼 옆에 남긴다 — 시트를 닫은 뒤에도
+ *  "쪼개진 상태로 등록된다"는 것이 보여야 한다. */
+function renderPendingBadge() {
+  aiBtn.textContent = pendingChildren.length > 0 ? `✨ 하위 ${pendingChildren.length}` : "✨ AI 제안";
+}
+
 // Ctrl+Enter and the submit button can fire while a create request is still in flight;
 // without this guard each extra press files the same issue again.
 let submitting = false;
@@ -172,16 +224,37 @@ async function submitIssue() {
   }
   submitting = true;
   try {
-    await createIssue(
-      card.state.selectedId,
-      name,
-      card.state.assigneeIds,
-      resolveDateChoice(card.state.startChoice, card.state.startCustomDate),
-      resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate),
-      card.state.priority,
-      card.state.stateGroup,
-      card.descriptionValue,
-    );
+    if (pendingChildren.length > 0) {
+      const result = await createIssueTree(
+        card.state.selectedId,
+        name,
+        pendingChildren,
+        card.state.assigneeIds,
+        resolveDateChoice(card.state.startChoice, card.state.startCustomDate),
+        resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate),
+        card.state.priority,
+        card.state.stateGroup,
+        card.descriptionValue,
+      );
+      if (result.failed.length > 0) {
+        // 부모와 일부 자식은 이미 만들어졌다 — 창을 닫지 않고 실패만 알린다.
+        card.showError(`하위 ${result.failed.length}개를 만들지 못했습니다: ${result.failed.join(", ")}`);
+        pendingChildren = result.failed;
+        renderPendingBadge();
+        return;
+      }
+    } else {
+      await createIssue(
+        card.state.selectedId,
+        name,
+        card.state.assigneeIds,
+        resolveDateChoice(card.state.startChoice, card.state.startCustomDate),
+        resolveDateChoice(card.state.dueChoice, card.state.dueCustomDate),
+        card.state.priority,
+        card.state.stateGroup,
+        card.descriptionValue,
+      );
+    }
     card.titleValue = "";
     resetFields();
     await win.hide();
@@ -197,6 +270,8 @@ async function submitIssue() {
 function resetFields() {
   resetFormFields(card.state);
   card.descriptionValue = "";
+  pendingChildren = [];
+  renderPendingBadge();
   dismissCoach(false); // 등록하고 창이 숨으므로 안내도 함께 치운다
   card.resetView();
   card.render();
