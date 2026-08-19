@@ -1,5 +1,22 @@
 import type { WorkItem } from "../shared/types";
 
+/** 하위끼리의 순서 — 만든 순서(오래된 것이 위)로 세운다.
+ *
+ *  최상위 목록은 상태·우선순위·마감일로 정렬하지만(`compareWorkItems`), 하위는
+ *  묶음 안에서 밟아 갈 단계라 그 차례가 흐트러지면 읽기 어렵다. "확인 → 처리 →
+ *  전달"로 만든 것이 진행 상태에 따라 뒤섞이면 안 된다.
+ *
+ *  `created_at`이 없는 항목(오프라인에서 방금 만들어 아직 서버 id를 못 받은
+ *  것)은 맨 뒤에 둔다 — 방금 추가한 것이므로 실제로도 마지막이다. */
+export function sortChildren(children: WorkItem[]): WorkItem[] {
+  return children.sort((a, b) => {
+    if (a.created_at === b.created_at) return 0;
+    if (!a.created_at) return 1;
+    if (!b.created_at) return -1;
+    return a.created_at < b.created_at ? -1 : 1;
+  });
+}
+
 export interface TreeRow {
   item: WorkItem;
   /** 0 = 최상위, 1 = 자식. 2단까지만 쓴다. */
@@ -15,7 +32,8 @@ export interface TreeRow {
  *  - 깊이가 얼마든 모든 후손을 depth 1에 눌러 2단만 유지한다. 앱은 2단까지만
  *    만들지만 Plane 웹에서 더 깊은 계층이 생길 수 있고, 그때 항목이 화면에서
  *    조용히 사라지면 안 된다.
- *  - 입력 순서(정렬 결과)를 그대로 존중한다. */
+ *  - 최상위 항목은 입력 순서(정렬 결과)를 그대로 존중한다.
+ *  - 하위끼리는 **만든 순서**로 세운다 — 아래 sortChildren 참고. */
 export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Set()): TreeRow[] {
   const present = new Set(items.map((i) => i.id));
   const childrenOf = new Map<string, WorkItem[]>();
@@ -26,6 +44,7 @@ export function buildTreeRows(items: WorkItem[], collapsed: Set<string> = new Se
     if (list) list.push(it);
     else childrenOf.set(parent, [it]);
   }
+  for (const list of childrenOf.values()) sortChildren(list);
 
   // 최상위 항목의 후손인가 — 후손은 그 조상 차례에 딸려 나오므로 제 차례를
   // 건너뛴다. 순환(A의 부모가 B, B의 부모가 A)은 최상위가 하나도 없어 여기

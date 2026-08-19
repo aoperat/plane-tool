@@ -11,6 +11,39 @@ function item(id: string, parent: string | null = null, subTotal = 0, subDone = 
   };
 }
 
+/** 만든 시각이 있는 자식. 하위 정렬 테스트에 쓴다. */
+function child(id: string, parent: string, createdAt: string | null): WorkItem {
+  return { ...item(id, parent), created_at: createdAt };
+}
+
+describe("하위 작업 순서", () => {
+  it("만든 순서대로 세운다 — 먼저 만든 것이 위", () => {
+    const rows = buildTreeRows([
+      item("p", null, 3, 0),
+      child("late", "p", "2026-08-19T12:00:00Z"),
+      child("first", "p", "2026-08-19T09:00:00Z"),
+      child("mid", "p", "2026-08-19T10:00:00Z"),
+    ]);
+    expect(rows.map((r) => r.item.id)).toEqual(["p", "first", "mid", "late"]);
+  });
+
+  it("상태가 달라도 만든 순서를 지킨다 — 진행 중인 하위가 위로 튀지 않는다", () => {
+    const done = { ...child("done", "p", "2026-08-19T09:00:00Z"), state_group: "completed" };
+    const todo = { ...child("todo", "p", "2026-08-19T10:00:00Z"), state_group: "unstarted" };
+    const rows = buildTreeRows([item("p", null, 2, 1), todo, done]);
+    expect(rows.map((r) => r.item.id)).toEqual(["p", "done", "todo"]);
+  });
+
+  it("만든 시각이 없는 항목(오프라인에서 방금 추가)은 맨 뒤에 둔다", () => {
+    const rows = buildTreeRows([
+      item("p", null, 2, 0),
+      child("pending", "p", null),
+      child("known", "p", "2026-08-19T09:00:00Z"),
+    ]);
+    expect(rows.map((r) => r.item.id)).toEqual(["p", "known", "pending"]);
+  });
+});
+
 describe("buildTreeRows", () => {
   it("자식을 부모 바로 아래에 놓는다", () => {
     const rows = buildTreeRows([item("solo"), item("p", null, 2, 0), item("c1", "p"), item("c2", "p")]);
