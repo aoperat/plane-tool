@@ -37,6 +37,33 @@ fn strip_fence(s: &str) -> &str {
     }
 }
 
+/// LLM에 보낼 (system, user) 메시지. user 페이로드에는 제목과 설명만 담는다 —
+/// 담당자·프로젝트·작업 id 같은 사람/조직 정보는 분해에 필요 없고, 굳이 외부로
+/// 내보낼 이유도 없다.
+pub fn build_prompt(title: &str, description: &str) -> (String, String) {
+    let system = format!(
+        "당신은 업무 캡처를 다듬는 어시스턴트다. 사용자가 급히 적은 할 일 한 줄을 보고,\n\
+         (1) 제목이 어설프면 다듬고 (2) 여러 작업이 섞여 있으면 상위 작업과 하위 작업으로 쪼갠다.\n\
+         반드시 아래 형태의 JSON만 응답한다 (다른 텍스트 금지):\n\
+         {{\"title\": \"상위 작업 제목\", \"title_changed\": true, \"children\": [\"하위 작업\"], \"reason\": \"한 줄 이유\"}}\n\
+         규칙:\n\
+         - **완료 시점이 실제로 다른 단계만 쪼갠다.** 같은 자리에서 연달아 끝나는 일은 하위 작업이 아니다.\n\
+         - 하위 작업은 최대 4개.\n\
+         - 쪼갤 이유가 없으면 children을 빈 배열로 둔다. 억지로 만들지 않는다.\n\
+         - 제목 개선이 뚜렷하지 않으면 title_changed를 false로 두고 원문을 그대로 title에 넣는다.\n\
+         - 하위 작업 제목은 그 자체로 무슨 일인지 알 수 있게 쓴다 (예: \"확인\" 대신 \"취약점 문서 확인\").\n\
+         - 날짜·기한·순번은 제목에 넣지 않는다. 앱이 따로 관리한다.\n\
+         - reason은 왜 그렇게 쪼갰는지 한국어 한 줄. 쪼개지 않았으면 빈 문자열."
+    );
+    let mut payload = serde_json::Map::new();
+    payload.insert("title".into(), serde_json::json!(title.trim()));
+    let desc = description.trim();
+    if !desc.is_empty() {
+        payload.insert("description".into(), serde_json::json!(desc));
+    }
+    (system, serde_json::Value::Object(payload).to_string())
+}
+
 /// AI 응답을 검증해 안전한 제안으로 바꾼다. `original_title`은 제목이 비었을 때
 /// 되돌아갈 자리다.
 pub fn parse_suggestion(content: &str, original_title: &str) -> Result<BreakdownSuggestion, String> {
@@ -132,5 +159,34 @@ mod tests {
     fn tolerates_a_fenced_json_block() {
         let json = "```json\n{\"title\":\"t\",\"title_changed\":false,\"children\":[],\"reason\":\"\"}\n```";
         assert!(parse_suggestion(json, "t").is_ok());
+    }
+
+    #[test]
+    fn prompt_carries_the_title_and_description() {
+        let (system, user) = build_prompt("문서 확인 및 메일 전달", "홍익대 건");
+        assert!(system.contains("완료 시점"), "분해 기준이 프롬프트에 있어야 한다");
+        assert!(system.contains("최대 4개"));
+        let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+        assert_eq!(payload["title"], "문서 확인 및 메일 전달");
+        assert_eq!(payload["description"], "홍익대 건");
+    }
+
+    /// 설명이 비면 키 자체를 넣지 않는다 — 빈 문자열을 보내면 모델이 그것을
+    /// 단서로 오해해 엉뚱한 하위를 지어낸다.
+    #[test]
+    fn prompt_omits_an_empty_description() {
+        let (_, user) = build_prompt("제목만 있음", "   ");
+        let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+        assert!(payload.get("description").is_none());
+    }
+
+    /// 회귀 방지: 담당자·프로젝트·작업 id 같은 사람/조직 정보는 절대 나가지 않는다.
+    #[test]
+    fn prompt_contains_no_identity_keys() {
+        let (system, user) = build_prompt("제목", "설명");
+        for key in ["assignee", "project", "id", "user"] {
+            assert!(!user.contains(key), "user 메시지에 {key}가 있으면 안 된다: {user}");
+        }
+        assert!(!system.contains("담당자"));
     }
 }
