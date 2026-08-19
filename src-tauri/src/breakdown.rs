@@ -47,10 +47,20 @@ pub fn build_prompt(title: &str, description: &str) -> (String, String) {
          반드시 아래 형태의 JSON만 응답한다 (다른 텍스트 금지):\n\
          {{\"title\": \"상위 작업 제목\", \"title_changed\": true, \"children\": [\"하위 작업\"], \"reason\": \"한 줄 이유\"}}\n\
          규칙:\n\
-         - **완료 시점이 실제로 다른 단계만 쪼갠다.** 같은 자리에서 연달아 끝나는 일은 하위 작업이 아니다.\n\
-         - 하위 작업은 최대 4개.\n\
+         - **완료 시점이 실제로 다른 단계만 쪼갠다.** 판단 기준은 그 사이에\n\
+           (가) 남의 응답·승인을 기다려야 하는가, (나) 날짜가 바뀌는가,\n\
+           (다) 다른 도구·장소·자료로 옮겨가야 하는가 셋 중 하나다.\n\
+           셋 다 아니면 한자리에서 이어서 끝나는 일이므로 **한 작업이다.**\n\
+             · 쪼개지 않는다: \"메일 내용 작성\" + \"메일 전송\" → 앉은자리에서 이어지므로 \"담당자에게 메일 전달\" 하나\n\
+             · 쪼개지 않는다: \"문서 열기\" + \"내용 확인\" → 같은 동작의 앞뒤일 뿐이다\n\
+             · 쪼갠다: \"취약점 문서 확인\" + \"담당자에게 메일 전달\" → 확인이 끝나야 보낼 수 있고 보통 다른 시점이다\n\
+             · 쪼갠다: \"견적 요청\" + \"견적 검토\" → 상대의 회신을 기다려야 한다\n\
+         - 하위 작업은 최대 4개. **적을수록 좋다** — 2개로 충분하면 2개만 낸다.\n\
          - 쪼갤 이유가 없으면 children을 빈 배열로 둔다. 억지로 만들지 않는다.\n\
+           하나의 일을 동사만 바꿔 늘어놓는 것은 분해가 아니다.\n\
          - 제목 개선이 뚜렷하지 않으면 title_changed를 false로 두고 원문을 그대로 title에 넣는다.\n\
+         - 제목에 \"작업\", \"건\", \"처리\" 같은 군더더기를 덧붙이지 않는다.\n\
+           (나쁜 예: \"홍익대 취약점 조치 및 전달 작업\" → 좋은 예: \"홍익대 취약점 조치 및 전달\")\n\
          - 하위 작업 제목은 그 자체로 무슨 일인지 알 수 있게 쓴다 (예: \"확인\" 대신 \"취약점 문서 확인\").\n\
          - 날짜·기한·순번은 제목에 넣지 않는다. 앱이 따로 관리한다.\n\
          - reason은 왜 그렇게 쪼갰는지 한국어 한 줄. 쪼개지 않았으면 빈 문자열."
@@ -165,6 +175,10 @@ mod tests {
     fn prompt_carries_the_title_and_description() {
         let (system, user) = build_prompt("문서 확인 및 메일 전달", "홍익대 건");
         assert!(system.contains("완료 시점"), "분해 기준이 프롬프트에 있어야 한다");
+        // 실사용에서 "메일 내용 작성"과 "메일 전송"이 둘로 쪼개져 나왔다. 기준을
+        // 문장으로만 주면 모델이 적용하지 못한다 — 반례가 프롬프트에 있어야 한다.
+        assert!(system.contains("메일 전송"), "쪼개지 않는 반례가 있어야 한다");
+        assert!(system.contains("군더더기"), "제목 군더더기 금지 규칙이 있어야 한다");
         assert!(system.contains("최대 4개"));
         let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
         assert_eq!(payload["title"], "문서 확인 및 메일 전달");
@@ -181,12 +195,16 @@ mod tests {
     }
 
     /// 회귀 방지: 담당자·프로젝트·작업 id 같은 사람/조직 정보는 절대 나가지 않는다.
+    ///
+    /// 검사 대상은 **user 페이로드뿐이다.** 실제 사용자 데이터가 실리는 곳이
+    /// 거기이기 때문이다. system은 고정 지시문이라 "담당자에게 메일 전달" 같은
+    /// 일반명사가 예시로 나올 수 있고, 그건 유출이 아니다.
     #[test]
     fn prompt_contains_no_identity_keys() {
-        let (system, user) = build_prompt("제목", "설명");
-        for key in ["assignee", "project", "id", "user"] {
-            assert!(!user.contains(key), "user 메시지에 {key}가 있으면 안 된다: {user}");
-        }
-        assert!(!system.contains("담당자"));
+        let (_, user) = build_prompt("제목", "설명");
+        let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
+        let mut keys: Vec<&str> = payload.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+        keys.sort_unstable(); // serde_json::Map의 키 순서에 기대지 않는다
+        assert_eq!(keys, vec!["description", "title"], "페이로드 키는 이 둘뿐이어야 한다");
     }
 }
