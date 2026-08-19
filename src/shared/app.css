@@ -1448,3 +1448,42 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .mng-linked .err { flex-basis: 100%; font-size: 11px; color: var(--red); }
 .mng-link-btn.danger { color: var(--red); border-color: rgba(239,77,86,.45); }
 .mng-link-btn.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+
+/* AI 제안 버튼 — 푸터에서 [추가] 왼쪽에 선다. */
+.qa-ai {
+  background: transparent; border: 1px solid var(--accent-ring); color: var(--accent);
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-family: inherit;
+  cursor: pointer; white-space: nowrap;
+}
+.qa-ai:hover { background: var(--accent-soft); }
+.qa-ai:disabled { opacity: 0.5; cursor: default; }
+/* 제안 시트 — 카드 위에 겹쳐 뜬다. 창 크기는 바뀌지 않는다(기존 .qa-coach와 같은 방식). */
+.bd-overlay {
+  position: absolute; inset: 0; z-index: 40; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  display: flex; align-items: center; justify-content: center; padding: 10px;
+}
+.bd-sheet {
+  width: 100%; max-height: 100%; overflow: auto;
+  background: var(--panel); border: 1px solid var(--accent-ring); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 11px;
+}
+.bd-head { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+.bd-head .esc { margin-left: auto; color: var(--muted); font-weight: 400; }
+.bd-title { font-size: 12px; margin-bottom: 8px; line-height: 1.5; }
+.bd-title .old { color: var(--muted-2); text-decoration: line-through; }
+.bd-title .arrow { color: var(--accent); }
+.bd-child { display: flex; align-items: center; gap: 8px; background: var(--surface-task); border: 1px solid var(--surface-task-border); border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; }
+.bd-child input[type="checkbox"] { accent-color: var(--accent); flex: none; margin: 0; }
+.bd-child input[type="text"] { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 12px; font-family: inherit; }
+.bd-child.off input[type="text"] { color: var(--muted-2); text-decoration: line-through; }
+.bd-reason { color: var(--muted); font-size: 11px; margin: 8px 0; }
+.bd-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+/* 취소 버튼. 이 저장소에는 보조 버튼 공용 클래스가 없어(.qa-submit만 있다)
+   여기서 직접 그린다. */
+.bd-cancel {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 8px; padding: 5px 12px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+.bd-cancel:hover { color: var(--text); border-color: var(--muted); }
+.bd-empty { color: var(--muted); font-size: 12px; padding: 6px 2px 10px; }

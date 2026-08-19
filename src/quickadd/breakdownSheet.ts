@@ -44,3 +44,124 @@ export function acceptedChildren(state: SheetState): string[] {
 export function hasAnythingToApply(state: SheetState): boolean {
   return state.titleChanged || acceptedChildren(state).length > 0;
 }
+
+export interface SheetHandle {
+  close: () => void;
+}
+
+/** 카드 위에 겹치는 제안 시트를 연다. 적용을 누르면 onApply가 최종 상태를 받는다.
+ *  Esc/취소는 아무것도 바꾸지 않고 닫는다. */
+export function openBreakdownSheet(opts: {
+  host: HTMLElement;
+  suggestion: BreakdownSuggestion;
+  originalTitle: string;
+  onApply: (title: string, children: string[]) => void;
+}): SheetHandle {
+  let state = createSheetState(opts.suggestion);
+
+  const overlay = document.createElement("div");
+  overlay.className = "bd-overlay";
+  const sheet = document.createElement("div");
+  sheet.className = "bd-sheet";
+  overlay.appendChild(sheet);
+
+  const close = () => {
+    document.removeEventListener("keydown", onKey, true);
+    overlay.remove();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.stopPropagation(); // 사이드바·창 닫기까지 번지지 않게 여기서 멈춘다
+      close();
+    }
+  };
+  document.addEventListener("keydown", onKey, true);
+
+  function render() {
+    sheet.innerHTML = "";
+
+    const head = document.createElement("div");
+    head.className = "bd-head";
+    head.appendChild(document.createTextNode("✨ AI 제안"));
+    const esc = document.createElement("span");
+    esc.className = "esc";
+    esc.textContent = "Esc 닫기";
+    head.appendChild(esc);
+    sheet.appendChild(head);
+
+    if (!hasAnythingToApply(state) && state.children.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "bd-empty";
+      empty.textContent = "지금 이대로 충분합니다 — 쪼갤 만한 단계가 보이지 않습니다.";
+      sheet.appendChild(empty);
+    }
+
+    if (state.titleChanged) {
+      const t = document.createElement("div");
+      t.className = "bd-title";
+      const old = document.createElement("span");
+      old.className = "old";
+      old.textContent = opts.originalTitle;
+      t.appendChild(old);
+      t.appendChild(document.createElement("br"));
+      const arrow = document.createElement("span");
+      arrow.className = "arrow";
+      arrow.textContent = "↳ ";
+      t.appendChild(arrow);
+      t.appendChild(document.createTextNode(state.title));
+      sheet.appendChild(t);
+    }
+
+    state.children.forEach((child, i) => {
+      const row = document.createElement("div");
+      row.className = "bd-child" + (child.on ? "" : " off");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = child.on;
+      box.onchange = () => {
+        state = toggleChild(state, i);
+        render();
+      };
+      row.appendChild(box);
+      const text = document.createElement("input");
+      text.type = "text";
+      text.value = child.text;
+      text.oninput = () => {
+        state = editChild(state, i, text.value);
+      };
+      row.appendChild(text);
+      sheet.appendChild(row);
+    });
+
+    if (state.reason) {
+      const r = document.createElement("div");
+      r.className = "bd-reason";
+      r.textContent = state.reason;
+      sheet.appendChild(r);
+    }
+
+    const foot = document.createElement("div");
+    foot.className = "bd-foot";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "bd-cancel";
+    cancel.textContent = "취소";
+    cancel.onclick = close;
+    foot.appendChild(cancel);
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "qa-submit";
+    apply.textContent = "적용";
+    apply.disabled = !hasAnythingToApply(state);
+    apply.onclick = () => {
+      opts.onApply(state.title, acceptedChildren(state));
+      close();
+    };
+    foot.appendChild(apply);
+    sheet.appendChild(foot);
+  }
+
+  render();
+  opts.host.appendChild(overlay);
+  return { close };
+}
