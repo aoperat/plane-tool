@@ -1,8 +1,11 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
-  deleteWorkItem, getSettings, getWorkItem, listMembers, openIssuePopup,
-  setQuickaddLayout, updateWorkItemFields, type UpdateWorkItemFields,
+  createIssue, deleteWorkItem, getSettings, getWorkItem, listMembers, listProjects,
+  openIssuePopup, setQuickaddLayout, suggestBreakdown, updateWorkItemFields,
+  type UpdateWorkItemFields,
 } from "../shared/ipc";
+import { openBreakdownSheet, type SheetHandle } from "../quickadd/breakdownSheet";
+import { defaultAiModes, toggleAiMode, stripProjectName } from "../quickadd/aiModes";
 import { buildIssueUrl } from "../sidebar/logic";
 import { applyTheme } from "../shared/theme";
 import { bindTip } from "../shared/tooltip";
@@ -32,11 +35,23 @@ const emSaveConfirmYes = footer.querySelector<HTMLElement>("#emSaveConfirmYes")!
 const emSaveConfirmNo = footer.querySelector<HTMLElement>("#emSaveConfirmNo")!;
 const emCancel = footer.querySelector<HTMLElement>("#emCancel")!;
 const emSave = footer.querySelector<HTMLButtonElement>("#emSave")!;
+const aiBtn = footer.querySelector<HTMLButtonElement>("#emAiBtn")!;
+const aiModeBtn = footer.querySelector<HTMLButtonElement>("#emAiMode")!;
+const aiMenu = footer.querySelector<HTMLElement>("#emAiMenu")!;
+const aiRefineBox = footer.querySelector<HTMLInputElement>("#emAiRefine")!;
+const aiStripBox = footer.querySelector<HTMLInputElement>("#emAiStrip")!;
+const aiSplitBox = footer.querySelector<HTMLInputElement>("#emAiSplit")!;
+const aiClearBtn = footer.querySelector<HTMLButtonElement>("#emAiClear")!;
 
 let baseUrl = "";
 let workspace = "";
 let projectId = "";
 let itemId = "";
+// AI가 제안해 적용한 하위 작업 제목들. 저장할 때 이 작업의 하위로 만들어지고,
+// 실패한 것만 남아 다음 저장에서 재시도된다. 빠른 추가와 달리 상위가 이미
+// 서버에 있으므로 제목이 바뀌어도 딸려간다 — 하위는 항목(id)에 묶인다.
+let pendingChildTitles: string[] = [];
+let sheetHandle: SheetHandle | null = null;
 let original: WorkItemDetail | null = null;
 let snapshotOriginal: WorkItem | null = null;
 let detailFetchPromise: Promise<WorkItemDetail> | null = null;
@@ -163,6 +178,12 @@ async function loadItem(pid: string, iid: string, snapshot?: WorkItem) {
   original = null;
   snapshotOriginal = snapshot ?? null;
   detailFetchPromise = null;
+  // 다른 항목으로 갈아끼우면 지난 항목의 하위 제안은 무효다 — 그대로 두면
+  // 엉뚱한 작업 밑에 하위가 만들어진다.
+  pendingChildTitles = [];
+  sheetHandle?.close();
+  sheetHandle = null;
+  renderPendingBadge();
   // 담당자 목록은 프로젝트에 딸린다 — 셸의 state.selectedId가 그 열쇠다.
   card.state.selectedId = pid;
   card.state.members = [];
@@ -229,6 +250,9 @@ function closeModal() {
   card.closeOverlays();
   emDeleteConfirm.hidden = true;
   closeSaveConflict();
+  // 시트를 열어 둔 채 닫으면 다음에 열 때 지난 제안이 떠 있다.
+  sheetHandle?.close();
+  sheetHandle = null;
   win.hide();
 }
 
@@ -334,20 +358,196 @@ async function save() {
   if (s.priority !== original.priority) fields.priority = s.priority;
   if (s.stateGroup !== original.state_group) fields.state_group = s.stateGroup;
 
-  if (Object.keys(fields).length === 0) {
+  if (Object.keys(fields).length === 0 && pendingChildTitles.length === 0) {
     await win.hide();
     return;
   }
 
   card.clearError();
+  emSave.disabled = true;
   try {
-    await updateWorkItemFields(projectId, itemId, fields);
+    if (Object.keys(fields).length > 0) {
+      try {
+        await updateWorkItemFields(projectId, itemId, fields);
+        // 하위 생성이 일부 실패해 저장을 다시 누를 때, 이미 반영된 필드를
+        // 또 보내거나 충돌 경고가 또 뜨면 안 된다 — 기준값을 지금 값으로 옮긴다.
+        original = {
+          ...original,
+          name,
+          description,
+          assignee_ids: s.assigneeIds,
+          start_date: startDate ?? original.start_date,
+          target_date: dueDate ?? original.target_date,
+          priority: s.priority,
+          state_group: s.stateGroup,
+        };
+        snapshotOriginal = null;
+      } catch (err) {
+        card.showError("저장 실패: " + err);
+        console.error("updateWorkItemFields failed:", err);
+        return; // 상위도 못 고쳤다 — 하위 생성으로 넘어가지 않는다
+      }
+    }
+    // AI 제안으로 붙인 하위를 이 작업의 하위 작업으로 만든다. 담당자·날짜·
+    // 상태·우선순위는 상위(현재 폼 값)를 물려받는다 — 빠른 추가의 트리 생성과
+    // 같은 규칙. 실패한 것만 남겨 두면 저장을 다시 눌러 재시도할 수 있다.
+    if (pendingChildTitles.length > 0) {
+      const failed: string[] = [];
+      let lastErr = "";
+      for (const childName of pendingChildTitles) {
+        try {
+          await createIssue(
+            projectId, childName, s.assigneeIds, startDate, dueDate,
+            s.priority, s.stateGroup, "", itemId,
+          );
+        } catch (err) {
+          failed.push(childName);
+          lastErr = String(err);
+          console.error("create child failed:", childName, err);
+        }
+      }
+      pendingChildTitles = failed;
+      renderPendingBadge();
+      if (failed.length > 0) {
+        card.showError(`하위 작업 ${failed.length}개 생성 실패: ${lastErr} — 저장을 다시 누르면 재시도합니다`);
+        return;
+      }
+    }
     await win.hide();
-  } catch (err) {
-    card.showError("저장 실패: " + err);
-    console.error("updateWorkItemFields failed:", err);
+  } finally {
+    emSave.disabled = false;
   }
 }
+
+/* ---- AI 제안 ----
+   빠른 추가와 같은 무리(제목 다듬기·프로젝트명 제거·분해)다. 다른 점 하나 —
+   상위가 이미 서버에 있으므로, 분해로 나온 하위는 저장할 때 이 작업의 하위
+   작업으로 만들어진다. */
+
+let aiModes = defaultAiModes();
+
+function renderAiMenu() {
+  aiRefineBox.checked = aiModes.refine;
+  aiSplitBox.checked = aiModes.split;
+  aiStripBox.checked = aiModes.stripProject;
+  aiStripBox.disabled = !aiModes.refine;
+  aiModeBtn.classList.toggle("narrowed", !(aiModes.refine && aiModes.split));
+}
+aiRefineBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "refine");
+  renderAiMenu();
+};
+aiSplitBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "split");
+  renderAiMenu();
+};
+aiStripBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "stripProject");
+  renderAiMenu();
+};
+aiModeBtn.onclick = () => {
+  aiMenu.hidden = !aiMenu.hidden;
+};
+bindTip(aiModeBtn, "AI 제안 유형 선택", "above");
+bindTip(aiClearBtn, "적용한 하위 작업 지우기", "above");
+renderAiMenu();
+document.addEventListener("mousedown", (e) => {
+  const t = e.target as Node;
+  if (!aiMenu.hidden && !aiMenu.contains(t) && !aiModeBtn.contains(t)) aiMenu.hidden = true;
+});
+// Esc는 창 닫기(card.onClose)까지 번진다 — 메뉴가 열려 있으면 메뉴만 닫고 멈춘다.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key === "Escape" && !aiMenu.hidden) {
+      e.stopPropagation();
+      aiMenu.hidden = true;
+    }
+  },
+  true,
+);
+
+/** 저장을 기다리는 하위가 몇 개인지 버튼에 남긴다 — 시트를 닫은 뒤에도
+ *  "저장하면 하위가 만들어진다"는 것이 보여야 한다. */
+function renderPendingBadge() {
+  const count = pendingChildTitles.length;
+  aiBtn.textContent = count > 0 ? `✨ 하위 ${count}` : "✨ AI 제안";
+  aiClearBtn.hidden = count === 0;
+}
+
+function applySheetResult(newTitle: string, children: string[]) {
+  card.titleValue = newTitle;
+  pendingChildTitles = children;
+  renderPendingBadge();
+}
+
+async function requestSuggestion() {
+  const title = card.titleValue.trim();
+  if (!title) {
+    card.markTitleError();
+    card.showError("제목을 입력하세요");
+    return;
+  }
+  aiMenu.hidden = true;
+  aiBtn.disabled = true;
+  aiBtn.textContent = "✨ 생각 중…";
+  try {
+    // 프로젝트명은 겹침 제거를 켰을 때만 함께 보낸다. 이 창은 프로젝트 목록을
+    // 들고 있지 않아 그때만 이름을 조회한다 — 못 얻으면 제거 없이 진행한다.
+    let projectName: string | undefined;
+    if (stripProjectName(aiModes)) {
+      try {
+        projectName = (await listProjects()).find((p) => p.id === projectId)?.name;
+      } catch (err) {
+        console.error("listProjects for AI failed:", err);
+      }
+    }
+    const suggestion = await suggestBreakdown(
+      title,
+      card.descriptionValue,
+      aiModes.refine,
+      aiModes.split,
+      projectName,
+    );
+    sheetHandle = openBreakdownSheet({
+      host: card.element,
+      suggestion,
+      originalTitle: title,
+      onApply: applySheetResult,
+    });
+  } catch (err) {
+    const msg = String(err);
+    card.showError(msg === "no_key" ? "설정에서 OpenAI 키를 먼저 등록하세요" : "AI 제안 실패: " + msg);
+  } finally {
+    aiBtn.disabled = false;
+    renderPendingBadge();
+  }
+}
+
+aiBtn.onclick = () => {
+  // 하위가 붙어 있으면 이 버튼은 현재 상태를 여는 문이다 — 빠른 추가와 같다.
+  if (pendingChildTitles.length > 0) {
+    const title = card.titleValue.trim();
+    sheetHandle = openBreakdownSheet({
+      host: card.element,
+      suggestion: { title, title_changed: false, children: pendingChildTitles, reason: "" },
+      originalTitle: title,
+      heading: "적용된 하위 작업",
+      onRefresh: () => {
+        requestSuggestion();
+      },
+      onApply: applySheetResult,
+    });
+    return;
+  }
+  requestSuggestion();
+};
+
+aiClearBtn.onclick = () => {
+  pendingChildTitles = [];
+  renderPendingBadge();
+  card.titleElement.focus();
+};
 
 emCancel.onclick = closeModal;
 emSave.onclick = () => { save(); };

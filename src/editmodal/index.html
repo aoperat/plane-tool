@@ -34,6 +34,18 @@
           <div class="pop-item" id="emSaveConfirmNo">취소</div>
         </div>
         <div class="em-foot-right">
+          <!-- 빠른 추가와 같은 AI 제안 무리. 분해로 나온 하위는 저장할 때 이
+               작업의 하위 작업으로 만들어진다 (main.ts save 참고). -->
+          <span class="qa-ai-group">
+            <button type="button" id="emAiBtn" class="qa-ai">✨ AI 제안</button>
+            <button type="button" id="emAiMode" class="qa-ai-mode" aria-label="AI 제안 유형 선택">▾</button>
+            <button type="button" id="emAiClear" class="qa-ai-clear" hidden aria-label="적용한 하위 작업 지우기">×</button>
+            <div id="emAiMenu" class="qa-ai-menu" hidden>
+              <label><input type="checkbox" id="emAiRefine" /> 제목 다듬기 <span class="hint">맞춤법·말투</span></label>
+              <label class="sub"><input type="checkbox" id="emAiStrip" /> 프로젝트명 겹침 제거</label>
+              <label><input type="checkbox" id="emAiSplit" /> 하위 작업 분해</label>
+            </div>
+          </span>
           <button type="button" class="em-btn em-btn-ghost" id="emCancel">취소</button>
           <button type="button" class="em-btn em-btn-primary" id="emSave">저장</button>
         </div>
