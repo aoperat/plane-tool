@@ -80,12 +80,15 @@ export const suggestBreakdown = (
   description: string,
   refine_title: boolean,
   split_children: boolean,
+  // "프로젝트명 겹침 제거"를 켰을 때만 넘긴다 — 그때만 이름이 외부(OpenAI)로 나간다.
+  project_name?: string,
 ) =>
   invoke<BreakdownSuggestion>("suggest_breakdown", {
     title,
     description,
     refineTitle: refine_title,
     splitChildren: split_children,
+    projectName: project_name,
   });
 
 export const createIssueTree = (

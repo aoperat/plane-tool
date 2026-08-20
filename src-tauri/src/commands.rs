@@ -1283,6 +1283,7 @@ pub async fn suggest_breakdown(
     description: String,
     refine_title: bool,
     split_children: bool,
+    project_name: Option<String>,
 ) -> Result<crate::breakdown::BreakdownSuggestion, String> {
     if title.trim().is_empty() {
         return Err("제목을 먼저 입력하세요".into());
@@ -1294,8 +1295,13 @@ pub async fn suggest_breakdown(
     }
     let key = config::get_openai_key().ok_or("no_key")?;
     let s = config::load_settings(&app);
-    let (system, user_msg) =
-        crate::breakdown::build_prompt(&title, &description, refine_title, split_children);
+    let (system, user_msg) = crate::breakdown::build_prompt(
+        &title,
+        &description,
+        refine_title,
+        split_children,
+        project_name.as_deref(),
+    );
     let ai = crate::openai::OpenAiClient::new(key);
     let content = ai.chat_json(&s.briefing_model, &system, &user_msg).await?;
     crate::breakdown::parse_suggestion(&content, &title, refine_title, split_children)

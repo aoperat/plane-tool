@@ -14,7 +14,7 @@ import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
 import { openBreakdownSheet, type SheetHandle } from "./breakdownSheet";
-import { defaultAiModes, toggleAiMode } from "./aiModes";
+import { defaultAiModes, toggleAiMode, stripProjectName } from "./aiModes";
 import { resolveSubmitRoute, activeChildren } from "./submitRoute";
 import type { PendingTree, PendingChildren } from "./submitRoute";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
@@ -42,6 +42,7 @@ const aiBtn = footer.querySelector<HTMLButtonElement>("#qaAiBtn")!;
 const aiModeBtn = footer.querySelector<HTMLButtonElement>("#qaAiMode")!;
 const aiMenu = footer.querySelector<HTMLElement>("#qaAiMenu")!;
 const aiRefineBox = footer.querySelector<HTMLInputElement>("#qaAiRefine")!;
+const aiStripBox = footer.querySelector<HTMLInputElement>("#qaAiStrip")!;
 const aiSplitBox = footer.querySelector<HTMLInputElement>("#qaAiSplit")!;
 const aiClearBtn = footer.querySelector<HTMLButtonElement>("#qaAiClear")!;
 const coachOk = coachEl.querySelector<HTMLElement>("#qaCoachOk")!;
@@ -196,6 +197,9 @@ let aiModes = defaultAiModes();
 function renderAiMenu() {
   aiRefineBox.checked = aiModes.refine;
   aiSplitBox.checked = aiModes.split;
+  aiStripBox.checked = aiModes.stripProject;
+  // 프로젝트명 제거는 제목 편집이다 — 다듬기를 끄면 같이 잠근다(선택은 기억).
+  aiStripBox.disabled = !aiModes.refine;
   // 일부만 켜 둔 상태는 버튼만 보고는 알 수 없다 — 캐럿에 표시를 남긴다.
   aiModeBtn.classList.toggle("narrowed", !(aiModes.refine && aiModes.split));
 }
@@ -205,6 +209,10 @@ aiRefineBox.onchange = () => {
 };
 aiSplitBox.onchange = () => {
   aiModes = toggleAiMode(aiModes, "split");
+  renderAiMenu();
+};
+aiStripBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "stripProject");
   renderAiMenu();
 };
 aiModeBtn.onclick = () => {
@@ -240,7 +248,17 @@ aiBtn.onclick = async () => {
   aiBtn.disabled = true;
   aiBtn.textContent = "✨ 생각 중…";
   try {
-    const suggestion = await suggestBreakdown(title, card.descriptionValue, aiModes.refine, aiModes.split);
+    // 프로젝트명은 겹침 제거를 켰을 때만 함께 보낸다 — 그때만 이름이 외부로 나간다.
+    const projectName = stripProjectName(aiModes)
+      ? projects.find((p) => p.id === card.state.selectedId)?.name
+      : undefined;
+    const suggestion = await suggestBreakdown(
+      title,
+      card.descriptionValue,
+      aiModes.refine,
+      aiModes.split,
+      projectName,
+    );
     sheetHandle = openBreakdownSheet({
       host: card.element,
       suggestion,

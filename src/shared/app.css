@@ -1481,6 +1481,9 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .qa-ai-menu label:hover { background: var(--accent-soft); }
 .qa-ai-menu input { accent-color: var(--accent); margin: 0; flex: none; }
 .qa-ai-menu .hint { color: var(--muted); font-size: 11px; }
+/* 프로젝트명 제거는 제목 다듬기의 부속 옵션 — 들여쓰고, 다듬기를 끄면 잠긴다. */
+.qa-ai-menu label.sub { margin-left: 18px; }
+.qa-ai-menu label.sub:has(input:disabled) { opacity: 0.45; cursor: default; }
 /* AI 제안과 등록을 오른쪽에 한 무리로 묶는다. 푸터가 양끝 정렬이라 셋을 나란히
    두면 AI 제안만 한가운데 떠서 어디에도 속하지 않는 자리가 된다. */
 .qa-actions { display: flex; align-items: center; gap: 10px; }
