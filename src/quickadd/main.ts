@@ -14,6 +14,7 @@ import { isWithinCooldown } from "../shared/cooldown";
 import { bindTip } from "../shared/tooltip";
 import { createProjectPicker } from "./projectPicker";
 import { openBreakdownSheet, type SheetHandle } from "./breakdownSheet";
+import { defaultAiModes, toggleAiMode } from "./aiModes";
 import { resolveSubmitRoute, activeChildren } from "./submitRoute";
 import type { PendingTree, PendingChildren } from "./submitRoute";
 import { resolveDateChoice, resetFormFields } from "../shared/issueForm/state";
@@ -38,6 +39,10 @@ const coachEl = cloneTemplate("qaCoach");
 const projBtn = footer.querySelector<HTMLElement>("#projBtn")!;
 const qaSubmit = footer.querySelector<HTMLElement>("#qaSubmit")!;
 const aiBtn = footer.querySelector<HTMLButtonElement>("#qaAiBtn")!;
+const aiModeBtn = footer.querySelector<HTMLButtonElement>("#qaAiMode")!;
+const aiMenu = footer.querySelector<HTMLElement>("#qaAiMenu")!;
+const aiRefineBox = footer.querySelector<HTMLInputElement>("#qaAiRefine")!;
+const aiSplitBox = footer.querySelector<HTMLInputElement>("#qaAiSplit")!;
 const aiClearBtn = footer.querySelector<HTMLButtonElement>("#qaAiClear")!;
 const coachOk = coachEl.querySelector<HTMLElement>("#qaCoachOk")!;
 
@@ -184,6 +189,46 @@ coachOk.addEventListener("click", () => {
 /* ---- AI 작업 분해 ----
    제목을 다듬고 하위 작업을 제안받는다. 적용은 폼에 반영만 하고 등록하지 않는다 —
    확정은 언제나 Ctrl+Enter다. */
+
+// 무엇을 고칠지. ▾ 메뉴에서 고르고 창이 살아 있는 동안 기억한다.
+let aiModes = defaultAiModes();
+
+function renderAiMenu() {
+  aiRefineBox.checked = aiModes.refine;
+  aiSplitBox.checked = aiModes.split;
+  // 일부만 켜 둔 상태는 버튼만 보고는 알 수 없다 — 캐럿에 표시를 남긴다.
+  aiModeBtn.classList.toggle("narrowed", !(aiModes.refine && aiModes.split));
+}
+aiRefineBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "refine");
+  renderAiMenu(); // 거부된 토글(마지막 하나 끄기)은 여기서 체크박스가 되돌아간다
+};
+aiSplitBox.onchange = () => {
+  aiModes = toggleAiMode(aiModes, "split");
+  renderAiMenu();
+};
+aiModeBtn.onclick = () => {
+  aiMenu.hidden = !aiMenu.hidden;
+};
+bindTip(aiModeBtn, "AI 제안 유형 선택", "above");
+renderAiMenu();
+// 메뉴 밖을 누르면 닫는다. 캐럿 자체는 onclick이 토글하므로 여기서 제외한다.
+document.addEventListener("mousedown", (e) => {
+  const t = e.target as Node;
+  if (!aiMenu.hidden && !aiMenu.contains(t) && !aiModeBtn.contains(t)) aiMenu.hidden = true;
+});
+// Esc는 창 닫기(card)까지 번진다 — 메뉴가 열려 있으면 메뉴만 닫고 멈춘다.
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key === "Escape" && !aiMenu.hidden) {
+      e.stopPropagation();
+      aiMenu.hidden = true;
+    }
+  },
+  true,
+);
+
 aiBtn.onclick = async () => {
   const title = card.titleValue.trim();
   if (!title) {
@@ -191,10 +236,11 @@ aiBtn.onclick = async () => {
     card.showError("제목을 입력하세요");
     return;
   }
+  aiMenu.hidden = true;
   aiBtn.disabled = true;
   aiBtn.textContent = "✨ 생각 중…";
   try {
-    const suggestion = await suggestBreakdown(title, card.descriptionValue);
+    const suggestion = await suggestBreakdown(title, card.descriptionValue, aiModes.refine, aiModes.split);
     sheetHandle = openBreakdownSheet({
       host: card.element,
       suggestion,

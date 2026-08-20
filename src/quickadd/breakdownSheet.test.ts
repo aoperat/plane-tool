@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { createSheetState, toggleChild, editChild, acceptedChildren, hasAnythingToApply } from "./breakdownSheet";
+import {
+  createSheetState,
+  toggleChild,
+  editChild,
+  editTitle,
+  appliedTitle,
+  addChild,
+  acceptedChildren,
+  hasAnythingToApply,
+} from "./breakdownSheet";
 import type { BreakdownSuggestion } from "../shared/types";
 
 function suggestion(over: Partial<BreakdownSuggestion> = {}): BreakdownSuggestion {
@@ -67,5 +76,31 @@ describe("breakdownSheet 상태", () => {
   it("제안된 하위가 애초에 없고 제목도 그대로면 적용할 것이 없다", () => {
     const s = createSheetState(suggestion({ title_changed: false, children: [] }));
     expect(hasAnythingToApply(s)).toBe(false);
+  });
+
+  it("제안 제목을 직접 고치면 고친 글자가 적용된다", () => {
+    const s = editTitle(createSheetState(suggestion()), "홍익대 취약점 조치");
+    expect(appliedTitle(s, "원래 제목")).toBe("홍익대 취약점 조치");
+  });
+
+  it("제안 제목을 비우면 원래 제목으로 돌아간다 — 빈 제목은 등록이 막힌다", () => {
+    const s = editTitle(createSheetState(suggestion()), "   ");
+    expect(appliedTitle(s, "원래 제목")).toBe("원래 제목");
+  });
+
+  it("하위를 직접 보태고 글자를 넣으면 결과에 들어간다", () => {
+    let s = addChild(createSheetState(suggestion()));
+    s = editChild(s, 2, "결과 공유");
+    expect(acceptedChildren(s)).toEqual(["문서 확인", "메일 전달", "결과 공유"]);
+  });
+
+  it("보탠 줄을 비워 두면 조용히 빠진다", () => {
+    const s = addChild(createSheetState(suggestion()));
+    expect(acceptedChildren(s)).toEqual(["문서 확인", "메일 전달"]);
+  });
+
+  it("제안이 비어 있어도 직접 보태면 적용할 것이 생긴다 — 수동 분해의 입구", () => {
+    const s = addChild(createSheetState(suggestion({ title_changed: false, children: [] })));
+    expect(hasAnythingToApply(s)).toBe(true);
   });
 });

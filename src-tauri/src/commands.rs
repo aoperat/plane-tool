@@ -1281,16 +1281,24 @@ pub async fn suggest_breakdown(
     app: tauri::AppHandle,
     title: String,
     description: String,
+    refine_title: bool,
+    split_children: bool,
 ) -> Result<crate::breakdown::BreakdownSuggestion, String> {
     if title.trim().is_empty() {
         return Err("제목을 먼저 입력하세요".into());
     }
+    // UI가 마지막 하나는 끄지 못하게 막지만, 프론트를 믿고 요청을 보내면
+    // 빈 부탁에 토큰만 쓴다 — 여기서도 거른다.
+    if !refine_title && !split_children {
+        return Err("개선 유형을 하나 이상 선택하세요".into());
+    }
     let key = config::get_openai_key().ok_or("no_key")?;
     let s = config::load_settings(&app);
-    let (system, user_msg) = crate::breakdown::build_prompt(&title, &description);
+    let (system, user_msg) =
+        crate::breakdown::build_prompt(&title, &description, refine_title, split_children);
     let ai = crate::openai::OpenAiClient::new(key);
     let content = ai.chat_json(&s.briefing_model, &system, &user_msg).await?;
-    crate::breakdown::parse_suggestion(&content, &title)
+    crate::breakdown::parse_suggestion(&content, &title, refine_title, split_children)
 }
 
 /// 브리핑 창을 설정된 디스플레이 중앙에 표시하고, 창에게 로드 신호를 보낸다.

@@ -34,6 +34,23 @@ export function editChild(state: SheetState, index: number, text: string): Sheet
   return { ...state, children };
 }
 
+export function editTitle(state: SheetState, text: string): SheetState {
+  return { ...state, title: text };
+}
+
+/** 빈 하위 한 줄을 끝에 단다 — AI가 놓친 단계를 사람이 보탤 수 있어야 한다.
+ *  비워 둔 채 적용하면 acceptedChildren이 걸러낸다. */
+export function addChild(state: SheetState): SheetState {
+  return { ...state, children: [...state.children, { text: "", on: true }] };
+}
+
+/** 적용될 최종 제목. 비워 두면 원래 제목으로 돌아간다 — 빈 제목이 폼에
+ *  들어가면 등록 자체가 막힌다. */
+export function appliedTitle(state: SheetState, originalTitle: string): string {
+  const t = state.title.trim();
+  return t === "" ? originalTitle.trim() : t;
+}
+
 /** 실제로 만들 하위 작업 제목들. 꺼진 것과 빈 것은 빠진다. */
 export function acceptedChildren(state: SheetState): string[] {
   return state.children.filter((c) => c.on && c.text.trim() !== "").map((c) => c.text.trim());
@@ -64,6 +81,8 @@ export function openBreakdownSheet(opts: {
   onApply: (title: string, children: string[]) => void;
 }): SheetHandle {
   let state = createSheetState(opts.suggestion);
+  // 방금 추가한 하위 줄. 다음 render가 그 입력칸에 포커스를 주고 비운다.
+  let focusIndex: number | null = null;
 
   const overlay = document.createElement("div");
   overlay.className = "bd-overlay";
@@ -109,7 +128,7 @@ export function openBreakdownSheet(opts: {
     if (!hasAnythingToApply(state)) {
       const empty = document.createElement("div");
       empty.className = "bd-empty";
-      empty.textContent = "지금 이대로 충분합니다 — 쪼갤 만한 단계가 보이지 않습니다.";
+      empty.textContent = "지금 이대로 충분합니다 — 더 고칠 곳이 보이지 않습니다.";
       sheet.appendChild(empty);
     }
 
@@ -120,12 +139,21 @@ export function openBreakdownSheet(opts: {
       old.className = "old";
       old.textContent = opts.originalTitle;
       t.appendChild(old);
-      t.appendChild(document.createElement("br"));
+      // 제안 제목도 그대로 받아들일 필요가 없다 — 하위와 똑같이 고쳐서 적용한다.
+      const line = document.createElement("div");
+      line.className = "new";
       const arrow = document.createElement("span");
       arrow.className = "arrow";
       arrow.textContent = "↳ ";
-      t.appendChild(arrow);
-      t.appendChild(document.createTextNode(state.title));
+      line.appendChild(arrow);
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = state.title;
+      input.oninput = () => {
+        state = editTitle(state, input.value);
+      };
+      line.appendChild(input);
+      t.appendChild(line);
       sheet.appendChild(t);
     }
 
@@ -148,7 +176,22 @@ export function openBreakdownSheet(opts: {
       };
       row.appendChild(text);
       sheet.appendChild(row);
+      if (focusIndex === i) text.focus(); // 시트는 이미 문서에 붙어 있다 — 재렌더는 마운트 후에만 온다
     });
+    focusIndex = null;
+
+    // AI가 놓친 단계를 사람이 보탠다. 제안이 비어 있어도(“이대로 충분”) 수동
+    // 분해의 입구가 된다.
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "bd-add";
+    add.textContent = "+ 하위 작업 추가";
+    add.onclick = () => {
+      state = addChild(state);
+      focusIndex = state.children.length - 1;
+      render();
+    };
+    sheet.appendChild(add);
 
     if (state.reason) {
       const r = document.createElement("div");
@@ -171,7 +214,7 @@ export function openBreakdownSheet(opts: {
     apply.textContent = "적용";
     apply.disabled = !hasAnythingToApply(state);
     apply.onclick = () => {
-      opts.onApply(state.title, acceptedChildren(state));
+      opts.onApply(appliedTitle(state, opts.originalTitle), acceptedChildren(state));
       close();
     };
     foot.appendChild(apply);

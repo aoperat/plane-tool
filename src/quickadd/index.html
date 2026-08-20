@@ -25,7 +25,15 @@
         <div class="qa-actions">
           <span class="qa-ai-group">
             <button type="button" id="qaAiBtn" class="qa-ai">✨ AI 제안</button>
+            <button type="button" id="qaAiMode" class="qa-ai-mode" aria-label="AI 제안 유형 선택">▾</button>
             <button type="button" id="qaAiClear" class="qa-ai-clear" hidden aria-label="적용한 하위 작업 지우기">×</button>
+            <!-- 무엇을 고칠지 고르는 메뉴. 버튼 클릭마다 묻지 않도록 마지막
+                 선택을 기억한다(main.ts의 aiModes). 둘 다 끄는 것은 막는다 —
+                 보낼 부탁이 없다. -->
+            <div id="qaAiMenu" class="qa-ai-menu" hidden>
+              <label><input type="checkbox" id="qaAiRefine" /> 제목 다듬기 <span class="hint">맞춤법·말투</span></label>
+              <label><input type="checkbox" id="qaAiSplit" /> 하위 작업 분해</label>
+            </div>
           </span>
           <button type="button" id="qaSubmit" class="qa-submit">추가 <span class="bk">Ctrl+↵</span></button>
         </div>

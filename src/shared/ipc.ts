@@ -75,8 +75,18 @@ export const createIssue = (
     description,
     parentId: parent_id,
   });
-export const suggestBreakdown = (title: string, description: string) =>
-  invoke<BreakdownSuggestion>("suggest_breakdown", { title, description });
+export const suggestBreakdown = (
+  title: string,
+  description: string,
+  refine_title: boolean,
+  split_children: boolean,
+) =>
+  invoke<BreakdownSuggestion>("suggest_breakdown", {
+    title,
+    description,
+    refineTitle: refine_title,
+    splitChildren: split_children,
+  });
 
 export const createIssueTree = (
   project_id: string,
