@@ -85,6 +85,8 @@ pub fn build_prompt(
                  · 쪼갠다: \"취약점 문서 확인\" + \"담당자에게 메일 전달\" → (다) 문서를 보다가 메일로 자리를 옮긴다\n\
                  · 쪼갠다: \"견적 요청\" + \"견적 검토\" → (가) 상대의 회신을 기다려야 한다\n\
                  · 쪼갠다: \"발표자료 작성\" + \"발표\" → (나) 보통 다른 날 한다\n\
+                 · 쪼갠다: \"취약점 조치 및 전달\" → (다) 조치를 끝내고 메일·보고로 자리를 옮겨 전달한다.\n\
+                   \"및\"으로 한 문장에 묶여 있어도 완료 시점이 다르면 별개의 작업이다\n\
              - **어디를 살펴볼지 알려주는 표현들.** 아래가 보이면 그 앞뒤를 나눠 검토해라.\n\
                다만 이건 신호일 뿐 쪼갤 이유가 아니다 — 쪼갤지는 위 세 기준으로 다시 판단한다.\n\
                  · 나열: \"및\", \"그리고\", \"와/과\", \"~랑\", 쉼표로 이어진 동사구\n\
@@ -106,7 +108,9 @@ pub fn build_prompt(
         system.push_str(
             "- 제목 개선이 뚜렷하지 않으면 title_changed를 false로 두고 원문을 그대로 title에 넣는다.\n\
              - 제목에 \"작업\", \"건\", \"처리\" 같은 군더더기를 덧붙이지 않는다.\n\
-               (나쁜 예: \"홍익대 취약점 조치 및 전달 작업\" → 좋은 예: \"홍익대 취약점 조치 및 전달\")\n",
+               (나쁜 예: \"주간보고 작성 작업\" → 좋은 예: \"주간보고 작성\")\n\
+             - 다듬기는 표현만 고친다. \"~한 후\"를 \"및\"으로 바꾸는 식으로 순서나 의미를\n\
+               바꾸는 것은 다듬기가 아니다.\n",
         );
     } else {
         system.push_str(
@@ -117,7 +121,8 @@ pub fn build_prompt(
     system.push_str(
         "- 날짜·기한·순번은 제목에 넣지 않는다. 앱이 따로 관리한다.\n\
          - reason은 한국어 한 줄. 쪼갰으면 어느 기준에 걸렸는지, 제목만 다듬었으면 왜 바꿨는지 쓴다.\n\
-           손댄 것이 없으면 빈 문자열.",
+           **실제로 바꾼 것만 쓴다** — 이 지시문의 예시 문구를 베껴 쓰지 않는다.\n\
+           손댄 것이 없으면 반드시 빈 문자열.",
     );
     let mut payload = serde_json::Map::new();
     payload.insert("title".into(), serde_json::json!(title.trim()));
@@ -166,7 +171,12 @@ pub fn parse_suggestion(
         }
     }
 
-    Ok(BreakdownSuggestion { title, title_changed, children, reason: raw.reason.trim().to_string() })
+    // 바꾼 것이 없는데 이유만 남으면 시트가 "이대로 충분합니다" 옆에 지어낸
+    // 사연을 나란히 보여주게 된다 — 모델이 예시 문구를 베껴 reason을 채우는
+    // 일이 실제로 있었다. 근거 없는 이유는 여기서 지운다.
+    let reason = if title_changed || !children.is_empty() { raw.reason.trim().to_string() } else { String::new() };
+
+    Ok(BreakdownSuggestion { title, title_changed, children, reason })
 }
 
 #[cfg(test)]
@@ -266,6 +276,45 @@ mod tests {
         let (_, user) = build_prompt("제목만 있음", "   ", true, true);
         let payload: serde_json::Value = serde_json::from_str(&user).unwrap();
         assert!(payload.get("description").is_none());
+    }
+
+    /// 실사용 회귀: "취약점 조치 및 전달"을 모델이 "이대로 충분"이라며 쪼개지
+    /// 않았다. 원인은 군더더기 규칙의 좋은 예가 바로 그 문구여서 — 모델이
+    /// 이상적인 최종 제목으로 학습해 분해를 거부했다. 예시 문구가 서로
+    /// 겹치면 안 된다.
+    #[test]
+    fn prompt_split_example_must_not_double_as_a_good_title() {
+        let (system, _) = build_prompt("취약점 조치 및 전달", "", true, true);
+        assert!(system.contains("\"취약점 조치 및 전달\" → (다)"), "합성 문장을 쪼개는 예시가 있어야 한다");
+        assert!(!system.contains("홍익대"), "같은 문구가 좋은 예(최종 제목)로 다시 나오면 안 된다");
+        assert!(system.contains("주간보고 작성"), "군더더기 예시는 분해 예시와 다른 소재여야 한다");
+    }
+
+    /// 실사용 회귀: "조치 후 전달"이 "조치 및 전달"로 바뀌어 순서 정보가
+    /// 사라졌다. 다듬기는 표현만 고쳐야 한다.
+    #[test]
+    fn prompt_forbids_meaning_changes_when_refining() {
+        let (system, _) = build_prompt("문서 확인 후 전달", "", true, false);
+        assert!(system.contains("순서나 의미"), "의미 보존 규칙이 있어야 한다");
+    }
+
+    /// 실사용 회귀: 아무것도 안 바꾸고 "군더더기를 제거하여 다듬음"이라는
+    /// 지어낸 이유가 왔다 — 시트가 "이대로 충분합니다" 옆에 그대로 보여줬다.
+    #[test]
+    fn parser_clears_a_fabricated_reason_when_nothing_changed() {
+        let json = r#"{"title":"취약점 조치 및 전달","title_changed":false,
+            "children":[],"reason":"군더더기를 제거하여 제목을 간결하게 다듬음"}"#;
+        let out = parse_suggestion(json, "취약점 조치 및 전달", true, true).unwrap();
+        assert_eq!(out.reason, "");
+    }
+
+    /// 반대로 실제로 바꾼 것이 있으면 이유는 살아 있어야 한다.
+    #[test]
+    fn parser_keeps_the_reason_when_something_changed() {
+        let json = r#"{"title":"t","title_changed":false,
+            "children":["조치","전달"],"reason":"완료 시점이 다르다"}"#;
+        let out = parse_suggestion(json, "t", true, true).unwrap();
+        assert_eq!(out.reason, "완료 시점이 다르다");
     }
 
     /// 다듬기만 켠 프롬프트에는 분해 규칙이 없어야 한다 — 규칙이 남아 있으면
