@@ -73,11 +73,17 @@ export interface SheetHandle {
 }
 
 /** 카드 위에 겹치는 제안 시트를 연다. 적용을 누르면 onApply가 최종 상태를 받는다.
- *  Esc/취소는 아무것도 바꾸지 않고 닫는다. */
+ *  Esc/취소는 아무것도 바꾸지 않고 닫는다.
+ *
+ *  heading을 주면 머리글이 바뀐다 — 새 제안이 아니라 "적용된 하위 작업"을
+ *  다시 열어 볼 때 쓴다. onRefresh를 주면 푸터 왼쪽에 [✨ 다시 제안]이 생기고,
+ *  누르면 시트를 닫은 뒤 호출한다(AI 재요청은 호출자의 몫). */
 export function openBreakdownSheet(opts: {
   host: HTMLElement;
   suggestion: BreakdownSuggestion;
   originalTitle: string;
+  heading?: string;
+  onRefresh?: () => void;
   onApply: (title: string, children: string[]) => void;
 }): SheetHandle {
   let state = createSheetState(opts.suggestion);
@@ -118,7 +124,7 @@ export function openBreakdownSheet(opts: {
 
     const head = document.createElement("div");
     head.className = "bd-head";
-    head.appendChild(document.createTextNode("✨ AI 제안"));
+    head.appendChild(document.createTextNode(opts.heading ?? "✨ AI 제안"));
     const esc = document.createElement("span");
     esc.className = "esc";
     esc.textContent = "Esc 닫기";
@@ -202,6 +208,17 @@ export function openBreakdownSheet(opts: {
 
     const foot = document.createElement("div");
     foot.className = "bd-foot";
+    if (opts.onRefresh) {
+      const refresh = document.createElement("button");
+      refresh.type = "button";
+      refresh.className = "bd-refresh";
+      refresh.textContent = "✨ 다시 제안";
+      refresh.onclick = () => {
+        close();
+        opts.onRefresh!();
+      };
+      foot.appendChild(refresh);
+    }
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "bd-cancel";

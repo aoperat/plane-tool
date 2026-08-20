@@ -1529,6 +1529,13 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .bd-add:hover { color: var(--accent); border-color: var(--accent-ring); }
 .bd-reason { color: var(--muted); font-size: 11px; margin: 8px 0; }
 .bd-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+/* 다시 제안 — 취소/적용과 역할이 달라 왼쪽으로 뗀다. */
+.bd-refresh {
+  margin-right: auto; background: transparent; border: 1px solid var(--accent-ring);
+  color: var(--accent); border-radius: 8px; padding: 5px 10px; font-size: 12px;
+  font-family: inherit; cursor: pointer;
+}
+.bd-refresh:hover { background: var(--accent-soft); }
 /* 취소 버튼. 이 저장소에는 보조 버튼 공용 클래스가 없어(.qa-submit만 있다)
    여기서 직접 그린다. */
 .bd-cancel {

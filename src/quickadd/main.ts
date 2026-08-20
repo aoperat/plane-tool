@@ -237,7 +237,17 @@ document.addEventListener(
   true,
 );
 
-aiBtn.onclick = async () => {
+/** 시트의 최종 상태를 폼에 반영한다 — 새 제안이든 적용본 검토든 같다.
+ *  하위를 전부 꺼 두고 적용하면 붙어 있던 하위가 걷힌다 — 시트에서
+ *  빠져나오는 길이다(breakdownSheet.hasAnythingToApply 참고). */
+function applySheetResult(newTitle: string, children: string[]) {
+  card.titleValue = newTitle;
+  pendingChildren =
+    children.length > 0 ? { formTitle: card.titleValue.trim(), titles: children } : null;
+  renderPendingBadge();
+}
+
+async function requestSuggestion() {
   const title = card.titleValue.trim();
   if (!title) {
     card.markTitleError();
@@ -263,14 +273,7 @@ aiBtn.onclick = async () => {
       host: card.element,
       suggestion,
       originalTitle: title,
-      onApply: (newTitle, children) => {
-        card.titleValue = newTitle;
-        // 하위를 전부 꺼 두고 적용하면 붙어 있던 하위가 걷힌다 — 시트에서
-        // 빠져나오는 길이다(breakdownSheet.hasAnythingToApply 참고).
-        pendingChildren =
-          children.length > 0 ? { formTitle: card.titleValue.trim(), titles: children } : null;
-        renderPendingBadge();
-      },
+      onApply: applySheetResult,
     });
   } catch (err) {
     const msg = String(err);
@@ -279,6 +282,28 @@ aiBtn.onclick = async () => {
     aiBtn.disabled = false;
     renderPendingBadge();
   }
+}
+
+aiBtn.onclick = () => {
+  const title = card.titleValue.trim();
+  const active = activeChildren(pendingChildren, title);
+  // 하위가 붙어 있으면(버튼이 "✨ 하위 N"일 때) 이 버튼은 현재 상태를 여는
+  // 문이다 — 뭐가 붙었는지 보이지 않은 채 AI가 또 도는 것을 막는다.
+  // AI를 다시 부르는 길은 시트 안의 [✨ 다시 제안]이다.
+  if (active.length > 0) {
+    sheetHandle = openBreakdownSheet({
+      host: card.element,
+      suggestion: { title, title_changed: false, children: active, reason: "" },
+      originalTitle: title,
+      heading: "적용된 하위 작업",
+      onRefresh: () => {
+        requestSuggestion();
+      },
+      onApply: applySheetResult,
+    });
+    return;
+  }
+  requestSuggestion();
 };
 
 /** 적용된 하위 작업이 몇 개인지 버튼에 남긴다 — 시트를 닫은 뒤에도 "쪼개진
