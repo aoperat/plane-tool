@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, countByStateGroup, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, filterVisibleToday, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, isCompletedToday, offlineStatusText, projectZone, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
 import type { Cycle, Project, ProjectState, WorkItem } from "../shared/types";
 
 function wi(id: string, project_id: string, state_group = "started"): WorkItem {
@@ -209,6 +209,32 @@ describe("visibleTabItems", () => {
   it("widens the delegated tab only when 전체 보기 is on", () => {
     expect(visibleTabItems("delegated", data, false, now).map((i) => i.id)).toEqual(["d1"]);
     expect(visibleTabItems("delegated", data, true, now).map((i) => i.id)).toEqual(["d1", "d2"]);
+  });
+});
+
+describe("projectZone — 하단 서랍 배정", () => {
+  it("할일이나 진행중이 하나라도 있으면 본 목록이다", () => {
+    expect(projectZone([wi("a", "p1", "backlog"), wi("b", "p1", "unstarted")])).toBe("active");
+    expect(projectZone([wi("a", "p1", "completed"), wi("b", "p1", "started")])).toBe("active");
+  });
+
+  it("움직일 것이 없는데 완료가 있으면 오늘 마친 프로젝트다 — 백로그가 섞여 있어도", () => {
+    expect(projectZone([wi("a", "p1", "completed")])).toBe("done");
+    expect(projectZone([wi("a", "p1", "completed"), wi("b", "p1", "backlog")])).toBe("done");
+  });
+
+  it("백로그·취소뿐이면 대기 프로젝트다", () => {
+    expect(projectZone([wi("a", "p1", "backlog"), wi("b", "p1", "cancelled")])).toBe("dormant");
+    expect(projectZone([wi("a", "p1", "cancelled")])).toBe("dormant");
+  });
+});
+
+describe("countByStateGroup", () => {
+  it("상태별로 센다 — 서랍 요약 줄의 재료", () => {
+    const counts = countByStateGroup([wi("a", "p1", "backlog"), wi("b", "p1", "backlog"), wi("c", "p1", "cancelled")]);
+    expect(counts.backlog).toBe(2);
+    expect(counts.cancelled).toBe(1);
+    expect(counts.completed).toBeUndefined();
   });
 });
 

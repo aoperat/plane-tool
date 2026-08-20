@@ -91,6 +91,34 @@ export function filterHiddenCompleted(items: WorkItem[], hide: boolean): WorkIte
   return items.filter((it) => it.state_group !== "completed");
 }
 
+export type ProjectZone = "active" | "done" | "dormant";
+
+/** 프로젝트가 사이드바 어느 구역에 설지 정한다.
+ *
+ *  할일·진행중이 하나라도 있으면 본 목록(active). 없는데 완료가 있으면
+ *  "오늘 마친 프로젝트"(done) — 목록의 완료는 filterVisibleToday가 오늘 것만
+ *  남기므로 이 이름이 정확하다. 남은 게 백로그·취소뿐이면 "대기 프로젝트"
+ *  (dormant). 이 순서로 판정해 세 구역이 겹치지 않는다.
+ *
+ *  당장 움직일 것이 없는 프로젝트가 본 목록에서 한 자리씩 차지하는 것을
+ *  막는 장치다 — 서랍 안 작업이 할일/진행중이 되면 다음 렌더에서 저절로
+ *  본 목록으로 돌아온다. */
+export function projectZone(items: WorkItem[]): ProjectZone {
+  let hasCompleted = false;
+  for (const it of items) {
+    if (it.state_group === "started" || it.state_group === "unstarted") return "active";
+    if (it.state_group === "completed") hasCompleted = true;
+  }
+  return hasCompleted ? "done" : "dormant";
+}
+
+/** 서랍 머리글과 프로젝트 줄의 "완료 2 · 백로그 3" 개수용. */
+export function countByStateGroup(items: WorkItem[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const it of items) out[it.state_group] = (out[it.state_group] ?? 0) + 1;
+  return out;
+}
+
 /** Formats a UTC timestamp as a local "오전/오후 H:MM" string. Manual (no Intl) so it's locale-independent. */
 export function formatLocalTime(iso: string): string {
   const d = new Date(iso);

@@ -5,8 +5,8 @@ import { acknowledgeAssignment, checkUpdatesManual, createIssue, deleteWorkItem,
 import { notesToHtml } from "./releaseNotes";
 import { colorForId } from "../shared/color";
 import { priorityIcon, priorityColor, stateIcon, CALENDAR_ICON, EXTERNAL_LINK_ICON } from "../shared/planeIcons";
-import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
-import type { GroupAxis, SidebarTab, SubGroup } from "./logic";
+import { buildIssueUrl, clampSidebarWidth, computeSidebarGeometry, countByStateGroup, filterByPriority, filterBySearch, filterByStateGroup, filterHiddenCompleted, formatDateRange, formatLocalTime, formatRelativeTime, groupItemsByProject, groupProgress, offlineStatusText, projectZone, resolveAssigneeName, resolveStateId, SIDEBAR_WIDTH_DEFAULT, splitByCycle, visibleTabItems } from "./logic";
+import type { GroupAxis, ProjectGroup, SidebarTab, SubGroup } from "./logic";
 import { buildTreeRows, countActionable, parentEffect, type TreeRow } from "./tree";
 import { sortMonitorsByPosition, pickMonitor } from "../shared/monitors";
 import { isWithinCooldown } from "../shared/cooldown";
@@ -130,6 +130,29 @@ function renderConflictBadge() {
 // needed). Both are toggled from the more-menu's 보기 설정 section — see openMoreMenu.
 const HIDE_DONE_KEY = "hideCompleted";
 let hideCompleted = localStorage.getItem(HIDE_DONE_KEY) === "1";
+
+// 하단 서랍(🎉 오늘 마친 / 💤 대기)의 펼침 상태. 화면 취향이라 localStorage에
+// 두고, 기본은 접힘 — 서랍의 존재 이유가 "자리를 안 차지하는 것"이다.
+const DRAWER_OPEN_KEY = "drawerOpen";
+
+function loadDrawerOpen(): Set<string> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(DRAWER_OPEN_KEY) ?? "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const drawerOpen = loadDrawerOpen();
+
+function persistDrawerOpen() {
+  localStorage.setItem(DRAWER_OPEN_KEY, JSON.stringify([...drawerOpen]));
+}
+
+// 서랍 안에서 펼쳐 본 프로젝트 id. 잠깐 들여다보는 용도라 세션에만 남긴다 —
+// 본 목록의 collapsedGroups와 달리 다음 실행까지 기억할 가치가 없다.
+const drawerExpanded = new Set<string>();
 
 // 사이클 데이터. 작업 목록(60초 쿨다운)보다 훨씬 덜 바뀌므로 갱신 주기를
 // 따로 가져간다. 캐시를 localStorage에 두어 앱을 다시 켰을 때와 네트워크가
@@ -1046,9 +1069,15 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
 
   const groups = groupItemsByProject(filtered, projects);
   emptyStateEl.hidden = !isFiltering || groups.length > 0;
-  lastGroupIds = groups.map((g) => g.project.id);
+  // 움직일 작업이 없는 프로젝트는 본 목록 대신 하단 서랍으로 내려보낸다.
+  // 검색·필터 중에는 나누지 않는다 — 결과가 서랍 뒤에 숨으면 찾으려던 목적과
+  // 반대가 된다.
+  const mainGroups = isFiltering ? groups : groups.filter((g) => projectZone(g.items) === "active");
+  const doneGroups = isFiltering ? [] : groups.filter((g) => projectZone(g.items) === "done");
+  const dormantGroups = isFiltering ? [] : groups.filter((g) => projectZone(g.items) === "dormant");
+  lastGroupIds = mainGroups.map((g) => g.project.id);
   syncFoldButton();
-  groups.forEach(({ project, items: groupItems }, i) => {
+  mainGroups.forEach(({ project, items: groupItems }, i) => {
     // 검색·필터 중에는 접힘을 무시하고 펼쳐 보여준다 — 그러지 않으면
     // "3개 결과"라고 떠도 그 프로젝트가 접혀 있어 화면에는 아무것도 안 보인다.
     const collapsed = collapsedGroups.has(project.id) && !isFiltering;
@@ -1127,6 +1156,104 @@ function renderTasks(items: WorkItem[], projects: Project[]) {
     }
     tasksEl.appendChild(body);
   });
+
+  renderDrawer("done", doneGroups, items, projects);
+  renderDrawer("dormant", dormantGroups, items, projects);
+}
+
+/** 상태별 개수를 "완료 2 · 백로그 3" 꼴로 적는다. order에 든 것만, 0은 뺀다. */
+function stateCountText(counts: Record<string, number>, order: [string, string][]): string {
+  const parts: string[] = [];
+  for (const [key, label] of order) {
+    const n = counts[key] ?? 0;
+    if (n > 0) parts.push(`${label} ${n}`);
+  }
+  return parts.join(" · ");
+}
+
+/** 움직일 작업이 없는 프로젝트들을 담는 하단 서랍 한 칸.
+ *
+ *  "done"은 남은 게 오늘 완료뿐인 프로젝트(🎉), "dormant"는 백로그·취소뿐인
+ *  프로젝트(💤)다. 서랍 안 프로젝트 줄을 누르면 그 자리에서 작업 카드가
+ *  펼쳐진다 — 카드는 본 목록과 같은 renderTaskRow라 상태 변경·수정이 다
+ *  되고, 할일로 바꾸면 다음 렌더에서 그 프로젝트가 본 목록으로 복귀한다.
+ *
+ *  hideCompleted는 여기 적용하지 않는다 — done 서랍의 내용이 전부 완료라,
+ *  적용하면 펼쳐도 아무것도 없는 빈 칸이 된다. 서랍 자체가 이미 숨김 장치다. */
+function renderDrawer(kind: "done" | "dormant", groups: ProjectGroup[], items: WorkItem[], projects: Project[]) {
+  if (groups.length === 0) return;
+  const open = drawerOpen.has(kind);
+  const totals = countByStateGroup(groups.flatMap((g) => g.items));
+  const summary =
+    kind === "done"
+      ? `${groups.length}개 · 완료 ${totals.completed ?? 0}`
+      : `${groups.length}개 · 백로그 ${totals.backlog ?? 0}`;
+
+  const head = document.createElement("div");
+  head.className = "drawer-h";
+  const chev = document.createElement("span");
+  chev.className = "chev";
+  chev.textContent = open ? "▾" : "▸";
+  head.appendChild(chev);
+  const lbl = document.createElement("span");
+  lbl.className = "lbl";
+  lbl.textContent = kind === "done" ? "🎉 오늘 마친 프로젝트" : "💤 대기 프로젝트";
+  head.appendChild(lbl);
+  const sum = document.createElement("span");
+  sum.className = "sum";
+  sum.textContent = summary;
+  head.appendChild(sum);
+  head.onclick = () => {
+    if (drawerOpen.has(kind)) drawerOpen.delete(kind);
+    else drawerOpen.add(kind);
+    persistDrawerOpen();
+    renderTasks(items, projects);
+  };
+  tasksEl.appendChild(head);
+  if (!open) return;
+
+  const body = document.createElement("div");
+  body.className = "drawer-body";
+  const countOrder: [string, string][] =
+    kind === "done"
+      ? [["completed", "완료"], ["backlog", "백로그"], ["cancelled", "취소"]]
+      : [["backlog", "백로그"], ["cancelled", "취소"]];
+  for (const { project, items: groupItems } of groups) {
+    const expanded = drawerExpanded.has(project.id);
+    const row = document.createElement("div");
+    row.className = "drawer-proj";
+    const pchev = document.createElement("span");
+    pchev.className = "chev";
+    pchev.textContent = expanded ? "▾" : "▸";
+    row.appendChild(pchev);
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = colorForId(project.id);
+    row.appendChild(dot);
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = project.name;
+    row.appendChild(nm);
+    const cnt = document.createElement("span");
+    cnt.className = "cnt";
+    cnt.textContent = stateCountText(countByStateGroup(groupItems), countOrder);
+    row.appendChild(cnt);
+    row.onclick = () => {
+      if (drawerExpanded.has(project.id)) drawerExpanded.delete(project.id);
+      else drawerExpanded.add(project.id);
+      renderTasks(items, projects);
+    };
+    body.appendChild(row);
+    if (expanded) {
+      const tasks = document.createElement("div");
+      tasks.className = "drawer-tasks";
+      for (const treeRow of buildTreeRows(groupItems, collapsedGroups)) {
+        tasks.appendChild(renderTaskRow(treeRow.item, items, projects, treeRow));
+      }
+      body.appendChild(tasks);
+    }
+  }
+  tasksEl.appendChild(body);
 }
 
 /** 하위 묶음 헤더 한 줄 + 그 아래 카드들을 담은 조각을 만든다. 접힘 상태는

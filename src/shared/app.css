@@ -763,6 +763,30 @@ mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px;
 .sb-filter-chip:hover { border-color: var(--accent); color: var(--text); }
 .sb-filter-chip.active { color: var(--accent); background: var(--accent-soft); border-color: rgba(79,124,255,.45); }
 
+/* ---- 하단 서랍: 움직일 작업이 없는 프로젝트 모음 ----
+   🎉 오늘 마친(남은 게 오늘 완료뿐) / 💤 대기(백로그·취소뿐). 본 목록의 .grp보다
+   한 톤 낮게 그린다 — 여기 있는 것은 "지금 볼 일 없음"이 기본값이다. */
+.drawer-h {
+  display: flex; align-items: center; gap: 7px; padding: 9px 6px 8px; margin-top: 10px;
+  border-top: 1px dashed var(--border); color: var(--muted); font-size: 12px;
+  cursor: pointer; user-select: none; border-radius: 0 0 7px 7px;
+}
+.drawer-h:hover { background: var(--surface-grp-hover); color: var(--text); }
+.drawer-h .chev { font-size: 10px; width: 10px; flex: none; }
+.drawer-h .lbl { font-weight: 600; }
+.drawer-h .sum { margin-left: auto; font-size: 11px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.drawer-body { display: flex; flex-direction: column; gap: 3px; padding: 2px 2px 4px; }
+.drawer-proj {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 20px;
+  border-radius: 7px; color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.drawer-proj:hover { background: var(--surface-task-hover); color: var(--text); }
+.drawer-proj .chev { font-size: 9px; width: 9px; flex: none; color: var(--muted-2); }
+.drawer-proj .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; opacity: .85; }
+.drawer-proj .nm { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.drawer-proj .cnt { margin-left: auto; flex: none; font-size: 11px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.drawer-tasks { display: flex; flex-direction: column; gap: 4px; padding: 2px 2px 6px 20px; }
+
 .sb-empty { padding: 40px 20px; text-align: center; color: var(--muted-2); font-size: 12.5px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .sb-empty svg { width: 26px; height: 26px; color: var(--muted-2); opacity: .6; }
 /* `.sb-empty` sets display:flex above — same [hidden] specificity gotcha as `.sb-search-bar`. */
